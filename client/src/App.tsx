@@ -14,6 +14,7 @@ import Dashboard from "@/pages/dashboard";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
 import Pipeline from "@/pages/pipeline";
+import TasksPage from "@/pages/tasks";
 import ImportCSV from "@/pages/import-csv";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/companies" component={Companies} />
       <Route path="/company/:id" component={CompanyDetail} />
       <Route path="/pipeline" component={Pipeline} />
+      <Route path="/tasks" component={TasksPage} />
       <Route path="/import" component={ImportCSV} />
       <Route component={NotFound} />
     </Switch>

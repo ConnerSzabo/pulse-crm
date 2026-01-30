@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation } from "wouter";
-import type { CompanyWithRelations, PipelineStage } from "@shared/schema";
+import type { CompanyWithRelations, PipelineStage, Task } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,8 +22,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { 
   ArrowLeft, Phone, Mail, User, Plus, 
-  Trash2, Clock, MapPin, Globe, Building2, ExternalLink
+  Trash2, Clock, MapPin, Globe, Building2, ExternalLink,
+  ListTodo, AlertTriangle, CheckCircle2
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -39,6 +42,12 @@ const addNoteSchema = z.object({
 
 const nextActionSchema = z.object({
   nextAction: z.string().optional(),
+});
+
+const addTaskSchema = z.object({
+  name: z.string().min(1, "Task description is required"),
+  dueDate: z.string().optional(),
+  priority: z.string().default("medium"),
 });
 
 export default function CompanyDetail() {
@@ -63,6 +72,13 @@ export default function CompanyDetail() {
     resolver: zodResolver(addNoteSchema),
     defaultValues: { note: "" },
   });
+
+  const taskForm = useForm<z.infer<typeof addTaskSchema>>({
+    resolver: zodResolver(addTaskSchema),
+    defaultValues: { name: "", dueDate: "", priority: "medium" },
+  });
+
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
 
   const addContactMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addContactSchema>) => {
@@ -123,6 +139,46 @@ export default function CompanyDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       toast({ title: "Note removed" });
+    },
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addTaskSchema>) => {
+      return apiRequest("POST", `/api/companies/${params.id}/tasks`, {
+        companyId: params.id,
+        name: data.name,
+        dueDate: data.dueDate ? new Date(data.dueDate).toISOString() : null,
+        priority: data.priority,
+        status: "todo",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      taskForm.reset();
+      toast({ title: "Task added" });
+    },
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, ...data }: { id: string; status?: string }) => {
+      return apiRequest("PATCH", `/api/tasks/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Task updated" });
+    },
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      return apiRequest("DELETE", `/api/tasks/${taskId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: "Task removed" });
     },
   });
 
@@ -408,6 +464,184 @@ export default function CompanyDetail() {
                   }}
                   data-testid="input-next-action"
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
+                <CardTitle className="text-lg font-semibold">
+                  Tasks ({company.tasks?.filter(t => t.status !== "completed").length || 0})
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-completed-tasks"
+                    checked={showCompletedTasks}
+                    onCheckedChange={(checked) => setShowCompletedTasks(checked === true)}
+                  />
+                  <label htmlFor="show-completed-tasks" className="text-sm text-muted-foreground cursor-pointer">
+                    Show completed
+                  </label>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Form {...taskForm}>
+                  <form
+                    onSubmit={taskForm.handleSubmit((data) => addTaskMutation.mutate(data))}
+                    className="space-y-3 p-4 bg-muted/30 rounded-lg"
+                  >
+                    <FormField
+                      control={taskForm.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Task Description</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="What needs to be done?"
+                              data-testid="input-task-name"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={taskForm.control}
+                        name="dueDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Due Date</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                data-testid="input-task-due-date"
+                                {...field}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={taskForm.control}
+                        name="priority"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Priority</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-task-priority">
+                                  <SelectValue placeholder="Select priority" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="high">High</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="low">Low</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={addTaskMutation.isPending}
+                      data-testid="button-add-task"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Task
+                    </Button>
+                  </form>
+                </Form>
+
+                {(() => {
+                  const filteredTasks = company.tasks?.filter(t => 
+                    showCompletedTasks ? true : t.status !== "completed"
+                  ) || [];
+                  const sortedTasks = [...filteredTasks].sort((a, b) => {
+                    if (!a.dueDate && !b.dueDate) return 0;
+                    if (!a.dueDate) return 1;
+                    if (!b.dueDate) return -1;
+                    return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+                  });
+
+                  if (sortedTasks.length === 0) {
+                    return (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <ListTodo className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                        <p>No tasks yet</p>
+                      </div>
+                    );
+                  }
+
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+
+                  return (
+                    <div className="space-y-2">
+                      {sortedTasks.map((task) => {
+                        const isOverdue = task.dueDate && 
+                          new Date(task.dueDate) < today && 
+                          task.status !== "completed";
+                        
+                        return (
+                          <div 
+                            key={task.id}
+                            className={`flex items-center justify-between p-3 rounded-lg border bg-card ${
+                              task.status === "completed" ? "opacity-60" : ""
+                            }`}
+                            data-testid={`card-task-${task.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                checked={task.status === "completed"}
+                                onCheckedChange={() => {
+                                  updateTaskMutation.mutate({ 
+                                    id: task.id, 
+                                    status: task.status === "completed" ? "todo" : "completed" 
+                                  });
+                                }}
+                                data-testid={`checkbox-task-${task.id}`}
+                              />
+                              <div>
+                                <span className={`font-medium text-sm ${
+                                  task.status === "completed" ? "line-through text-muted-foreground" : ""
+                                }`}>
+                                  {task.name}
+                                </span>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                                  {task.dueDate && (
+                                    <span className={isOverdue ? "text-red-600 dark:text-red-400 font-medium flex items-center gap-1" : ""}>
+                                      {isOverdue && <AlertTriangle className="h-3 w-3" />}
+                                      {format(new Date(task.dueDate), "MMM d, yyyy")}
+                                    </span>
+                                  )}
+                                  <Badge 
+                                    variant={task.priority === "high" ? "destructive" : task.priority === "low" ? "outline" : "secondary"}
+                                    className="text-xs"
+                                  >
+                                    {task.priority}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => deleteTaskMutation.mutate(task.id)}
+                              data-testid={`button-delete-task-${task.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
           </div>

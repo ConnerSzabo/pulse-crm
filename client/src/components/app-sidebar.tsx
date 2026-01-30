@@ -1,4 +1,4 @@
-import { Building2, GitBranch, Upload, LayoutDashboard } from "lucide-react";
+import { Building2, GitBranch, Upload, LayoutDashboard, ListTodo } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -22,6 +22,11 @@ const menuItems = [
     title: "Schools",
     url: "/companies",
     icon: Building2,
+  },
+  {
+    title: "Tasks",
+    url: "/tasks",
+    icon: ListTodo,
   },
   {
     title: "Pipeline",

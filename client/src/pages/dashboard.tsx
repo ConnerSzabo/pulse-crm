@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import type { Company, PipelineStage } from "@shared/schema";
+import type { Company, PipelineStage, TaskWithCompany } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -20,8 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ArrowUpDown, Building2, ExternalLink, Check, X } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Search, ArrowUpDown, Building2, ExternalLink, Check, X, AlertTriangle, Clock, ListTodo, ChevronRight } from "lucide-react";
+import { formatDistanceToNow, format, isBefore, startOfToday, isToday } from "date-fns";
 
 type CompanyWithStage = Company & { stage?: PipelineStage };
 
@@ -44,6 +45,27 @@ export default function Dashboard() {
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
   });
+
+  const { data: allTasks } = useQuery<TaskWithCompany[]>({
+    queryKey: ["/api/tasks"],
+  });
+
+  const { data: tasksDueToday } = useQuery<TaskWithCompany[]>({
+    queryKey: ["/api/tasks/due-today"],
+  });
+
+  const { data: overdueTasks } = useQuery<TaskWithCompany[]>({
+    queryKey: ["/api/tasks/overdue"],
+  });
+
+  const upcomingTasks = useMemo(() => {
+    if (!allTasks) return [];
+    const today = startOfToday();
+    return allTasks
+      .filter(t => t.status !== "completed" && t.dueDate)
+      .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
+      .slice(0, 5);
+  }, [allTasks]);
 
   const uniqueLocations = useMemo(() => {
     if (!companies) return [];
@@ -134,6 +156,74 @@ export default function Dashboard() {
         <p className="text-muted-foreground">
           Overview of all {companies?.length || 0} schools in your CRM
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card data-testid="card-tasks-due-today">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Tasks Due Today</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{tasksDueToday?.length || 0}</div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-overdue-tasks">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Tasks</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${(overdueTasks?.length || 0) > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+              {overdueTasks?.length || 0}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2" data-testid="card-upcoming-tasks">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Next 5 Upcoming Tasks</CardTitle>
+            <Link href="/tasks">
+              <div className="flex items-center gap-1 text-xs text-primary hover:underline">
+                View all <ChevronRight className="h-3 w-3" />
+              </div>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {upcomingTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No upcoming tasks</p>
+            ) : (
+              <div className="space-y-2">
+                {upcomingTasks.map((task) => {
+                  const today = startOfToday();
+                  const isOverdue = task.dueDate && isBefore(new Date(task.dueDate), today);
+                  const isDueToday = task.dueDate && isToday(new Date(task.dueDate));
+                  
+                  return (
+                    <div key={task.id} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate font-medium">{task.name}</span>
+                        <Link href={`/company/${task.companyId}`}>
+                          <span className="text-muted-foreground hover:text-primary hover:underline truncate text-xs">
+                            {task.company?.name}
+                          </span>
+                        </Link>
+                      </div>
+                      <div className={`flex-shrink-0 text-xs ${
+                        isOverdue ? "text-red-600 dark:text-red-400" : 
+                        isDueToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                      }`}>
+                        {isOverdue && <AlertTriangle className="inline h-3 w-3 mr-1" />}
+                        {task.dueDate && format(new Date(task.dueDate), "MMM d")}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex flex-wrap gap-3">
