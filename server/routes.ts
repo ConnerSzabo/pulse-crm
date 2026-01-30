@@ -416,6 +416,11 @@ export async function registerRoutes(
         await storage.updateCompany(req.params.id, {
           lastContactDate: new Date(),
         });
+        
+        // Increment daily call counter for call activities
+        if (data.type === 'call') {
+          await storage.incrementCallCounter();
+        }
       }
       
       // Update lastQuoteDate and lastQuoteValue for quotes

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation } from "wouter";
-import type { CompanyWithRelations, PipelineStage, Task } from "@shared/schema";
+import type { CompanyWithRelations, PipelineStage, Task, Activity } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,7 +23,8 @@ import { z } from "zod";
 import { 
   ArrowLeft, Phone, Mail, User, Plus, 
   Trash2, Clock, MapPin, Globe, Building2, ExternalLink,
-  ListTodo, AlertTriangle, CheckCircle2
+  ListTodo, AlertTriangle, CheckCircle2, FileText, DollarSign,
+  Calendar, TrendingUp, MessageSquare, ThumbsUp, ThumbsDown
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +49,15 @@ const addTaskSchema = z.object({
   name: z.string().min(1, "Task description is required"),
   dueDate: z.string().optional(),
   priority: z.string().default("medium"),
+  taskType: z.string().default("general"),
+});
+
+const addActivitySchema = z.object({
+  type: z.enum(["call", "email", "quote", "follow_up", "deal_won", "deal_lost"]),
+  note: z.string().optional(),
+  outcome: z.string().optional(),
+  quoteValue: z.string().optional(),
+  grossProfit: z.string().optional(),
 });
 
 export default function CompanyDetail() {
@@ -75,10 +85,16 @@ export default function CompanyDetail() {
 
   const taskForm = useForm<z.infer<typeof addTaskSchema>>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { name: "", dueDate: "", priority: "medium" },
+    defaultValues: { name: "", dueDate: "", priority: "medium", taskType: "general" },
+  });
+
+  const activityForm = useForm<z.infer<typeof addActivitySchema>>({
+    resolver: zodResolver(addActivitySchema),
+    defaultValues: { type: "call", note: "", outcome: "", quoteValue: "", grossProfit: "" },
   });
 
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
+  const activityType = activityForm.watch("type");
 
   const addContactMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addContactSchema>) => {
@@ -182,6 +198,38 @@ export default function CompanyDetail() {
     },
   });
 
+  const addActivityMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addActivitySchema>) => {
+      return apiRequest("POST", `/api/companies/${params.id}/activities`, {
+        companyId: params.id,
+        type: data.type,
+        note: data.note || null,
+        outcome: data.outcome || null,
+        quoteValue: data.quoteValue || null,
+        grossProfit: data.grossProfit || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/pipeline-value"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/gp-this-month"] });
+      activityForm.reset();
+      toast({ title: "Activity logged" });
+    },
+  });
+
+  const deleteActivityMutation = useMutation({
+    mutationFn: async (activityId: string) => {
+      return apiRequest("DELETE", `/api/activities/${activityId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      toast({ title: "Activity removed" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
@@ -205,6 +253,46 @@ export default function CompanyDetail() {
   const sortedNotes = [...(company.callNotes || [])].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+
+  const sortedActivities = [...(company.activities || [])].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case "call": return <Phone className="h-3 w-3" />;
+      case "email": return <Mail className="h-3 w-3" />;
+      case "quote": return <FileText className="h-3 w-3" />;
+      case "follow_up": return <Calendar className="h-3 w-3" />;
+      case "deal_won": return <ThumbsUp className="h-3 w-3" />;
+      case "deal_lost": return <ThumbsDown className="h-3 w-3" />;
+      default: return <MessageSquare className="h-3 w-3" />;
+    }
+  };
+
+  const getActivityLabel = (type: string) => {
+    switch (type) {
+      case "call": return "Call";
+      case "email": return "Email";
+      case "quote": return "Quote";
+      case "follow_up": return "Follow-up";
+      case "deal_won": return "Deal Won";
+      case "deal_lost": return "Deal Lost";
+      default: return type;
+    }
+  };
+
+  const getActivityColor = (type: string) => {
+    switch (type) {
+      case "call": return "bg-blue-500";
+      case "email": return "bg-purple-500";
+      case "quote": return "bg-amber-500";
+      case "follow_up": return "bg-cyan-500";
+      case "deal_won": return "bg-emerald-500";
+      case "deal_lost": return "bg-red-500";
+      default: return "bg-gray-500";
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -647,52 +735,212 @@ export default function CompanyDetail() {
           </div>
 
           <div className="space-y-6">
+            {/* Company Info Card - Wave Systems specific */}
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg font-semibold">Deal Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground block text-xs">Budget Status</span>
+                    <span className="font-medium">{company.budgetStatus || "Unknown"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs">Decision Timeline</span>
+                    <span className="font-medium">{company.decisionTimeline || "Not set"}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs">Decision Maker</span>
+                    <span className="font-medium">{company.decisionMakerName || "Unknown"}</span>
+                    {company.decisionMakerRole && (
+                      <span className="text-muted-foreground text-xs ml-1">({company.decisionMakerRole})</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block text-xs">Trade-in Interest</span>
+                    <span className="font-medium">{company.tradeInInterest ? "Yes" : "No"}</span>
+                  </div>
+                  {company.lastQuoteDate && (
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Last Quote</span>
+                      <span className="font-medium">
+                        {format(new Date(company.lastQuoteDate), "MMM d, yyyy")}
+                        {company.lastQuoteValue && (
+                          <span className="text-emerald-600 dark:text-emerald-400 ml-1">
+                            (£{parseFloat(company.lastQuoteValue).toLocaleString()})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {company.grossProfit && (
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Total GP</span>
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                        £{parseFloat(company.grossProfit).toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                  {company.buyerHonestyScore && (
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Buyer Honesty Score</span>
+                      <span className="font-medium">{company.buyerHonestyScore}/10</span>
+                    </div>
+                  )}
+                  {company.nextBudgetCycle && (
+                    <div>
+                      <span className="text-muted-foreground block text-xs">Next Budget Cycle</span>
+                      <span className="font-medium">{company.nextBudgetCycle}</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Activity Timeline */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4">
                 <CardTitle className="text-lg font-semibold">
                   Activity Timeline
                 </CardTitle>
                 <Badge variant="secondary">
-                  {sortedNotes.length} calls
+                  {sortedActivities.length + sortedNotes.length} activities
                 </Badge>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Form {...noteForm}>
+                <Form {...activityForm}>
                   <form
-                    onSubmit={noteForm.handleSubmit((data) => addNoteMutation.mutate(data))}
+                    onSubmit={activityForm.handleSubmit((data) => addActivityMutation.mutate(data))}
                     className="space-y-3 p-4 bg-muted/30 rounded-lg"
                   >
                     <FormField
-                      control={noteForm.control}
+                      control={activityForm.control}
+                      name="type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs">Activity Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-activity-type">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="call">Call</SelectItem>
+                              <SelectItem value="email">Email</SelectItem>
+                              <SelectItem value="quote">Quote Sent</SelectItem>
+                              <SelectItem value="follow_up">Follow-up</SelectItem>
+                              <SelectItem value="deal_won">Deal Won</SelectItem>
+                              <SelectItem value="deal_lost">Deal Lost</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+
+                    {(activityType === "call" || activityType === "email") && (
+                      <FormField
+                        control={activityForm.control}
+                        name="outcome"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Outcome</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-activity-outcome">
+                                  <SelectValue placeholder="Select outcome" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="answered">Answered</SelectItem>
+                                <SelectItem value="voicemail">Voicemail</SelectItem>
+                                <SelectItem value="no_answer">No Answer</SelectItem>
+                                <SelectItem value="busy">Busy</SelectItem>
+                                <SelectItem value="wrong_number">Wrong Number</SelectItem>
+                                <SelectItem value="sent">Sent</SelectItem>
+                                <SelectItem value="replied">Replied</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {activityType === "quote" && (
+                      <FormField
+                        control={activityForm.control}
+                        name="quoteValue"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Quote Value (£)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="e.g. 15000"
+                                data-testid="input-quote-value"
+                                {...field}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {(activityType === "deal_won" || activityType === "deal_lost") && (
+                      <FormField
+                        control={activityForm.control}
+                        name="grossProfit"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">
+                              {activityType === "deal_won" ? "Gross Profit (£)" : "Lost Value (£)"}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="e.g. 2500"
+                                data-testid="input-gross-profit"
+                                {...field}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    <FormField
+                      control={activityForm.control}
                       name="note"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs">Log a call</FormLabel>
+                          <FormLabel className="text-xs">Notes</FormLabel>
                           <FormControl>
                             <Textarea
-                              placeholder="What was discussed? Any follow-up needed?"
-                              className="min-h-[80px] resize-none"
-                              data-testid="input-call-note"
+                              placeholder="Add any notes or details..."
+                              className="min-h-[60px] resize-none"
+                              data-testid="input-activity-note"
                               {...field}
                             />
                           </FormControl>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
                     <Button
                       type="submit"
                       size="sm"
-                      disabled={addNoteMutation.isPending}
-                      data-testid="button-add-note"
+                      disabled={addActivityMutation.isPending}
+                      data-testid="button-add-activity"
                     >
                       <Plus className="h-4 w-4 mr-1" />
-                      Log Call
+                      Log Activity
                     </Button>
                   </form>
                 </Form>
 
-                {sortedNotes.length === 0 ? (
+                {sortedActivities.length === 0 && sortedNotes.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <Clock className="h-10 w-10 mx-auto mb-2 opacity-50" />
                     <p>No activity yet</p>
@@ -701,18 +949,76 @@ export default function CompanyDetail() {
                   <div className="relative">
                     <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
                     <div className="space-y-4">
+                      {/* New activities */}
+                      {sortedActivities.map((activity) => (
+                        <div 
+                          key={`activity-${activity.id}`} 
+                          className="relative pl-10"
+                          data-testid={`card-activity-${activity.id}`}
+                        >
+                          <div className={`absolute left-2.5 top-1.5 h-3 w-3 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center`}>
+                            <span className="text-white">{getActivityIcon(activity.type)}</span>
+                          </div>
+                          <div className="p-3 rounded-lg border bg-card">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Badge variant="secondary" className="text-xs">
+                                    {getActivityLabel(activity.type)}
+                                  </Badge>
+                                  {activity.outcome && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {activity.outcome}
+                                    </Badge>
+                                  )}
+                                  {activity.quoteValue && (
+                                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      £{parseFloat(activity.quoteValue).toLocaleString()}
+                                    </span>
+                                  )}
+                                  {activity.grossProfit && (
+                                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      GP: £{parseFloat(activity.grossProfit).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                                {activity.note && (
+                                  <p className="text-sm whitespace-pre-wrap">{activity.note}</p>
+                                )}
+                              </div>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 flex-shrink-0"
+                                onClick={() => deleteActivityMutation.mutate(activity.id)}
+                                data-testid={`button-delete-activity-${activity.id}`}
+                              >
+                                <Trash2 className="h-3 w-3 text-muted-foreground" />
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {format(new Date(activity.createdAt), "MMM d, yyyy 'at' h:mm a")}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      {/* Legacy call notes */}
                       {sortedNotes.map((note) => (
                         <div 
-                          key={note.id} 
+                          key={`note-${note.id}`} 
                           className="relative pl-10"
                           data-testid={`card-note-${note.id}`}
                         >
-                          <div className="absolute left-2.5 top-1.5 h-3 w-3 rounded-full border-2 border-primary bg-background" />
+                          <div className="absolute left-2.5 top-1.5 h-3 w-3 rounded-full bg-blue-500" />
                           <div className="p-3 rounded-lg border bg-card">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm whitespace-pre-wrap" data-testid={`text-note-content-${note.id}`}>
-                                {note.note}
-                              </p>
+                              <div className="flex-1">
+                                <Badge variant="secondary" className="text-xs mb-1">Call</Badge>
+                                <p className="text-sm whitespace-pre-wrap" data-testid={`text-note-content-${note.id}`}>
+                                  {note.note}
+                                </p>
+                              </div>
                               <Button
                                 size="icon"
                                 variant="ghost"

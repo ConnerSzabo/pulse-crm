@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ArrowUpDown, Building2, ExternalLink, Check, X, AlertTriangle, Clock, ListTodo, ChevronRight } from "lucide-react";
+import { Search, ArrowUpDown, Building2, ExternalLink, Check, X, AlertTriangle, Clock, ChevronRight, DollarSign, TrendingUp, Phone, Users } from "lucide-react";
 import { formatDistanceToNow, format, isBefore, startOfToday, isToday } from "date-fns";
 
 type CompanyWithStage = Company & { stage?: PipelineStage };
@@ -56,6 +56,23 @@ export default function Dashboard() {
 
   const { data: overdueTasks } = useQuery<TaskWithCompany[]>({
     queryKey: ["/api/tasks/overdue"],
+  });
+
+  // Business Intelligence Metrics
+  const { data: pipelineValueData } = useQuery<{ value: number }>({
+    queryKey: ["/api/dashboard/pipeline-value"],
+  });
+
+  const { data: gpThisMonthData } = useQuery<{ value: number }>({
+    queryKey: ["/api/dashboard/gp-this-month"],
+  });
+
+  const { data: todayStatsData } = useQuery<{ callsMade: number }>({
+    queryKey: ["/api/stats/today"],
+  });
+
+  const { data: dealsNeedingFollowup } = useQuery<CompanyWithStage[]>({
+    queryKey: ["/api/dashboard/deals-needing-followup"],
   });
 
   const upcomingTasks = useMemo(() => {
@@ -156,12 +173,66 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
+        <h1 className="text-2xl font-semibold">Wave Systems CRM</h1>
         <p className="text-muted-foreground">
-          Overview of all {companies?.length || 0} schools in your CRM
+          Managing {companies?.length || 0} schools in your pipeline
         </p>
       </div>
 
+      {/* Business Intelligence Widgets */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card data-testid="card-pipeline-value">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pipeline Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              £{(pipelineValueData?.value || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">Active quotes total</p>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-gp-this-month">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">GP This Month</CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+              £{(gpThisMonthData?.value || 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">Gross profit from won deals</p>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-calls-today">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Calls Today</CardTitle>
+            <Phone className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{todayStatsData?.callsMade || 0}</div>
+            <p className="text-xs text-muted-foreground">Logged call activities</p>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-needs-followup">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Needs Follow-up</CardTitle>
+            <Users className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${(dealsNeedingFollowup?.length || 0) > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+              {dealsNeedingFollowup?.length || 0}
+            </div>
+            <p className="text-xs text-muted-foreground">Quoted 3+ days ago</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Task Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card data-testid="card-tasks-due-today">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
