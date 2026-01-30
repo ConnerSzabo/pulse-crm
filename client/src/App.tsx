@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import Dashboard from "@/pages/dashboard";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
 import Pipeline from "@/pages/pipeline";
@@ -15,7 +16,8 @@ import NotFound from "@/pages/not-found";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Companies} />
+      <Route path="/" component={Dashboard} />
+      <Route path="/companies" component={Companies} />
       <Route path="/company/:id" component={CompanyDetail} />
       <Route path="/pipeline" component={Pipeline} />
       <Route path="/import" component={ImportCSV} />

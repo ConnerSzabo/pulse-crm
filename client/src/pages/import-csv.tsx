@@ -188,7 +188,27 @@ export default function ImportCSV() {
         });
 
         if (response.ok) {
+          const company = await response.json();
           success++;
+          
+          // Auto-create IT Manager as first contact if they exist
+          if (row.itManagerName && row.itManagerEmail) {
+            try {
+              await fetch(`/api/companies/${company.id}/contacts`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  companyId: company.id,
+                  name: row.itManagerName,
+                  email: row.itManagerEmail,
+                  role: "IT Manager",
+                  phone: null,
+                }),
+              });
+            } catch {
+              // Ignore contact creation errors
+            }
+          }
         } else {
           failed++;
         }
@@ -314,7 +334,7 @@ export default function ImportCSV() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => navigate("/")}
+                    onClick={() => navigate("/companies")}
                     data-testid="button-view-companies"
                   >
                     View Companies

@@ -2,7 +2,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
 import type { Company, PipelineStage } from "@shared/schema";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Building2, Phone, GripVertical } from "lucide-react";
+import { Building2, MapPin, Clock, ArrowRight } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 type CompanyWithStage = Company & { stage?: PipelineStage };
 
@@ -47,8 +47,8 @@ export default function Pipeline() {
       <div className="p-6 space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="flex gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-[400px] w-[280px] flex-shrink-0" />
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-[400px] w-[260px] flex-shrink-0" />
           ))}
         </div>
       </div>
@@ -58,60 +58,30 @@ export default function Pipeline() {
   const unassignedCompanies = getCompaniesByStage(null);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 h-full">
       <div>
         <h1 className="text-2xl font-semibold">Pipeline</h1>
-        <p className="text-muted-foreground">Manage your sales pipeline stages</p>
+        <p className="text-muted-foreground">Drag companies through your sales stages</p>
       </div>
 
       <ScrollArea className="w-full">
-        <div className="flex gap-4 pb-4">
-          {/* Unassigned column */}
-          <div
-            className="w-[280px] flex-shrink-0 bg-muted/30 rounded-lg p-3"
-            data-testid="pipeline-column-unassigned"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                <span className="font-medium text-sm">Unassigned</span>
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                {unassignedCompanies.length}
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              {unassignedCompanies.map((company) => (
-                <PipelineCard
-                  key={company.id}
-                  company={company}
-                  stages={stages || []}
-                  onStageChange={(stageId) =>
-                    updateStageMutation.mutate({ companyId: company.id, stageId })
-                  }
-                />
-              ))}
-              {unassignedCompanies.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  No unassigned companies
-                </div>
-              )}
-            </div>
-          </div>
-
+        <div className="flex gap-3 pb-4">
           {/* Stage columns */}
           {stages?.map((stage) => {
             const stageCompanies = getCompaniesByStage(stage.id);
             return (
               <div
                 key={stage.id}
-                className="w-[280px] flex-shrink-0 bg-muted/30 rounded-lg p-3"
+                className="w-[260px] flex-shrink-0 rounded-lg"
                 data-testid={`pipeline-column-${stage.id}`}
               >
-                <div className="flex items-center justify-between mb-3">
+                <div 
+                  className="flex items-center justify-between p-3 rounded-t-lg"
+                  style={{ backgroundColor: stage.color + "15" }}
+                >
                   <div className="flex items-center gap-2">
                     <div
-                      className="h-2 w-2 rounded-full"
+                      className="h-3 w-3 rounded-full"
                       style={{ backgroundColor: stage.color }}
                     />
                     <span className="font-medium text-sm">{stage.name}</span>
@@ -120,7 +90,7 @@ export default function Pipeline() {
                     {stageCompanies.length}
                   </Badge>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 p-2 bg-muted/20 rounded-b-lg min-h-[200px]">
                   {stageCompanies.map((company) => (
                     <PipelineCard
                       key={company.id}
@@ -132,14 +102,44 @@ export default function Pipeline() {
                     />
                   ))}
                   {stageCompanies.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      No companies
+                    <div className="text-center py-12 text-muted-foreground text-xs">
+                      No schools
                     </div>
                   )}
                 </div>
               </div>
             );
           })}
+
+          {/* Unassigned column at end */}
+          {unassignedCompanies.length > 0 && (
+            <div
+              className="w-[260px] flex-shrink-0 rounded-lg"
+              data-testid="pipeline-column-unassigned"
+            >
+              <div className="flex items-center justify-between p-3 rounded-t-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <div className="h-3 w-3 rounded-full bg-muted-foreground" />
+                  <span className="font-medium text-sm">Unassigned</span>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  {unassignedCompanies.length}
+                </Badge>
+              </div>
+              <div className="space-y-2 p-2 bg-muted/20 rounded-b-lg min-h-[200px]">
+                {unassignedCompanies.map((company) => (
+                  <PipelineCard
+                    key={company.id}
+                    company={company}
+                    stages={stages || []}
+                    onStageChange={(stageId) =>
+                      updateStageMutation.mutate({ companyId: company.id, stageId })
+                    }
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <ScrollBar orientation="horizontal" />
       </ScrollArea>
@@ -157,54 +157,81 @@ function PipelineCard({
   onStageChange: (stageId: string | null) => void;
 }) {
   return (
-    <Card className="p-3" data-testid={`pipeline-card-${company.id}`}>
-      <Link href={`/company/${company.id}`} data-testid={`link-pipeline-company-${company.id}`}>
-        <div className="flex items-start gap-2 cursor-pointer hover-elevate rounded-md p-1 -m-1">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
-            <Building2 className="h-4 w-4 text-primary" />
+    <Link href={`/company/${company.id}`} data-testid={`link-pipeline-company-${company.id}`}>
+      <Card 
+        className="p-3 cursor-pointer hover-elevate" 
+        data-testid={`pipeline-card-${company.id}`}
+      >
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
+              <Building2 className="h-4 w-4 text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4 className="font-medium text-sm truncate" data-testid={`text-pipeline-company-${company.id}`}>
+                {company.name}
+              </h4>
+              {company.location && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {company.location}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="font-medium text-sm truncate" data-testid={`text-pipeline-company-${company.id}`}>
-              {company.name}
-            </h4>
-            {company.phone && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Phone className="h-3 w-3" />
-                {company.phone}
-              </p>
+
+          <div className="space-y-1.5 text-xs text-muted-foreground">
+            {company.lastContactDate && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3 w-3" />
+                <span>
+                  Last contact: {formatDistanceToNow(new Date(company.lastContactDate), { addSuffix: true })}
+                </span>
+              </div>
+            )}
+            {company.nextAction && (
+              <div className="flex items-center gap-1.5">
+                <ArrowRight className="h-3 w-3" />
+                <span className="truncate">{company.nextAction}</span>
+              </div>
             )}
           </div>
-        </div>
-      </Link>
-      <div className="mt-2">
-        <Select
-          value={company.stageId || "unassigned"}
-          onValueChange={(value) => onStageChange(value === "unassigned" ? null : value)}
-        >
-          <SelectTrigger className="h-8 text-xs" data-testid={`select-pipeline-stage-${company.id}`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="unassigned">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-muted-foreground" />
-                Unassigned
-              </div>
-            </SelectItem>
-            {stages.map((stage) => (
-              <SelectItem key={stage.id} value={stage.id}>
+
+          <Select
+            value={company.stageId || "unassigned"}
+            onValueChange={(value) => {
+              onStageChange(value === "unassigned" ? null : value);
+            }}
+          >
+            <SelectTrigger 
+              className="h-7 text-xs"
+              onClick={(e) => e.preventDefault()}
+              data-testid={`select-pipeline-stage-${company.id}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">
                 <div className="flex items-center gap-2">
-                  <div
-                    className="h-2 w-2 rounded-full"
-                    style={{ backgroundColor: stage.color }}
-                  />
-                  {stage.name}
+                  <div className="h-2 w-2 rounded-full bg-muted-foreground" />
+                  Unassigned
                 </div>
               </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </Card>
+              {stages.map((stage) => (
+                <SelectItem key={stage.id} value={stage.id}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: stage.color }}
+                    />
+                    {stage.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+    </Link>
   );
 }

@@ -115,6 +115,12 @@ export async function registerRoutes(
         companyId: req.params.id,
       });
       const note = await storage.createCallNote(data);
+      
+      // Update lastContactDate on the company
+      await storage.updateCompany(req.params.id, {
+        lastContactDate: new Date(),
+      });
+      
       res.status(201).json(note);
     } catch (error) {
       if (error instanceof z.ZodError) {
