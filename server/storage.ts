@@ -137,59 +137,16 @@ export class DatabaseStorage implements IStorage {
     if (existingStages.length > 0) return;
 
     const defaultStages: InsertPipelineStage[] = [
-      { name: "Lead", order: 1, color: "#6366f1" },
+      { name: "Not Contacted", order: 1, color: "#94a3b8" },
       { name: "Contacted", order: 2, color: "#f59e0b" },
-      { name: "Qualified", order: 3, color: "#3b82f6" },
-      { name: "Proposal", order: 4, color: "#8b5cf6" },
-      { name: "Won", order: 5, color: "#10b981" },
-      { name: "Lost", order: 6, color: "#ef4444" },
+      { name: "Follow-Up Scheduled", order: 3, color: "#3b82f6" },
+      { name: "Proposal Sent", order: 4, color: "#8b5cf6" },
+      { name: "Closed Won", order: 5, color: "#10b981" },
+      { name: "Closed Lost", order: 6, color: "#ef4444" },
     ];
 
     for (const stage of defaultStages) {
       await this.createPipelineStage(stage);
-    }
-
-    // Seed some sample companies with all new fields
-    const stages = await this.getPipelineStages();
-    const leadStage = stages.find((s) => s.name === "Lead");
-    const contactedStage = stages.find((s) => s.name === "Contacted");
-
-    const sampleCompanies: InsertCompany[] = [
-      { 
-        name: "Brimsham Green School", 
-        website: "http://www.brimsham.com",
-        phone: "1454868888", 
-        location: "Bristol",
-        academyTrustName: null,
-        ext: null,
-        notes: "Looking into cloud or network infrastructure",
-        itManagerName: "Jason",
-        itManagerEmail: "ict@brimsham.com",
-        stageId: leadStage?.id 
-      },
-      { 
-        name: "St Mary Redcliffe and Temple School", 
-        website: "www.smrt.bristol.sch.uk",
-        phone: "1173772100", 
-        location: "Bristol",
-        academyTrustName: null,
-        ext: null,
-        notes: null,
-        itManagerName: "Mark",
-        itManagerEmail: "jacksonm@smrt.bristol.sch.uk",
-        stageId: contactedStage?.id 
-      },
-    ];
-
-    for (const company of sampleCompanies) {
-      const created = await this.createCompany(company);
-      
-      if (company.name === "Brimsham Green School") {
-        await this.createCallNote({
-          companyId: created.id,
-          note: "Initial call - interested in learning more about our services. Asked for pricing info.",
-        });
-      }
     }
   }
 }

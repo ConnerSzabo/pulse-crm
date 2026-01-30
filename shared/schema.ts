@@ -45,6 +45,8 @@ export const companies = pgTable("companies", {
   itManagerName: text("it_manager_name"),
   itManagerEmail: text("it_manager_email"),
   stageId: varchar("stage_id").references(() => pipelineStages.id),
+  lastContactDate: timestamp("last_contact_date"),
+  nextAction: text("next_action"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -62,6 +64,7 @@ export const contacts = pgTable("contacts", {
   companyId: varchar("company_id").references(() => companies.id).notNull(),
   email: text("email").notNull(),
   name: text("name"),
+  phone: text("phone"),
   role: text("role"),
 });
 
@@ -77,6 +80,7 @@ export const callNotes = pgTable("call_notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id).notNull(),
   note: text("note").notNull(),
+  loggedBy: text("logged_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
