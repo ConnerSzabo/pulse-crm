@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 
@@ -399,6 +399,102 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete task" });
+    }
+  });
+
+  // Activities routes
+  app.post("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertActivitySchema.parse({
+        ...req.body,
+        companyId: req.params.id,
+      });
+      const activity = await storage.createActivity(data);
+      
+      // Update lastContactDate on the company for calls/emails
+      if (data.type === 'call' || data.type === 'email') {
+        await storage.updateCompany(req.params.id, {
+          lastContactDate: new Date(),
+        });
+      }
+      
+      // Update lastQuoteDate and lastQuoteValue for quotes
+      if (data.type === 'quote' && data.quoteValue) {
+        await storage.updateCompany(req.params.id, {
+          lastQuoteDate: new Date(),
+          lastQuoteValue: data.quoteValue,
+        });
+      }
+      
+      // Update grossProfit for deal_won
+      if (data.type === 'deal_won' && data.grossProfit) {
+        await storage.updateCompany(req.params.id, {
+          grossProfit: data.grossProfit,
+        });
+      }
+      
+      res.status(201).json(activity);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create activity" });
+    }
+  });
+
+  app.delete("/api/activities/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteActivity(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete activity" });
+    }
+  });
+
+  // Daily stats routes
+  app.get("/api/stats/today", isAuthenticated, async (req, res) => {
+    try {
+      const stats = await storage.getTodayStats();
+      res.json(stats || { callsMade: 0 });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch today's stats" });
+    }
+  });
+
+  app.post("/api/stats/increment-calls", isAuthenticated, async (req, res) => {
+    try {
+      const stats = await storage.incrementCallCounter();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to increment call counter" });
+    }
+  });
+
+  // Dashboard aggregate routes
+  app.get("/api/dashboard/pipeline-value", isAuthenticated, async (req, res) => {
+    try {
+      const value = await storage.getTotalPipelineValue();
+      res.json({ value });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch pipeline value" });
+    }
+  });
+
+  app.get("/api/dashboard/gp-this-month", isAuthenticated, async (req, res) => {
+    try {
+      const value = await storage.getGPThisMonth();
+      res.json({ value });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch GP this month" });
+    }
+  });
+
+  app.get("/api/dashboard/deals-needing-followup", isAuthenticated, async (req, res) => {
+    try {
+      const deals = await storage.getDealsNeedingFollowup();
+      res.json(deals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deals needing follow-up" });
     }
   });
 

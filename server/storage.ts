@@ -1,23 +1,29 @@
 import { db } from "./db";
-import { eq, ilike, desc, asc, and, lt, gte } from "drizzle-orm";
+import { eq, ilike, desc, asc, and, lt, gte, sql, isNotNull, between } from "drizzle-orm";
 import {
   companies,
   contacts,
   callNotes,
+  activities,
   pipelineStages,
   tasks,
+  dailyStats,
   type Company,
   type InsertCompany,
   type Contact,
   type InsertContact,
   type CallNote,
   type InsertCallNote,
+  type Activity,
+  type InsertActivity,
   type PipelineStage,
   type InsertPipelineStage,
   type CompanyWithRelations,
   type Task,
   type InsertTask,
   type TaskWithCompany,
+  type DailyStats,
+  type InsertDailyStats,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -38,10 +44,16 @@ export interface IStorage {
   createContact(contact: InsertContact): Promise<Contact>;
   deleteContact(id: string): Promise<void>;
 
-  // Call Notes
+  // Call Notes (legacy)
   getCallNotesByCompany(companyId: string): Promise<CallNote[]>;
   createCallNote(note: InsertCallNote): Promise<CallNote>;
   deleteCallNote(id: string): Promise<void>;
+
+  // Activities
+  getActivitiesByCompany(companyId: string): Promise<Activity[]>;
+  createActivity(activity: InsertActivity): Promise<Activity>;
+  deleteActivity(id: string): Promise<void>;
+  getActivitiesThisMonth(type?: string): Promise<Activity[]>;
 
   // Tasks
   getTasks(): Promise<TaskWithCompany[]>;
@@ -52,6 +64,15 @@ export interface IStorage {
   deleteTask(id: string): Promise<void>;
   getTasksDueToday(): Promise<TaskWithCompany[]>;
   getOverdueTasks(): Promise<TaskWithCompany[]>;
+
+  // Daily Stats
+  getTodayStats(): Promise<DailyStats | undefined>;
+  incrementCallCounter(): Promise<DailyStats>;
+
+  // Dashboard aggregates
+  getTotalPipelineValue(): Promise<number>;
+  getGPThisMonth(): Promise<number>;
+  getDealsNeedingFollowup(): Promise<(Company & { stage?: PipelineStage })[]>;
 
   // Seed
   seedData(): Promise<void>;
@@ -86,6 +107,7 @@ export class DatabaseStorage implements IStorage {
 
     const contactsList = await this.getContactsByCompany(id);
     const notesList = await this.getCallNotesByCompany(id);
+    const activitiesList = await this.getActivitiesByCompany(id);
     const tasksList = await this.getTasksByCompany(id);
     const stages = await this.getPipelineStages();
     const stage = company.stageId ? stages.find((s) => s.id === company.stageId) : undefined;
@@ -94,6 +116,7 @@ export class DatabaseStorage implements IStorage {
       ...company,
       contacts: contactsList,
       callNotes: notesList,
+      activities: activitiesList,
       tasks: tasksList,
       stage,
     };
@@ -119,9 +142,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCompany(id: string): Promise<void> {
-    // Delete related contacts, notes, and tasks first
+    // Delete related contacts, notes, activities, and tasks first
     await db.delete(contacts).where(eq(contacts.companyId, id));
     await db.delete(callNotes).where(eq(callNotes.companyId, id));
+    await db.delete(activities).where(eq(activities.companyId, id));
     await db.delete(tasks).where(eq(tasks.companyId, id));
     await db.delete(companies).where(eq(companies.id, id));
   }
@@ -261,18 +285,153 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  // Seed default pipeline stages
+  // Activities
+  async getActivitiesByCompany(companyId: string): Promise<Activity[]> {
+    return db
+      .select()
+      .from(activities)
+      .where(eq(activities.companyId, companyId))
+      .orderBy(desc(activities.createdAt));
+  }
+
+  async createActivity(activity: InsertActivity): Promise<Activity> {
+    const [result] = await db.insert(activities).values(activity).returning();
+    return result;
+  }
+
+  async deleteActivity(id: string): Promise<void> {
+    await db.delete(activities).where(eq(activities.id, id));
+  }
+
+  async getActivitiesThisMonth(type?: string): Promise<Activity[]> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    if (type) {
+      return db
+        .select()
+        .from(activities)
+        .where(
+          and(
+            eq(activities.type, type),
+            gte(activities.createdAt, startOfMonth)
+          )
+        )
+        .orderBy(desc(activities.createdAt));
+    }
+    
+    return db
+      .select()
+      .from(activities)
+      .where(gte(activities.createdAt, startOfMonth))
+      .orderBy(desc(activities.createdAt));
+  }
+
+  // Daily Stats
+  async getTodayStats(): Promise<DailyStats | undefined> {
+    const today = new Date().toISOString().split('T')[0];
+    const [stats] = await db
+      .select()
+      .from(dailyStats)
+      .where(eq(dailyStats.date, today));
+    return stats;
+  }
+
+  async incrementCallCounter(): Promise<DailyStats> {
+    const today = new Date().toISOString().split('T')[0];
+    const existing = await this.getTodayStats();
+    
+    if (existing) {
+      const [result] = await db
+        .update(dailyStats)
+        .set({ callsMade: existing.callsMade + 1 })
+        .where(eq(dailyStats.id, existing.id))
+        .returning();
+      return result;
+    }
+    
+    const [result] = await db
+      .insert(dailyStats)
+      .values({ date: today, callsMade: 1 })
+      .returning();
+    return result;
+  }
+
+  // Dashboard aggregates
+  async getTotalPipelineValue(): Promise<number> {
+    // Sum of lastQuoteValue for all companies with a quote and not closed
+    const stages = await this.getPipelineStages();
+    const closedWonStage = stages.find(s => s.name === 'Closed Won');
+    const closedLostStage = stages.find(s => s.name === 'Closed Lost');
+    
+    const companiesList = await db.select().from(companies);
+    
+    let total = 0;
+    for (const c of companiesList) {
+      // Exclude closed won and closed lost from pipeline value
+      if (c.stageId === closedWonStage?.id || c.stageId === closedLostStage?.id) continue;
+      if (c.lastQuoteValue) {
+        total += parseFloat(c.lastQuoteValue);
+      }
+    }
+    return total;
+  }
+
+  async getGPThisMonth(): Promise<number> {
+    // Sum of grossProfit from deal_won activities this month
+    const dealWonActivities = await this.getActivitiesThisMonth('deal_won');
+    let total = 0;
+    for (const a of dealWonActivities) {
+      if (a.grossProfit) {
+        total += parseFloat(a.grossProfit);
+      }
+    }
+    return total;
+  }
+
+  async getDealsNeedingFollowup(): Promise<(Company & { stage?: PipelineStage })[]> {
+    // Companies with a quote date > 3 days ago and no contact since
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+    const quotePresentedStage = stages.find(s => s.name === 'Quote Presented');
+    
+    const companiesList = await db.select().from(companies);
+    
+    return companiesList
+      .filter(c => {
+        // Has a quote date
+        if (!c.lastQuoteDate) return false;
+        // Quote was more than 3 days ago
+        if (new Date(c.lastQuoteDate) > threeDaysAgo) return false;
+        // No contact since quote
+        if (c.lastContactDate && new Date(c.lastContactDate) > new Date(c.lastQuoteDate)) return false;
+        // Not closed
+        const stage = c.stageId ? stageMap.get(c.stageId) : undefined;
+        if (stage?.name === 'Closed Won' || stage?.name === 'Closed Lost') return false;
+        return true;
+      })
+      .map(c => ({
+        ...c,
+        stage: c.stageId ? stageMap.get(c.stageId) : undefined,
+      }));
+  }
+
+  // Seed default pipeline stages (Wave Systems)
   async seedData(): Promise<void> {
     const existingStages = await this.getPipelineStages();
     if (existingStages.length > 0) return;
 
     const defaultStages: InsertPipelineStage[] = [
-      { name: "Not Contacted", order: 1, color: "#94a3b8" },
-      { name: "Contacted", order: 2, color: "#f59e0b" },
-      { name: "Follow-Up Scheduled", order: 3, color: "#3b82f6" },
-      { name: "Proposal Sent", order: 4, color: "#8b5cf6" },
+      { name: "Future Pipeline", order: 1, color: "#94a3b8" },
+      { name: "Quote Presented", order: 2, color: "#f59e0b" },
+      { name: "Decision Maker Brought In", order: 3, color: "#3b82f6" },
+      { name: "Awaiting Order", order: 4, color: "#8b5cf6" },
       { name: "Closed Won", order: 5, color: "#10b981" },
       { name: "Closed Lost", order: 6, color: "#ef4444" },
+      { name: "Recycled", order: 7, color: "#6366f1" },
     ];
 
     for (const stage of defaultStages) {

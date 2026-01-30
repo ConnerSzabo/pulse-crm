@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -48,6 +48,17 @@ export const companies = pgTable("companies", {
   lastContactDate: timestamp("last_contact_date"),
   nextAction: text("next_action"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Wave Systems specific fields
+  budgetStatus: text("budget_status"), // Confirmed / Indicative / Unknown
+  decisionTimeline: text("decision_timeline"),
+  decisionMakerName: text("decision_maker_name"),
+  decisionMakerRole: text("decision_maker_role"),
+  lastQuoteDate: timestamp("last_quote_date"),
+  lastQuoteValue: numeric("last_quote_value", { precision: 12, scale: 2 }),
+  grossProfit: numeric("gross_profit", { precision: 12, scale: 2 }),
+  tradeInInterest: boolean("trade_in_interest"),
+  buyerHonestyScore: text("buyer_honesty_score"), // Good / Questionable / Time Waster
+  nextBudgetCycle: timestamp("next_budget_cycle"),
 });
 
 export const insertCompanySchema = createInsertSchema(companies).omit({
@@ -75,7 +86,28 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
 
-// Call notes/logs
+// Activity log (calls, emails, quotes, follow-ups, deals)
+export const activities = pgTable("activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  type: text("type").notNull(), // call, email, quote, follow_up, deal_won, deal_lost
+  note: text("note"),
+  outcome: text("outcome"), // For calls: connected, voicemail, no_answer, callback_requested
+  quoteValue: numeric("quote_value", { precision: 12, scale: 2 }), // For quotes
+  grossProfit: numeric("gross_profit", { precision: 12, scale: 2 }), // For deals
+  loggedBy: text("logged_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertActivitySchema = createInsertSchema(activities).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertActivity = z.infer<typeof insertActivitySchema>;
+export type Activity = typeof activities.$inferSelect;
+
+// Keep legacy callNotes for backwards compatibility
 export const callNotes = pgTable("call_notes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id).notNull(),
@@ -97,6 +129,7 @@ export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id).notNull(),
   name: text("name").notNull(),
+  taskType: text("task_type"), // follow_up_quote, check_budget, general
   dueDate: timestamp("due_date"),
   priority: text("priority").notNull().default("medium"), // high, medium, low
   status: text("status").notNull().default("todo"), // todo, in_progress, completed
@@ -111,6 +144,22 @@ export const insertTaskSchema = createInsertSchema(tasks).omit({
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
 
+// Daily stats for tracking (calls counter, etc.)
+export const dailyStats = pgTable("daily_stats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(),
+  callsMade: integer("calls_made").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDailyStatsSchema = createInsertSchema(dailyStats).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertDailyStats = z.infer<typeof insertDailyStatsSchema>;
+export type DailyStats = typeof dailyStats.$inferSelect;
+
 // Extended types with relations
 export type TaskWithCompany = Task & {
   company: Company;
@@ -119,6 +168,7 @@ export type TaskWithCompany = Task & {
 export type CompanyWithRelations = Company & {
   contacts: Contact[];
   callNotes: CallNote[];
+  activities: Activity[];
   tasks: Task[];
   stage?: PipelineStage;
 };
