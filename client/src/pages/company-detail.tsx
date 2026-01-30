@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation } from "wouter";
@@ -16,6 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -60,6 +67,14 @@ const addActivitySchema = z.object({
   grossProfit: z.string().optional(),
 });
 
+const pipelineSchema = z.object({
+  stageId: z.string().min(1, "Please select a pipeline stage"),
+  expectedGP: z.string().optional(),
+  budgetStatus: z.string().optional(),
+  decisionTimeline: z.string().optional(),
+  pipelineNotes: z.string().optional(),
+});
+
 export default function CompanyDetail() {
   const params = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -94,7 +109,34 @@ export default function CompanyDetail() {
   });
 
   const [showCompletedTasks, setShowCompletedTasks] = useState(false);
+  const [showPipelineModal, setShowPipelineModal] = useState(false);
   const activityType = activityForm.watch("type");
+
+  const pipelineForm = useForm<z.infer<typeof pipelineSchema>>({
+    resolver: zodResolver(pipelineSchema),
+    defaultValues: { 
+      stageId: "", 
+      expectedGP: "", 
+      budgetStatus: "", 
+      decisionTimeline: "", 
+      pipelineNotes: "" 
+    },
+  });
+
+  // Update pipeline form when company data loads or changes
+  useEffect(() => {
+    if (company) {
+      pipelineForm.reset({
+        stageId: company.stageId || "",
+        expectedGP: company.grossProfit?.toString() || "",
+        budgetStatus: company.budgetStatus || "",
+        decisionTimeline: company.decisionTimeline ? format(new Date(company.decisionTimeline), "yyyy-MM-dd") : "",
+        pipelineNotes: company.notes || "",
+      });
+    }
+  }, [company, pipelineForm]);
+
+  const isInPipeline = !!company?.stageId;
 
   const addContactMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addContactSchema>) => {
@@ -135,6 +177,28 @@ export default function CompanyDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+    },
+  });
+
+  const updatePipelineMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof pipelineSchema>) => {
+      return apiRequest("PATCH", `/api/companies/${params.id}`, {
+        stageId: data.stageId,
+        grossProfit: data.expectedGP || null,
+        budgetStatus: data.budgetStatus || null,
+        decisionTimeline: data.decisionTimeline ? new Date(data.decisionTimeline).toISOString() : null,
+        notes: data.pipelineNotes || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/pipeline-value"] });
+      setShowPipelineModal(false);
+      toast({ 
+        title: isInPipeline ? "Pipeline info updated" : "Added to pipeline",
+        description: "Changes have been saved successfully."
+      });
     },
   });
 
@@ -351,27 +415,36 @@ export default function CompanyDetail() {
             </div>
 
             <div className="flex items-center gap-3">
-              <Select
-                value={company.stageId || ""}
-                onValueChange={(value) => updateCompanyMutation.mutate({ stageId: value || null })}
+              <Button
+                onClick={() => setShowPipelineModal(true)}
+                data-testid="button-add-to-pipeline"
               >
-                <SelectTrigger className="w-[200px]" data-testid="select-company-stage-detail">
-                  <SelectValue placeholder="Select stage" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stages?.map((stage) => (
-                    <SelectItem key={stage.id} value={stage.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: stage.color }}
-                        />
-                        {stage.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <TrendingUp className="h-4 w-4 mr-2" />
+                {isInPipeline ? "Update Pipeline Info" : "Add to Pipeline"}
+              </Button>
+              {isInPipeline && (
+                <Select
+                  value={company.stageId || ""}
+                  onValueChange={(value) => updateCompanyMutation.mutate({ stageId: value || undefined })}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-company-stage-detail">
+                    <SelectValue placeholder="Select stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stages?.map((stage) => (
+                      <SelectItem key={stage.id} value={stage.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: stage.color }}
+                          />
+                          {stage.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 
@@ -791,7 +864,7 @@ export default function CompanyDetail() {
                   {company.nextBudgetCycle && (
                     <div>
                       <span className="text-muted-foreground block text-xs">Next Budget Cycle</span>
-                      <span className="font-medium">{company.nextBudgetCycle}</span>
+                      <span className="font-medium">{format(new Date(company.nextBudgetCycle), "MMM yyyy")}</span>
                     </div>
                   )}
                 </div>
@@ -1044,6 +1117,148 @@ export default function CompanyDetail() {
           </div>
         </div>
       </div>
+
+      {/* Pipeline Modal */}
+      <Dialog open={showPipelineModal} onOpenChange={setShowPipelineModal}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              {isInPipeline ? "Update Pipeline Info" : "Add to Pipeline"}
+            </DialogTitle>
+          </DialogHeader>
+          <Form {...pipelineForm}>
+            <form onSubmit={pipelineForm.handleSubmit((data) => updatePipelineMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={pipelineForm.control}
+                name="stageId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pipeline Stage *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-pipeline-stage">
+                          <SelectValue placeholder="Select a stage" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {stages?.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: stage.color }}
+                              />
+                              {stage.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={pipelineForm.control}
+                name="expectedGP"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Expected GP (£)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="number" 
+                        placeholder="e.g. 5000" 
+                        {...field} 
+                        data-testid="input-expected-gp"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={pipelineForm.control}
+                name="budgetStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Budget Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-budget-status">
+                          <SelectValue placeholder="Select budget status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="confirmed">Confirmed</SelectItem>
+                        <SelectItem value="indicative">Indicative</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={pipelineForm.control}
+                name="decisionTimeline"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Decision Timeline</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        {...field} 
+                        data-testid="input-decision-timeline"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={pipelineForm.control}
+                name="pipelineNotes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes about this opportunity</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Add any relevant notes..." 
+                        className="min-h-[100px]"
+                        {...field} 
+                        data-testid="textarea-pipeline-notes"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowPipelineModal(false)}
+                  data-testid="button-cancel-pipeline"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={updatePipelineMutation.isPending}
+                  data-testid="button-save-pipeline"
+                >
+                  {updatePipelineMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -28,7 +28,9 @@ This is a full-stack application built with:
    - Top banner with school name, location, phone, website link
    - Left column: Contacts section, Next Action input, Tasks
    - Right column: Deal Information card, Activity Timeline
-   - Stage selector dropdown
+   - **Add to Pipeline button**: Opens modal to add school to pipeline with stage, expected GP, budget status, decision timeline, and notes
+   - Button text changes to "Update Pipeline Info" when school is already in pipeline
+   - Stage selector dropdown appears when in pipeline
    - Deal Information: Budget Status, Decision Timeline, Decision Maker, Trade-in Interest, Last Quote, Total GP, Buyer Honesty Score, Next Budget Cycle
 
 4. **Activity Tracking**
