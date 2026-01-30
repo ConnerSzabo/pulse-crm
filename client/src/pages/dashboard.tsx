@@ -49,7 +49,7 @@ export default function Dashboard() {
     if (!companies) return [];
     const locations = companies
       .map((c) => c.location)
-      .filter((l): l is string => !!l);
+      .filter((l): l is string => !!l && l.trim() !== "");
     return Array.from(new Set(locations)).sort();
   }, [companies]);
 
@@ -57,7 +57,7 @@ export default function Dashboard() {
     if (!companies) return [];
     const trusts = companies
       .map((c) => c.academyTrustName)
-      .filter((t): t is string => !!t);
+      .filter((t): t is string => !!t && t.trim() !== "");
     return Array.from(new Set(trusts)).sort();
   }, [companies]);
 
