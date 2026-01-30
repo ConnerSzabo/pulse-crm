@@ -287,12 +287,12 @@ export default function ImportCSV() {
               <div className="flex flex-wrap items-end gap-4">
                 <div className="space-y-2">
                   <Label>Assign to Pipeline Stage (optional)</Label>
-                  <Select value={selectedStage} onValueChange={setSelectedStage}>
+                  <Select value={selectedStage || "none"} onValueChange={(val) => setSelectedStage(val === "none" ? "" : val)}>
                     <SelectTrigger className="w-[200px]" data-testid="select-import-stage">
                       <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No stage</SelectItem>
+                      <SelectItem value="none">No stage</SelectItem>
                       {stages?.map((stage) => (
                         <SelectItem key={stage.id} value={stage.id}>
                           {stage.name}
