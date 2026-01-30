@@ -62,7 +62,11 @@ export default function Dashboard() {
     if (!allTasks) return [];
     const today = startOfToday();
     return allTasks
-      .filter(t => t.status !== "completed" && t.dueDate)
+      .filter(t => {
+        if (t.status === "completed" || !t.dueDate) return false;
+        // Only include tasks due today or in the future (not overdue)
+        return new Date(t.dueDate) >= today;
+      })
       .sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime())
       .slice(0, 5);
   }, [allTasks]);
