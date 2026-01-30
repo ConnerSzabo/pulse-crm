@@ -77,6 +77,15 @@ export default function Companies() {
 
   const createMutation = useMutation({
     mutationFn: async (data: AddCompanyForm) => {
+      // First check for duplicates
+      const checkRes = await fetch(`/api/companies/check-duplicate?name=${encodeURIComponent(data.name)}`);
+      if (checkRes.ok) {
+        const { exists } = await checkRes.json();
+        if (exists) {
+          throw new Error("DUPLICATE");
+        }
+      }
+      
       return apiRequest("POST", "/api/companies", {
         name: data.name,
         website: data.website || null,
@@ -96,8 +105,16 @@ export default function Companies() {
       form.reset();
       toast({ title: "Company added successfully" });
     },
-    onError: () => {
-      toast({ title: "Failed to add company", variant: "destructive" });
+    onError: (error: Error) => {
+      if (error.message === "DUPLICATE") {
+        toast({ 
+          title: "Duplicate School", 
+          description: "This school already exists in the database",
+          variant: "destructive" 
+        });
+      } else {
+        toast({ title: "Failed to add company", variant: "destructive" });
+      }
     },
   });
 

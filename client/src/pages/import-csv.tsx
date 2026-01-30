@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X } from "lucide-react";
+import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { PipelineStage } from "@shared/schema";
 
@@ -39,13 +49,23 @@ type ParsedRow = {
   itManagerEmail: string;
 };
 
+type ImportResult = {
+  imported: number;
+  skipped: number;
+  updated: number;
+  duplicates: { name: string; existingId: string; hasNewInfo: boolean }[];
+};
+
 export default function ImportCSV() {
   const [, navigate] = useLocation();
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>("");
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [pendingImport, setPendingImport] = useState<ParsedRow[]>([]);
+  const [duplicatesWithNewInfo, setDuplicatesWithNewInfo] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -54,7 +74,6 @@ export default function ImportCSV() {
   });
 
   const detectDelimiter = (headerLine: string): string => {
-    // Check if tabs are present and more common than commas
     const tabCount = (headerLine.match(/\t/g) || []).length;
     const commaCount = (headerLine.match(/,/g) || []).length;
     return tabCount > commaCount ? "\t" : ",";
@@ -62,11 +81,9 @@ export default function ImportCSV() {
 
   const parseCSVLine = (line: string, delimiter: string): string[] => {
     if (delimiter === "\t") {
-      // Tab-delimited is simpler - just split by tab
       return line.split("\t");
     }
     
-    // For comma-delimited, handle quoted fields
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
@@ -108,11 +125,9 @@ export default function ImportCSV() {
         return;
       }
 
-      // Detect delimiter from header line
       const delimiter = detectDelimiter(lines[0]);
       const header = parseCSVLine(lines[0], delimiter).map((h) => h.trim().toLowerCase());
       
-      // Find column indices - support various header names
       const nameIndex = header.findIndex((h) => 
         h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school") || h === "name"
       );
@@ -161,68 +176,97 @@ export default function ImportCSV() {
     reader.readAsText(selectedFile);
   };
 
+  const performImport = async (updateExisting: boolean) => {
+    const dataToImport = pendingImport.length > 0 ? pendingImport : parsedData;
+    if (dataToImport.length === 0) return;
+
+    setImporting(true);
+    setShowUpdateDialog(false);
+
+    try {
+      const response = await fetch("/api/companies/bulk-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companies: dataToImport,
+          stageId: selectedStage || null,
+          updateExisting,
+        }),
+      });
+
+      if (response.ok) {
+        const result: ImportResult = await response.json();
+        setImportResult(result);
+        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+
+        const messages: string[] = [];
+        if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
+        if (result.updated > 0) messages.push(`Updated ${result.updated} existing records`);
+        if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
+
+        toast({ 
+          title: "Import Complete", 
+          description: messages.join(", ") || "No changes made"
+        });
+      } else {
+        toast({ title: "Import failed", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Import failed", description: "An error occurred", variant: "destructive" });
+    } finally {
+      setImporting(false);
+      setPendingImport([]);
+    }
+  };
+
   const handleImport = async () => {
     if (parsedData.length === 0) return;
 
     setImporting(true);
-    let success = 0;
-    let failed = 0;
 
-    for (const row of parsedData) {
-      try {
-        const response = await fetch("/api/companies", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: row.name,
-            website: row.website || null,
-            phone: row.phone || null,
-            location: row.location || null,
-            academyTrustName: row.academyTrustName || null,
-            ext: row.ext || null,
-            notes: row.notes || null,
-            itManagerName: row.itManagerName || null,
-            itManagerEmail: row.itManagerEmail || null,
-            stageId: selectedStage || null,
-          }),
-        });
+    try {
+      const response = await fetch("/api/companies/bulk-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companies: parsedData,
+          stageId: selectedStage || null,
+          updateExisting: false,
+        }),
+      });
 
-        if (response.ok) {
-          const company = await response.json();
-          success++;
-          
-          // Auto-create IT Manager as first contact if they exist
-          if (row.itManagerName && row.itManagerEmail) {
-            try {
-              await fetch(`/api/companies/${company.id}/contacts`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  companyId: company.id,
-                  name: row.itManagerName,
-                  email: row.itManagerEmail,
-                  role: "IT Manager",
-                  phone: null,
-                }),
-              });
-            } catch {
-              // Ignore contact creation errors
-            }
-          }
-        } else {
-          failed++;
+      if (response.ok) {
+        const result: ImportResult = await response.json();
+        
+        const dupsWithNewInfo = result.duplicates.filter(d => d.hasNewInfo).length;
+        
+        if (dupsWithNewInfo > 0) {
+          setPendingImport(parsedData);
+          setDuplicatesWithNewInfo(dupsWithNewInfo);
+          setImportResult(result);
+          setShowUpdateDialog(true);
+          setImporting(false);
+          return;
         }
-      } catch {
-        failed++;
+
+        setImportResult(result);
+        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+
+        const messages: string[] = [];
+        if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
+        if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
+
+        toast({ 
+          title: "Import Complete", 
+          description: messages.join(", ") || "No changes made"
+        });
+      } else {
+        toast({ title: "Import failed", variant: "destructive" });
       }
-    }
-
-    setImporting(false);
-    setImportResult({ success, failed });
-    queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-
-    if (success > 0) {
-      toast({ title: `Successfully imported ${success} schools/companies` });
+    } catch (error) {
+      toast({ title: "Import failed", description: "An error occurred", variant: "destructive" });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -230,6 +274,7 @@ export default function ImportCSV() {
     setFile(null);
     setParsedData([]);
     setImportResult(null);
+    setPendingImport([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -307,7 +352,10 @@ export default function ImportCSV() {
                   data-testid="button-import-csv"
                 >
                   {importing ? (
-                    "Importing..."
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
                   ) : (
                     <>
                       <Upload className="h-4 w-4 mr-2" />
@@ -318,28 +366,40 @@ export default function ImportCSV() {
               </div>
 
               {importResult && (
-                <div className="flex items-center gap-4">
-                  {importResult.success > 0 && (
-                    <div className="flex items-center gap-2 text-green-600">
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>{importResult.success} imported successfully</span>
-                    </div>
+                <div className="p-4 rounded-lg bg-muted space-y-2">
+                  <h4 className="font-medium">Import Summary</h4>
+                  <div className="flex flex-wrap items-center gap-4">
+                    {importResult.imported > 0 && (
+                      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>{importResult.imported} new schools imported</span>
+                      </div>
+                    )}
+                    {importResult.updated > 0 && (
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                        <RefreshCw className="h-4 w-4" />
+                        <span>{importResult.updated} records updated</span>
+                      </div>
+                    )}
+                    {importResult.skipped > 0 && (
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <AlertCircle className="h-4 w-4" />
+                        <span>{importResult.skipped} duplicates skipped</span>
+                      </div>
+                    )}
+                  </div>
+                  {(importResult.imported > 0 || importResult.updated > 0) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate("/companies")}
+                      className="mt-2"
+                      data-testid="button-view-companies"
+                    >
+                      View Companies
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
                   )}
-                  {importResult.failed > 0 && (
-                    <div className="flex items-center gap-2 text-destructive">
-                      <AlertCircle className="h-4 w-4" />
-                      <span>{importResult.failed} failed</span>
-                    </div>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => navigate("/companies")}
-                    data-testid="button-view-companies"
-                  >
-                    View Companies
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
                 </div>
               )}
 
@@ -427,6 +487,34 @@ export default function ImportCSV() {
           </div>
         </CardContent>
       </Card>
+
+      <AlertDialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update Existing Records?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Found {duplicatesWithNewInfo} duplicate school(s) with new information 
+              (like IT Manager details) that the existing records don't have.
+              <br /><br />
+              Would you like to update these existing records with the new information?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowUpdateDialog(false);
+              toast({ 
+                title: "Import Complete", 
+                description: `Imported ${importResult?.imported || 0} new schools, skipped ${importResult?.skipped || 0} duplicates`
+              });
+            }}>
+              Skip Updates
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => performImport(true)} data-testid="button-update-existing">
+              Update Existing Records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

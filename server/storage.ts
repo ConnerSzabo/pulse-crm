@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, ilike } from "drizzle-orm";
 import {
   companies,
   contacts,
@@ -24,6 +24,7 @@ export interface IStorage {
   // Companies
   getCompanies(): Promise<(Company & { stage?: PipelineStage })[]>;
   getCompany(id: string): Promise<CompanyWithRelations | undefined>;
+  findCompanyByName(name: string): Promise<Company | undefined>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
@@ -80,6 +81,11 @@ export class DatabaseStorage implements IStorage {
       callNotes: notesList,
       stage,
     };
+  }
+
+  async findCompanyByName(name: string): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).where(ilike(companies.name, name));
+    return company;
   }
 
   async createCompany(company: InsertCompany): Promise<Company> {

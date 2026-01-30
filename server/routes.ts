@@ -200,5 +200,130 @@ export async function registerRoutes(
     }
   });
 
+  // Bulk import with duplicate detection
+  app.post("/api/companies/bulk-import", isAuthenticated, async (req, res) => {
+    try {
+      const { companies: companiesData, stageId, updateExisting } = req.body;
+      
+      if (!Array.isArray(companiesData)) {
+        return res.status(400).json({ error: "Companies must be an array" });
+      }
+
+      const results = {
+        imported: 0,
+        skipped: 0,
+        updated: 0,
+        duplicates: [] as { name: string; existingId: string; hasNewInfo: boolean }[],
+      };
+
+      for (const companyData of companiesData) {
+        if (!companyData.name || !companyData.name.trim()) continue;
+
+        // Check for existing company (case-insensitive)
+        const existing = await storage.findCompanyByName(companyData.name.trim());
+
+        if (existing) {
+          // Check if the new data has additional info
+          const hasNewInfo = 
+            (!existing.itManagerName && companyData.itManagerName) ||
+            (!existing.itManagerEmail && companyData.itManagerEmail) ||
+            (!existing.website && companyData.website) ||
+            (!existing.phone && companyData.phone) ||
+            (!existing.location && companyData.location) ||
+            (!existing.academyTrustName && companyData.academyTrustName);
+
+          if (updateExisting && hasNewInfo) {
+            // Update existing company with new info
+            const updateData: Record<string, unknown> = {};
+            if (!existing.itManagerName && companyData.itManagerName) updateData.itManagerName = companyData.itManagerName;
+            if (!existing.itManagerEmail && companyData.itManagerEmail) updateData.itManagerEmail = companyData.itManagerEmail;
+            if (!existing.website && companyData.website) updateData.website = companyData.website;
+            if (!existing.phone && companyData.phone) updateData.phone = companyData.phone;
+            if (!existing.location && companyData.location) updateData.location = companyData.location;
+            if (!existing.academyTrustName && companyData.academyTrustName) updateData.academyTrustName = companyData.academyTrustName;
+            if (!existing.ext && companyData.ext) updateData.ext = companyData.ext;
+            if (!existing.notes && companyData.notes) updateData.notes = companyData.notes;
+
+            await storage.updateCompany(existing.id, updateData);
+            results.updated++;
+
+            // Also create IT Manager contact if they have the info
+            if (companyData.itManagerName && companyData.itManagerEmail) {
+              try {
+                await storage.createContact({
+                  companyId: existing.id,
+                  name: companyData.itManagerName,
+                  email: companyData.itManagerEmail,
+                  role: "IT Manager",
+                  phone: null,
+                });
+              } catch {
+                // Contact might already exist
+              }
+            }
+          } else {
+            results.skipped++;
+            results.duplicates.push({
+              name: companyData.name,
+              existingId: existing.id,
+              hasNewInfo,
+            });
+          }
+        } else {
+          // Create new company
+          const company = await storage.createCompany({
+            name: companyData.name.trim(),
+            website: companyData.website || null,
+            phone: companyData.phone || null,
+            location: companyData.location || null,
+            academyTrustName: companyData.academyTrustName || null,
+            ext: companyData.ext || null,
+            notes: companyData.notes || null,
+            itManagerName: companyData.itManagerName || null,
+            itManagerEmail: companyData.itManagerEmail || null,
+            stageId: stageId || null,
+          });
+
+          results.imported++;
+
+          // Auto-create IT Manager as first contact
+          if (companyData.itManagerName && companyData.itManagerEmail) {
+            try {
+              await storage.createContact({
+                companyId: company.id,
+                name: companyData.itManagerName,
+                email: companyData.itManagerEmail,
+                role: "IT Manager",
+                phone: null,
+              });
+            } catch {
+              // Ignore contact creation errors
+            }
+          }
+        }
+      }
+
+      res.json(results);
+    } catch (error) {
+      console.error("Bulk import error:", error);
+      res.status(500).json({ error: "Failed to import companies" });
+    }
+  });
+
+  // Check for duplicate company name
+  app.get("/api/companies/check-duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const name = req.query.name as string;
+      if (!name) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      const existing = await storage.findCompanyByName(name.trim());
+      res.json({ exists: !!existing, existingId: existing?.id || null });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check for duplicate" });
+    }
+  });
+
   return httpServer;
 }
