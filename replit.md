@@ -13,13 +13,13 @@ This is a full-stack application built with:
 ## Features
 
 1. **Companies Management**
-   - View list of companies/schools
-   - Add new companies with name and phone number
+   - View list of companies/schools with location, phone, and website
+   - Add new companies with full details (name, website, phone, location, academy trust, IT manager info, notes)
    - Delete companies
-   - Filter/search companies
+   - Filter/search companies by name, location, or trust name
 
 2. **Company Detail View**
-   - View company information
+   - View all company information (website link, location, academy trust, IT manager, notes)
    - Change pipeline stage
    - **Contacts Tab**: Add and manage email contacts for each company
    - **Call Notes Tab**: Log and track individual calls with timestamps
@@ -33,6 +33,8 @@ This is a full-stack application built with:
    - Upload CSV files with company/school names and phone numbers
    - Preview data before importing
    - Optionally assign to a pipeline stage during import
+   - Supports both comma-delimited and tab-delimited files
+   - Maps columns: EstablishmentName, Website, Phone, Location, AcademyTrustName, Ext, Notes, IT Manager Name, IT Manager Email
 
 ## Project Structure
 
