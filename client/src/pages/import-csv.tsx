@@ -22,13 +22,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { PipelineStage } from "@shared/schema";
 
 type ParsedRow = {
   name: string;
+  website: string;
   phone: string;
+  location: string;
+  academyTrustName: string;
+  ext: string;
+  notes: string;
+  itManagerName: string;
+  itManagerEmail: string;
 };
 
 export default function ImportCSV() {
@@ -44,6 +52,39 @@ export default function ImportCSV() {
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
   });
+
+  const detectDelimiter = (headerLine: string): string => {
+    // Check if tabs are present and more common than commas
+    const tabCount = (headerLine.match(/\t/g) || []).length;
+    const commaCount = (headerLine.match(/,/g) || []).length;
+    return tabCount > commaCount ? "\t" : ",";
+  };
+
+  const parseCSVLine = (line: string, delimiter: string): string[] => {
+    if (delimiter === "\t") {
+      // Tab-delimited is simpler - just split by tab
+      return line.split("\t");
+    }
+    
+    // For comma-delimited, handle quoted fields
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === delimiter && !inQuotes) {
+        result.push(current);
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -67,51 +108,57 @@ export default function ImportCSV() {
         return;
       }
 
-      const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
-      const nameIndex = header.findIndex((h) => h.includes("name") || h.includes("company") || h.includes("school"));
-      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("tel") || h.includes("number"));
+      // Detect delimiter from header line
+      const delimiter = detectDelimiter(lines[0]);
+      const header = parseCSVLine(lines[0], delimiter).map((h) => h.trim().toLowerCase());
+      
+      // Find column indices - support various header names
+      const nameIndex = header.findIndex((h) => 
+        h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school") || h === "name"
+      );
+      const websiteIndex = header.findIndex((h) => h.includes("website"));
+      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("tel"));
+      const locationIndex = header.findIndex((h) => h.includes("location") || h.includes("city") || h.includes("address"));
+      const trustIndex = header.findIndex((h) => h.includes("trust") || h.includes("academytrustname"));
+      const extIndex = header.findIndex((h) => h === "ext" || h.includes("extension"));
+      const notesIndex = header.findIndex((h) => h === "notes" || h.includes("note"));
+      const itManagerNameIndex = header.findIndex((h) => 
+        h.includes("it manager name") || h.includes("itmanagername") || h === "it manager name"
+      );
+      const itManagerEmailIndex = header.findIndex((h) => 
+        h.includes("it manager email") || h.includes("itmanageremail") || h === "it manager email"
+      );
 
       if (nameIndex === -1) {
-        toast({ title: "CSV must have a column with 'name', 'company', or 'school' in the header", variant: "destructive" });
+        toast({ title: "CSV must have a column with company/school name (e.g., 'EstablishmentName', 'Company Name')", variant: "destructive" });
         return;
       }
 
       const rows: ParsedRow[] = [];
       for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i]);
+        const values = parseCSVLine(lines[i], delimiter);
         const name = values[nameIndex]?.trim();
-        const phone = phoneIndex !== -1 ? values[phoneIndex]?.trim() : "";
         
         if (name) {
-          rows.push({ name, phone });
+          rows.push({
+            name,
+            website: websiteIndex !== -1 ? values[websiteIndex]?.trim() || "" : "",
+            phone: phoneIndex !== -1 ? values[phoneIndex]?.trim() || "" : "",
+            location: locationIndex !== -1 ? values[locationIndex]?.trim() || "" : "",
+            academyTrustName: trustIndex !== -1 ? values[trustIndex]?.trim() || "" : "",
+            ext: extIndex !== -1 ? values[extIndex]?.trim() || "" : "",
+            notes: notesIndex !== -1 ? values[notesIndex]?.trim() || "" : "",
+            itManagerName: itManagerNameIndex !== -1 ? values[itManagerNameIndex]?.trim() || "" : "",
+            itManagerEmail: itManagerEmailIndex !== -1 ? values[itManagerEmailIndex]?.trim() || "" : "",
+          });
         }
       }
 
       setParsedData(rows);
-      toast({ title: `Found ${rows.length} companies in CSV` });
+      toast({ title: `Found ${rows.length} schools/companies in CSV` });
     };
 
     reader.readAsText(selectedFile);
-  };
-
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === "," && !inQuotes) {
-        result.push(current);
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    result.push(current);
-    return result;
   };
 
   const handleImport = async () => {
@@ -128,7 +175,14 @@ export default function ImportCSV() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: row.name,
+            website: row.website || null,
             phone: row.phone || null,
+            location: row.location || null,
+            academyTrustName: row.academyTrustName || null,
+            ext: row.ext || null,
+            notes: row.notes || null,
+            itManagerName: row.itManagerName || null,
+            itManagerEmail: row.itManagerEmail || null,
             stageId: selectedStage || null,
           }),
         });
@@ -148,7 +202,7 @@ export default function ImportCSV() {
     queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
 
     if (success > 0) {
-      toast({ title: `Successfully imported ${success} companies` });
+      toast({ title: `Successfully imported ${success} schools/companies` });
     }
   };
 
@@ -166,7 +220,7 @@ export default function ImportCSV() {
       <div>
         <h1 className="text-2xl font-semibold">Import CSV</h1>
         <p className="text-muted-foreground">
-          Import companies from a CSV file with company/school name and phone number
+          Import schools and companies from a CSV file
         </p>
       </div>
 
@@ -174,8 +228,8 @@ export default function ImportCSV() {
         <CardHeader>
           <CardTitle>Upload CSV File</CardTitle>
           <CardDescription>
-            Your CSV should have columns for company/school name and optionally phone number.
-            The first row should be headers.
+            Your CSV should have columns for: Company Name, Website, Phone Number, Location, 
+            Academy Trust Name, Ext, Notes, IT Manager Name, IT Manager Email
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -237,7 +291,7 @@ export default function ImportCSV() {
                   ) : (
                     <>
                       <Upload className="h-4 w-4 mr-2" />
-                      Import {parsedData.length} Companies
+                      Import {parsedData.length} Schools
                     </>
                   )}
                 </Button>
@@ -269,33 +323,64 @@ export default function ImportCSV() {
                 </div>
               )}
 
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Company/School Name</TableHead>
-                      <TableHead>Phone Number</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {parsedData.slice(0, 10).map((row, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{row.name}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {row.phone || "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {parsedData.length > 10 && (
+              <ScrollArea className="w-full">
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={2} className="text-center text-muted-foreground">
-                          ... and {parsedData.length - 10} more rows
-                        </TableCell>
+                        <TableHead className="min-w-[200px]">Company Name</TableHead>
+                        <TableHead className="min-w-[150px]">Website</TableHead>
+                        <TableHead className="min-w-[120px]">Phone</TableHead>
+                        <TableHead className="min-w-[100px]">Location</TableHead>
+                        <TableHead className="min-w-[150px]">Academy Trust</TableHead>
+                        <TableHead className="min-w-[60px]">Ext</TableHead>
+                        <TableHead className="min-w-[150px]">Notes</TableHead>
+                        <TableHead className="min-w-[120px]">IT Manager</TableHead>
+                        <TableHead className="min-w-[150px]">IT Email</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {parsedData.slice(0, 10).map((row, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{row.name}</TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
+                            {row.website || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.phone || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.location || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
+                            {row.academyTrustName || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.ext || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
+                            {row.notes || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.itManagerName || "—"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {row.itManagerEmail || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {parsedData.length > 10 && (
+                        <TableRow>
+                          <TableCell colSpan={9} className="text-center text-muted-foreground">
+                            ... and {parsedData.length - 10} more rows
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
             </div>
           )}
         </CardContent>
@@ -303,15 +388,23 @@ export default function ImportCSV() {
 
       <Card>
         <CardHeader>
-          <CardTitle>CSV Format Example</CardTitle>
+          <CardTitle>Expected CSV Format</CardTitle>
         </CardHeader>
         <CardContent>
-          <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
-{`company_name,phone_number
-Acme Corp,555-123-4567
-Lincoln High School,555-987-6543
-State University,555-456-7890`}
-          </pre>
+          <p className="text-sm text-muted-foreground mb-3">
+            Your CSV should have headers that match these fields (case insensitive):
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+            <div className="bg-muted p-2 rounded">EstablishmentName / Company Name</div>
+            <div className="bg-muted p-2 rounded">SchoolWebsite / Website</div>
+            <div className="bg-muted p-2 rounded">SchoolPhoneNumber / Phone</div>
+            <div className="bg-muted p-2 rounded">Location</div>
+            <div className="bg-muted p-2 rounded">AcademyTrustName</div>
+            <div className="bg-muted p-2 rounded">Ext</div>
+            <div className="bg-muted p-2 rounded">Notes</div>
+            <div className="bg-muted p-2 rounded">IT Manager Name</div>
+            <div className="bg-muted p-2 rounded">IT Manager Email</div>
+          </div>
         </CardContent>
       </Card>
     </div>

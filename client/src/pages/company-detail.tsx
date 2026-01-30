@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation } from "wouter";
-import type { CompanyWithRelations, PipelineStage, InsertContact, InsertCallNote } from "@shared/schema";
+import type { CompanyWithRelations, PipelineStage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,10 +17,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, Building2, Phone, Mail, User, Briefcase, Plus, MessageSquare, Trash2, Clock } from "lucide-react";
+import { 
+  ArrowLeft, Building2, Phone, Mail, User, Briefcase, Plus, 
+  MessageSquare, Trash2, Clock, MapPin, Globe, FileText, Users
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
@@ -154,7 +157,7 @@ export default function CompanyDetail() {
 
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-md bg-primary/10">
                 <Building2 className="h-7 w-7 text-primary" />
@@ -163,12 +166,21 @@ export default function CompanyDetail() {
                 <h1 className="text-2xl font-semibold" data-testid="text-company-detail-name">
                   {company.name}
                 </h1>
-                {company.phone && (
-                  <p className="text-muted-foreground flex items-center gap-1 mt-1">
-                    <Phone className="h-4 w-4" />
-                    {company.phone}
-                  </p>
-                )}
+                <div className="flex flex-wrap items-center gap-3 text-muted-foreground mt-1">
+                  {company.location && (
+                    <span className="flex items-center gap-1 text-sm">
+                      <MapPin className="h-4 w-4" />
+                      {company.location}
+                    </span>
+                  )}
+                  {company.phone && (
+                    <span className="flex items-center gap-1 text-sm">
+                      <Phone className="h-4 w-4" />
+                      {company.phone}
+                      {company.ext && ` ext. ${company.ext}`}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -194,6 +206,47 @@ export default function CompanyDetail() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Additional company info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t">
+            {company.website && (
+              <div className="flex items-center gap-2 text-sm">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                <a 
+                  href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                  data-testid="link-company-website"
+                >
+                  {company.website.replace(/^https?:\/\//, '')}
+                </a>
+              </div>
+            )}
+            {company.academyTrustName && (
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span>{company.academyTrustName}</span>
+              </div>
+            )}
+            {company.itManagerName && (
+              <div className="flex items-center gap-2 text-sm">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {company.itManagerName}
+                  {company.itManagerEmail && (
+                    <span className="text-muted-foreground"> ({company.itManagerEmail})</span>
+                  )}
+                </span>
+              </div>
+            )}
+            {company.notes && (
+              <div className="flex items-start gap-2 text-sm col-span-full">
+                <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
+                <span className="text-muted-foreground">{company.notes}</span>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

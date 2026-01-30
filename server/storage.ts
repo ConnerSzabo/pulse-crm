@@ -149,57 +149,45 @@ export class DatabaseStorage implements IStorage {
       await this.createPipelineStage(stage);
     }
 
-    // Seed some sample companies
+    // Seed some sample companies with all new fields
     const stages = await this.getPipelineStages();
     const leadStage = stages.find((s) => s.name === "Lead");
     const contactedStage = stages.find((s) => s.name === "Contacted");
-    const qualifiedStage = stages.find((s) => s.name === "Qualified");
 
     const sampleCompanies: InsertCompany[] = [
-      { name: "Greenwood Elementary School", phone: "555-123-4567", stageId: leadStage?.id },
-      { name: "Tech Solutions Inc", phone: "555-234-5678", stageId: contactedStage?.id },
-      { name: "Valley High School", phone: "555-345-6789", stageId: qualifiedStage?.id },
-      { name: "Riverside Academy", phone: "555-456-7890", stageId: leadStage?.id },
-      { name: "Metro Business College", phone: "555-567-8901", stageId: null },
+      { 
+        name: "Brimsham Green School", 
+        website: "http://www.brimsham.com",
+        phone: "1454868888", 
+        location: "Bristol",
+        academyTrustName: null,
+        ext: null,
+        notes: "Looking into cloud or network infrastructure",
+        itManagerName: "Jason",
+        itManagerEmail: "ict@brimsham.com",
+        stageId: leadStage?.id 
+      },
+      { 
+        name: "St Mary Redcliffe and Temple School", 
+        website: "www.smrt.bristol.sch.uk",
+        phone: "1173772100", 
+        location: "Bristol",
+        academyTrustName: null,
+        ext: null,
+        notes: null,
+        itManagerName: "Mark",
+        itManagerEmail: "jacksonm@smrt.bristol.sch.uk",
+        stageId: contactedStage?.id 
+      },
     ];
 
     for (const company of sampleCompanies) {
       const created = await this.createCompany(company);
       
-      // Add sample contacts for first two companies
-      if (company.name === "Greenwood Elementary School") {
-        await this.createContact({
-          companyId: created.id,
-          email: "principal@greenwood.edu",
-          name: "Sarah Johnson",
-          role: "Principal",
-        });
-        await this.createContact({
-          companyId: created.id,
-          email: "admin@greenwood.edu",
-          name: "Mike Williams",
-          role: "Administrator",
-        });
+      if (company.name === "Brimsham Green School") {
         await this.createCallNote({
           companyId: created.id,
           note: "Initial call - interested in learning more about our services. Asked for pricing info.",
-        });
-      }
-
-      if (company.name === "Tech Solutions Inc") {
-        await this.createContact({
-          companyId: created.id,
-          email: "ceo@techsolutions.com",
-          name: "John Smith",
-          role: "CEO",
-        });
-        await this.createCallNote({
-          companyId: created.id,
-          note: "Follow-up call. They need a demo scheduled for next week.",
-        });
-        await this.createCallNote({
-          companyId: created.id,
-          note: "Sent proposal documents via email. Waiting for response.",
         });
       }
     }

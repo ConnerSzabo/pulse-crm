@@ -22,17 +22,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { useForm } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, Building2, Phone, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Search, Building2, Phone, ChevronRight, Trash2, MapPin, Globe } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const addCompanySchema = z.object({
   name: z.string().min(1, "Company name is required"),
+  website: z.string().optional(),
   phone: z.string().optional(),
+  location: z.string().optional(),
+  academyTrustName: z.string().optional(),
+  ext: z.string().optional(),
+  notes: z.string().optional(),
+  itManagerName: z.string().optional(),
+  itManagerEmail: z.string().optional(),
   stageId: z.string().optional(),
 });
 
@@ -57,7 +63,14 @@ export default function Companies() {
     resolver: zodResolver(addCompanySchema),
     defaultValues: {
       name: "",
+      website: "",
       phone: "",
+      location: "",
+      academyTrustName: "",
+      ext: "",
+      notes: "",
+      itManagerName: "",
+      itManagerEmail: "",
       stageId: "",
     },
   });
@@ -66,7 +79,14 @@ export default function Companies() {
     mutationFn: async (data: AddCompanyForm) => {
       return apiRequest("POST", "/api/companies", {
         name: data.name,
+        website: data.website || null,
         phone: data.phone || null,
+        location: data.location || null,
+        academyTrustName: data.academyTrustName || null,
+        ext: data.ext || null,
+        notes: data.notes || null,
+        itManagerName: data.itManagerName || null,
+        itManagerEmail: data.itManagerEmail || null,
         stageId: data.stageId || null,
       });
     },
@@ -92,7 +112,9 @@ export default function Companies() {
   });
 
   const filteredCompanies = companies?.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase())
+    c.name.toLowerCase().includes(search.toLowerCase()) ||
+    c.location?.toLowerCase().includes(search.toLowerCase()) ||
+    c.academyTrustName?.toLowerCase().includes(search.toLowerCase())
   );
 
   const onSubmit = (data: AddCompanyForm) => {
@@ -113,39 +135,160 @@ export default function Companies() {
               Add Company
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Company</DialogTitle>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Name *</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter company name"
+                            data-testid="input-company-name"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="website"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Website</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="https://example.com"
+                            data-testid="input-company-website"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Enter phone number"
+                            data-testid="input-company-phone"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="ext"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Extension</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ext"
+                            data-testid="input-company-ext"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="location"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="City or address"
+                            data-testid="input-company-location"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="academyTrustName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Academy Trust Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Trust name"
+                            data-testid="input-company-trust"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="itManagerName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>IT Manager Name</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Name"
+                            data-testid="input-company-it-manager-name"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="itManagerEmail"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>IT Manager Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="email@example.com"
+                            data-testid="input-company-it-manager-email"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Name</FormLabel>
+                      <FormLabel>Notes</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Enter company name"
-                          data-testid="input-company-name"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone Number</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Enter phone number"
-                          data-testid="input-company-phone"
+                          placeholder="Additional notes"
+                          data-testid="input-company-notes"
                           {...field}
                         />
                       </FormControl>
@@ -197,7 +340,7 @@ export default function Companies() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search companies..."
+          placeholder="Search companies by name, location, or trust..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-10"
@@ -239,12 +382,26 @@ export default function Companies() {
                     <h3 className="font-medium truncate" data-testid={`text-company-name-${company.id}`}>
                       {company.name}
                     </h3>
-                    {company.phone && (
-                      <p className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {company.phone}
-                      </p>
-                    )}
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                      {company.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {company.location}
+                        </span>
+                      )}
+                      {company.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {company.phone}
+                        </span>
+                      )}
+                      {company.website && (
+                        <span className="flex items-center gap-1">
+                          <Globe className="h-3 w-3" />
+                          {company.website.replace(/^https?:\/\//, '').split('/')[0]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

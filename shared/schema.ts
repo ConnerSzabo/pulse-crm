@@ -36,7 +36,14 @@ export type PipelineStage = typeof pipelineStages.$inferSelect;
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  website: text("website"),
   phone: text("phone"),
+  location: text("location"),
+  academyTrustName: text("academy_trust_name"),
+  ext: text("ext"),
+  notes: text("notes"),
+  itManagerName: text("it_manager_name"),
+  itManagerEmail: text("it_manager_email"),
   stageId: varchar("stage_id").references(() => pipelineStages.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
