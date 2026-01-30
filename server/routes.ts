@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCompanySchema, insertContactSchema, insertCallNoteSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 
@@ -322,6 +322,83 @@ export async function registerRoutes(
       res.json({ exists: !!existing, existingId: existing?.id || null });
     } catch (error) {
       res.status(500).json({ error: "Failed to check for duplicate" });
+    }
+  });
+
+  // Tasks routes
+  app.get("/api/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const tasks = await storage.getTasks();
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tasks" });
+    }
+  });
+
+  app.get("/api/tasks/due-today", isAuthenticated, async (req, res) => {
+    try {
+      const tasks = await storage.getTasksDueToday();
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch tasks due today" });
+    }
+  });
+
+  app.get("/api/tasks/overdue", isAuthenticated, async (req, res) => {
+    try {
+      const tasks = await storage.getOverdueTasks();
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch overdue tasks" });
+    }
+  });
+
+  app.get("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const task = await storage.getTask(req.params.id);
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch task" });
+    }
+  });
+
+  app.post("/api/companies/:companyId/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const validated = insertTaskSchema.parse({
+        ...req.body,
+        companyId: req.params.companyId,
+      });
+      const task = await storage.createTask(validated);
+      res.status(201).json(task);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create task" });
+    }
+  });
+
+  app.patch("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const task = await storage.updateTask(req.params.id, req.body);
+      if (!task) {
+        return res.status(404).json({ error: "Task not found" });
+      }
+      res.json(task);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update task" });
+    }
+  });
+
+  app.delete("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTask(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete task" });
     }
   });
 

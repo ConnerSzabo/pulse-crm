@@ -92,9 +92,33 @@ export const insertCallNoteSchema = createInsertSchema(callNotes).omit({
 export type InsertCallNote = z.infer<typeof insertCallNoteSchema>;
 export type CallNote = typeof callNotes.$inferSelect;
 
+// Tasks for companies
+export const tasks = pgTable("tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  name: text("name").notNull(),
+  dueDate: timestamp("due_date"),
+  priority: text("priority").notNull().default("medium"), // high, medium, low
+  status: text("status").notNull().default("todo"), // todo, in_progress, completed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type Task = typeof tasks.$inferSelect;
+
 // Extended types with relations
+export type TaskWithCompany = Task & {
+  company: Company;
+};
+
 export type CompanyWithRelations = Company & {
   contacts: Contact[];
   callNotes: CallNote[];
+  tasks: Task[];
   stage?: PipelineStage;
 };

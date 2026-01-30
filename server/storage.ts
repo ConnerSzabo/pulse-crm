@@ -1,10 +1,11 @@
 import { db } from "./db";
-import { eq, ilike } from "drizzle-orm";
+import { eq, ilike, desc, asc, and, lt, gte } from "drizzle-orm";
 import {
   companies,
   contacts,
   callNotes,
   pipelineStages,
+  tasks,
   type Company,
   type InsertCompany,
   type Contact,
@@ -14,6 +15,9 @@ import {
   type PipelineStage,
   type InsertPipelineStage,
   type CompanyWithRelations,
+  type Task,
+  type InsertTask,
+  type TaskWithCompany,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -38,6 +42,16 @@ export interface IStorage {
   getCallNotesByCompany(companyId: string): Promise<CallNote[]>;
   createCallNote(note: InsertCallNote): Promise<CallNote>;
   deleteCallNote(id: string): Promise<void>;
+
+  // Tasks
+  getTasks(): Promise<TaskWithCompany[]>;
+  getTasksByCompany(companyId: string): Promise<Task[]>;
+  getTask(id: string): Promise<Task | undefined>;
+  createTask(task: InsertTask): Promise<Task>;
+  updateTask(id: string, task: Partial<InsertTask>): Promise<Task | undefined>;
+  deleteTask(id: string): Promise<void>;
+  getTasksDueToday(): Promise<TaskWithCompany[]>;
+  getOverdueTasks(): Promise<TaskWithCompany[]>;
 
   // Seed
   seedData(): Promise<void>;
@@ -72,6 +86,7 @@ export class DatabaseStorage implements IStorage {
 
     const contactsList = await this.getContactsByCompany(id);
     const notesList = await this.getCallNotesByCompany(id);
+    const tasksList = await this.getTasksByCompany(id);
     const stages = await this.getPipelineStages();
     const stage = company.stageId ? stages.find((s) => s.id === company.stageId) : undefined;
 
@@ -79,6 +94,7 @@ export class DatabaseStorage implements IStorage {
       ...company,
       contacts: contactsList,
       callNotes: notesList,
+      tasks: tasksList,
       stage,
     };
   }
@@ -103,9 +119,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCompany(id: string): Promise<void> {
-    // Delete related contacts and notes first
+    // Delete related contacts, notes, and tasks first
     await db.delete(contacts).where(eq(contacts.companyId, id));
     await db.delete(callNotes).where(eq(callNotes.companyId, id));
+    await db.delete(tasks).where(eq(tasks.companyId, id));
     await db.delete(companies).where(eq(companies.id, id));
   }
 
@@ -135,6 +152,113 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCallNote(id: string): Promise<void> {
     await db.delete(callNotes).where(eq(callNotes.id, id));
+  }
+
+  // Tasks
+  async getTasks(): Promise<TaskWithCompany[]> {
+    const tasksList = await db
+      .select()
+      .from(tasks)
+      .orderBy(asc(tasks.dueDate), desc(tasks.createdAt));
+    
+    const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
+    const companiesList = companyIds.length > 0 
+      ? await db.select().from(companies)
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c]));
+
+    return tasksList.map(t => ({
+      ...t,
+      company: companyMap.get(t.companyId)!,
+    }));
+  }
+
+  async getTasksByCompany(companyId: string): Promise<Task[]> {
+    return db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.companyId, companyId))
+      .orderBy(asc(tasks.dueDate), desc(tasks.createdAt));
+  }
+
+  async getTask(id: string): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async createTask(task: InsertTask): Promise<Task> {
+    const [result] = await db.insert(tasks).values(task).returning();
+    return result;
+  }
+
+  async updateTask(id: string, task: Partial<InsertTask>): Promise<Task | undefined> {
+    const [result] = await db
+      .update(tasks)
+      .set(task)
+      .where(eq(tasks.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
+  async getTasksDueToday(): Promise<TaskWithCompany[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const tasksList = await db
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          gte(tasks.dueDate, today),
+          lt(tasks.dueDate, tomorrow),
+          eq(tasks.status, "todo")
+        )
+      )
+      .orderBy(asc(tasks.dueDate));
+
+    const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
+    const companiesList = companyIds.length > 0
+      ? await db.select().from(companies)
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c]));
+
+    return tasksList.map(t => ({
+      ...t,
+      company: companyMap.get(t.companyId)!,
+    }));
+  }
+
+  async getOverdueTasks(): Promise<TaskWithCompany[]> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tasksList = await db
+      .select()
+      .from(tasks)
+      .where(
+        and(
+          lt(tasks.dueDate, today),
+          eq(tasks.status, "todo")
+        )
+      )
+      .orderBy(asc(tasks.dueDate));
+
+    const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
+    const companiesList = companyIds.length > 0
+      ? await db.select().from(companies)
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c]));
+
+    return tasksList.map(t => ({
+      ...t,
+      company: companyMap.get(t.companyId)!,
+    }));
   }
 
   // Seed default pipeline stages
