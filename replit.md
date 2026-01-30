@@ -107,7 +107,28 @@ The application starts automatically with `npm run dev` which runs both frontend
 
 Uses PostgreSQL with Drizzle ORM. Schema is defined in `shared/schema.ts` and pushed with `npm run db:push`.
 
+## Authentication
+
+The CRM uses a custom username/password authentication system:
+
+- **Credentials**: Username `connerszabo` with bcrypt-hashed password
+- **Session**: express-session with PostgreSQL store, 1-week duration
+- **Protection**: All API endpoints require authentication except login/logout/auth-check
+
+### Auth API Endpoints
+
+- `POST /api/login` - Login with username/password
+- `POST /api/logout` - Logout and destroy session
+- `GET /api/auth/me` - Check current auth status
+
 ## Recent Changes
+
+- Jan 30, 2026: Added authentication system
+  - Custom username/password login with bcrypt password hashing
+  - Session-based authentication with PostgreSQL session store
+  - Login page with username/password fields
+  - Logout button in header
+  - All API routes protected with authentication middleware
 
 - Jan 30, 2026: Major HubSpot-style redesign
   - New Dashboard page with searchable/filterable table
