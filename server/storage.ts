@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, ilike, desc, asc, and, lt, gte, sql, isNotNull, between } from "drizzle-orm";
+import { eq, ilike, desc, asc, and, lt, gte, sql, isNotNull, between, inArray } from "drizzle-orm";
 import {
   companies,
   contacts,
@@ -8,6 +8,7 @@ import {
   pipelineStages,
   tasks,
   dailyStats,
+  csvImports,
   type Company,
   type InsertCompany,
   type Contact,
@@ -24,6 +25,8 @@ import {
   type TaskWithCompany,
   type DailyStats,
   type InsertDailyStats,
+  type CsvImport,
+  type InsertCsvImport,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -73,6 +76,13 @@ export interface IStorage {
   getTotalPipelineValue(): Promise<number>;
   getGPThisMonth(): Promise<number>;
   getDealsNeedingFollowup(): Promise<(Company & { stage?: PipelineStage })[]>;
+
+  // CSV Imports
+  getCsvImports(): Promise<CsvImport[]>;
+  createCsvImport(data: InsertCsvImport): Promise<CsvImport>;
+  updateCsvImport(id: string, data: Partial<InsertCsvImport>): Promise<CsvImport | undefined>;
+  deleteCsvImport(id: string): Promise<void>;
+  deleteCompaniesByImportBatch(batchId: string): Promise<number>;
 
   // Seed
   seedData(): Promise<void>;
@@ -186,8 +196,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(tasks.dueDate), desc(tasks.createdAt));
     
     const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
-    const companiesList = companyIds.length > 0 
-      ? await db.select().from(companies)
+    const companiesList = companyIds.length > 0
+      ? await db.select().from(companies).where(inArray(companies.id, companyIds))
       : [];
     const companyMap = new Map(companiesList.map(c => [c.id, c]));
 
@@ -248,7 +258,7 @@ export class DatabaseStorage implements IStorage {
 
     const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
     const companiesList = companyIds.length > 0
-      ? await db.select().from(companies)
+      ? await db.select().from(companies).where(inArray(companies.id, companyIds))
       : [];
     const companyMap = new Map(companiesList.map(c => [c.id, c]));
 
@@ -275,7 +285,7 @@ export class DatabaseStorage implements IStorage {
 
     const companyIds = Array.from(new Set(tasksList.map(t => t.companyId)));
     const companiesList = companyIds.length > 0
-      ? await db.select().from(companies)
+      ? await db.select().from(companies).where(inArray(companies.id, companyIds))
       : [];
     const companyMap = new Map(companiesList.map(c => [c.id, c]));
 
@@ -417,6 +427,49 @@ export class DatabaseStorage implements IStorage {
         ...c,
         stage: c.stageId ? stageMap.get(c.stageId) : undefined,
       }));
+  }
+
+  // CSV Imports
+  async getCsvImports(): Promise<CsvImport[]> {
+    return db.select().from(csvImports).orderBy(desc(csvImports.importedAt));
+  }
+
+  async createCsvImport(data: InsertCsvImport): Promise<CsvImport> {
+    const [result] = await db.insert(csvImports).values(data).returning();
+    return result;
+  }
+
+  async updateCsvImport(id: string, data: Partial<InsertCsvImport>): Promise<CsvImport | undefined> {
+    const [result] = await db
+      .update(csvImports)
+      .set(data)
+      .where(eq(csvImports.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteCsvImport(id: string): Promise<void> {
+    await db.delete(csvImports).where(eq(csvImports.id, id));
+  }
+
+  async deleteCompaniesByImportBatch(batchId: string): Promise<number> {
+    // First get all company IDs in this batch
+    const companiesToDelete = await db
+      .select({ id: companies.id })
+      .from(companies)
+      .where(eq(companies.importBatchId, batchId));
+
+    // Delete related data for each company
+    for (const company of companiesToDelete) {
+      await db.delete(contacts).where(eq(contacts.companyId, company.id));
+      await db.delete(callNotes).where(eq(callNotes.companyId, company.id));
+      await db.delete(activities).where(eq(activities.companyId, company.id));
+      await db.delete(tasks).where(eq(tasks.companyId, company.id));
+    }
+
+    // Delete the companies
+    const result = await db.delete(companies).where(eq(companies.importBatchId, batchId)).returning();
+    return result.length;
   }
 
   // Seed default pipeline stages (Wave Systems)

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,9 +33,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X, RefreshCw } from "lucide-react";
+import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X, RefreshCw, Trash2, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { PipelineStage } from "@shared/schema";
+import { format } from "date-fns";
+import type { PipelineStage, CsvImport } from "@shared/schema";
 
 type ParsedRow = {
   name: string;
@@ -54,7 +55,10 @@ type ImportResult = {
   skipped: number;
   updated: number;
   duplicates: { name: string; existingId: string; hasNewInfo: boolean }[];
+  importBatchId?: string;
 };
+
+type UpdateMode = "skip" | "merge" | "overwrite";
 
 export default function ImportCSV() {
   const [, navigate] = useLocation();
@@ -66,12 +70,41 @@ export default function ImportCSV() {
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [pendingImport, setPendingImport] = useState<ParsedRow[]>([]);
   const [duplicatesWithNewInfo, setDuplicatesWithNewInfo] = useState<number>(0);
+  const [updateMode, setUpdateMode] = useState<UpdateMode>("skip");
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [importToDelete, setImportToDelete] = useState<CsvImport | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
   });
+
+  const { data: csvImports, isLoading: importsLoading } = useQuery<CsvImport[]>({
+    queryKey: ["/api/csv-imports"],
+  });
+
+  const deleteImportMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/csv-imports/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      toast({ title: "Import deleted", description: "All companies from this import have been removed." });
+      setShowDeleteDialog(false);
+      setImportToDelete(null);
+    },
+    onError: () => {
+      toast({ title: "Delete failed", variant: "destructive" });
+    },
+  });
+
+  const normalizePhone = (phone: string): string => {
+    if (!phone) return "";
+    // Remove common formatting characters but preserve the core number
+    return phone.replace(/[\s\-\(\)\.]/g, "").trim();
+  };
 
   const detectDelimiter = (headerLine: string): string => {
     const tabCount = (headerLine.match(/\t/g) || []).length;
@@ -132,7 +165,7 @@ export default function ImportCSV() {
         h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school") || h === "name"
       );
       const websiteIndex = header.findIndex((h) => h.includes("website"));
-      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("tel"));
+      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("tel") || h.includes("mobile") || h.includes("cell"));
       const locationIndex = header.findIndex((h) => h.includes("location") || h.includes("city") || h.includes("address"));
       const trustIndex = header.findIndex((h) => h.includes("trust") || h.includes("academytrustname"));
       const extIndex = header.findIndex((h) => h === "ext" || h.includes("extension"));
@@ -158,7 +191,7 @@ export default function ImportCSV() {
           rows.push({
             name,
             website: websiteIndex !== -1 ? values[websiteIndex]?.trim() || "" : "",
-            phone: phoneIndex !== -1 ? values[phoneIndex]?.trim() || "" : "",
+            phone: phoneIndex !== -1 ? normalizePhone(values[phoneIndex] || "") : "",
             location: locationIndex !== -1 ? values[locationIndex]?.trim() || "" : "",
             academyTrustName: trustIndex !== -1 ? values[trustIndex]?.trim() || "" : "",
             ext: extIndex !== -1 ? values[extIndex]?.trim() || "" : "",
@@ -176,7 +209,7 @@ export default function ImportCSV() {
     reader.readAsText(selectedFile);
   };
 
-  const performImport = async (updateExisting: boolean) => {
+  const performImport = async (mode: UpdateMode) => {
     const dataToImport = pendingImport.length > 0 ? pendingImport : parsedData;
     if (dataToImport.length === 0) return;
 
@@ -190,7 +223,8 @@ export default function ImportCSV() {
         body: JSON.stringify({
           companies: dataToImport,
           stageId: selectedStage || null,
-          updateExisting,
+          updateMode: mode,
+          fileName: file?.name || "import.csv",
         }),
       });
 
@@ -198,14 +232,15 @@ export default function ImportCSV() {
         const result: ImportResult = await response.json();
         setImportResult(result);
         queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
 
         const messages: string[] = [];
         if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
         if (result.updated > 0) messages.push(`Updated ${result.updated} existing records`);
         if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
 
-        toast({ 
-          title: "Import Complete", 
+        toast({
+          title: "Import Complete",
           description: messages.join(", ") || "No changes made"
         });
       } else {
@@ -222,6 +257,11 @@ export default function ImportCSV() {
   const handleImport = async () => {
     if (parsedData.length === 0) return;
 
+    // If user selected overwrite or merge mode, go directly with that mode
+    if (updateMode === "overwrite" || updateMode === "merge") {
+      return performImport(updateMode);
+    }
+
     setImporting(true);
 
     try {
@@ -231,15 +271,16 @@ export default function ImportCSV() {
         body: JSON.stringify({
           companies: parsedData,
           stageId: selectedStage || null,
-          updateExisting: false,
+          updateMode: "skip",
+          fileName: file?.name || "import.csv",
         }),
       });
 
       if (response.ok) {
         const result: ImportResult = await response.json();
-        
+
         const dupsWithNewInfo = result.duplicates.filter(d => d.hasNewInfo).length;
-        
+
         if (dupsWithNewInfo > 0) {
           setPendingImport(parsedData);
           setDuplicatesWithNewInfo(dupsWithNewInfo);
@@ -251,13 +292,14 @@ export default function ImportCSV() {
 
         setImportResult(result);
         queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
 
         const messages: string[] = [];
         if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
         if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
 
-        toast({ 
-          title: "Import Complete", 
+        toast({
+          title: "Import Complete",
           description: messages.join(", ") || "No changes made"
         });
       } else {
@@ -343,6 +385,19 @@ export default function ImportCSV() {
                           {stage.name}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Duplicate Handling</Label>
+                  <Select value={updateMode} onValueChange={(val) => setUpdateMode(val as UpdateMode)}>
+                    <SelectTrigger className="w-[200px]" data-testid="select-update-mode">
+                      <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="skip">Skip duplicates</SelectItem>
+                      <SelectItem value="merge">Merge (fill empty fields)</SelectItem>
+                      <SelectItem value="overwrite">Overwrite existing</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -488,12 +543,80 @@ export default function ImportCSV() {
         </CardContent>
       </Card>
 
+      {/* Import History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Import History
+          </CardTitle>
+          <CardDescription>
+            View and manage past CSV imports. Deleting an import will remove all companies from that batch.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {importsLoading ? (
+            <p className="text-muted-foreground">Loading...</p>
+          ) : csvImports && csvImports.length > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>File Name</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Imported</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead>Skipped</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {csvImports.map((imp) => (
+                  <TableRow key={imp.id}>
+                    <TableCell className="font-medium">{imp.fileName}</TableCell>
+                    <TableCell>{format(new Date(imp.importedAt), "MMM d, yyyy h:mm a")}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                        {imp.importedCount}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                        {imp.updatedCount}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{imp.skippedCount}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setImportToDelete(imp);
+                          setShowDeleteDialog(true);
+                        }}
+                        disabled={imp.importedCount === 0}
+                        data-testid={`button-delete-import-${imp.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <p className="text-muted-foreground text-center py-8">No import history yet</p>
+          )}
+        </CardContent>
+      </Card>
+
       <AlertDialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Update Existing Records?</AlertDialogTitle>
             <AlertDialogDescription>
-              Found {duplicatesWithNewInfo} duplicate school(s) with new information 
+              Found {duplicatesWithNewInfo} duplicate school(s) with new information
               (like IT Manager details) that the existing records don't have.
               <br /><br />
               Would you like to update these existing records with the new information?
@@ -502,15 +625,44 @@ export default function ImportCSV() {
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => {
               setShowUpdateDialog(false);
-              toast({ 
-                title: "Import Complete", 
+              toast({
+                title: "Import Complete",
                 description: `Imported ${importResult?.imported || 0} new schools, skipped ${importResult?.skipped || 0} duplicates`
               });
             }}>
               Skip Updates
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => performImport(true)} data-testid="button-update-existing">
+            <AlertDialogAction onClick={() => performImport("merge")} data-testid="button-update-existing">
               Update Existing Records
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Import?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all {importToDelete?.importedCount || 0} companies
+              that were imported from "{importToDelete?.fileName}".
+              <br /><br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowDeleteDialog(false);
+              setImportToDelete(null);
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => importToDelete && deleteImportMutation.mutate(importToDelete.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete-import"
+            >
+              Delete Import
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

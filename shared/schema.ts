@@ -59,6 +59,7 @@ export const companies = pgTable("companies", {
   tradeInInterest: boolean("trade_in_interest"),
   buyerHonestyScore: text("buyer_honesty_score"), // Good / Questionable / Time Waster
   nextBudgetCycle: timestamp("next_budget_cycle"),
+  importBatchId: varchar("import_batch_id"),
 });
 
 export const insertCompanySchema = createInsertSchema(companies).omit({
@@ -159,6 +160,24 @@ export const insertDailyStatsSchema = createInsertSchema(dailyStats).omit({
 
 export type InsertDailyStats = z.infer<typeof insertDailyStatsSchema>;
 export type DailyStats = typeof dailyStats.$inferSelect;
+
+// CSV Import tracking
+export const csvImports = pgTable("csv_imports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fileName: text("file_name").notNull(),
+  importedAt: timestamp("imported_at").defaultNow().notNull(),
+  importedCount: integer("imported_count").notNull().default(0),
+  updatedCount: integer("updated_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+});
+
+export const insertCsvImportSchema = createInsertSchema(csvImports).omit({
+  id: true,
+  importedAt: true,
+});
+
+export type InsertCsvImport = z.infer<typeof insertCsvImportSchema>;
+export type CsvImport = typeof csvImports.$inferSelect;
 
 // Extended types with relations
 export type TaskWithCompany = Task & {

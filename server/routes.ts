@@ -203,17 +203,28 @@ export async function registerRoutes(
   // Bulk import with duplicate detection
   app.post("/api/companies/bulk-import", isAuthenticated, async (req, res) => {
     try {
-      const { companies: companiesData, stageId, updateExisting } = req.body;
-      
+      const { companies: companiesData, stageId, updateExisting, updateMode, fileName } = req.body;
+      // updateMode: "skip" (default) | "merge" (fill empty fields) | "overwrite" (replace all)
+      const mode = updateMode || (updateExisting ? "merge" : "skip");
+
       if (!Array.isArray(companiesData)) {
         return res.status(400).json({ error: "Companies must be an array" });
       }
+
+      // Create import batch record
+      const importBatch = await storage.createCsvImport({
+        fileName: fileName || "import.csv",
+        importedCount: 0,
+        updatedCount: 0,
+        skippedCount: 0,
+      });
 
       const results = {
         imported: 0,
         skipped: 0,
         updated: 0,
         duplicates: [] as { name: string; existingId: string; hasNewInfo: boolean }[],
+        importBatchId: importBatch.id,
       };
 
       for (const companyData of companiesData) {
@@ -224,7 +235,7 @@ export async function registerRoutes(
 
         if (existing) {
           // Check if the new data has additional info
-          const hasNewInfo = 
+          const hasNewInfo =
             (!existing.itManagerName && companyData.itManagerName) ||
             (!existing.itManagerEmail && companyData.itManagerEmail) ||
             (!existing.website && companyData.website) ||
@@ -232,8 +243,23 @@ export async function registerRoutes(
             (!existing.location && companyData.location) ||
             (!existing.academyTrustName && companyData.academyTrustName);
 
-          if (updateExisting && hasNewInfo) {
-            // Update existing company with new info
+          if (mode === "overwrite") {
+            // Overwrite all fields with CSV data
+            const updateData: Record<string, unknown> = {
+              itManagerName: companyData.itManagerName || null,
+              itManagerEmail: companyData.itManagerEmail || null,
+              website: companyData.website || null,
+              phone: companyData.phone || null,
+              location: companyData.location || null,
+              academyTrustName: companyData.academyTrustName || null,
+              ext: companyData.ext || null,
+              notes: companyData.notes || null,
+            };
+
+            await storage.updateCompany(existing.id, updateData);
+            results.updated++;
+          } else if (mode === "merge" && hasNewInfo) {
+            // Merge: only fill empty fields
             const updateData: Record<string, unknown> = {};
             if (!existing.itManagerName && companyData.itManagerName) updateData.itManagerName = companyData.itManagerName;
             if (!existing.itManagerEmail && companyData.itManagerEmail) updateData.itManagerEmail = companyData.itManagerEmail;
@@ -270,7 +296,7 @@ export async function registerRoutes(
             });
           }
         } else {
-          // Create new company
+          // Create new company with import batch ID
           const company = await storage.createCompany({
             name: companyData.name.trim(),
             website: companyData.website || null,
@@ -282,6 +308,7 @@ export async function registerRoutes(
             itManagerName: companyData.itManagerName || null,
             itManagerEmail: companyData.itManagerEmail || null,
             stageId: stageId || null,
+            importBatchId: importBatch.id,
           });
 
           results.imported++;
@@ -303,10 +330,40 @@ export async function registerRoutes(
         }
       }
 
+      // Update import batch with final counts
+      await storage.updateCsvImport(importBatch.id, {
+        importedCount: results.imported,
+        updatedCount: results.updated,
+        skippedCount: results.skipped,
+      });
+
       res.json(results);
     } catch (error) {
       console.error("Bulk import error:", error);
       res.status(500).json({ error: "Failed to import companies" });
+    }
+  });
+
+  // CSV Imports management
+  app.get("/api/csv-imports", isAuthenticated, async (req, res) => {
+    try {
+      const imports = await storage.getCsvImports();
+      res.json(imports);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch CSV imports" });
+    }
+  });
+
+  app.delete("/api/csv-imports/:id", isAuthenticated, async (req, res) => {
+    try {
+      // First delete all companies from this import batch
+      const deletedCount = await storage.deleteCompaniesByImportBatch(req.params.id);
+      // Then delete the import record
+      await storage.deleteCsvImport(req.params.id);
+      res.json({ deletedCompanies: deletedCount });
+    } catch (error) {
+      console.error("Failed to delete CSV import:", error);
+      res.status(500).json({ error: "Failed to delete CSV import" });
     }
   });
 
