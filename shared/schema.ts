@@ -161,6 +161,27 @@ export const insertDailyStatsSchema = createInsertSchema(dailyStats).omit({
 export type InsertDailyStats = z.infer<typeof insertDailyStatsSchema>;
 export type DailyStats = typeof dailyStats.$inferSelect;
 
+// Deals for companies (multiple deals per company)
+export const deals = pgTable("deals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  title: text("title").notNull(),
+  stageId: varchar("stage_id").references(() => pipelineStages.id),
+  expectedGP: numeric("expected_gp", { precision: 12, scale: 2 }),
+  budgetStatus: text("budget_status"), // Confirmed / Indicative / Unknown
+  decisionTimeline: timestamp("decision_timeline"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDealSchema = createInsertSchema(deals).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertDeal = z.infer<typeof insertDealSchema>;
+export type Deal = typeof deals.$inferSelect;
+
 // CSV Import tracking
 export const csvImports = pgTable("csv_imports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -184,10 +205,15 @@ export type TaskWithCompany = Task & {
   company: Company;
 };
 
+export type DealWithStage = Deal & {
+  stage?: PipelineStage;
+};
+
 export type CompanyWithRelations = Company & {
   contacts: Contact[];
   callNotes: CallNote[];
   activities: Activity[];
   tasks: Task[];
+  deals: DealWithStage[];
   stage?: PipelineStage;
 };

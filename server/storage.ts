@@ -9,6 +9,7 @@ import {
   tasks,
   dailyStats,
   csvImports,
+  deals,
   type Company,
   type InsertCompany,
   type Contact,
@@ -27,6 +28,9 @@ import {
   type InsertDailyStats,
   type CsvImport,
   type InsertCsvImport,
+  type Deal,
+  type InsertDeal,
+  type DealWithStage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -77,6 +81,14 @@ export interface IStorage {
   getGPThisMonth(): Promise<number>;
   getDealsNeedingFollowup(): Promise<(Company & { stage?: PipelineStage })[]>;
 
+  // Deals
+  getDealsByCompany(companyId: string): Promise<DealWithStage[]>;
+  getDeal(id: string): Promise<Deal | undefined>;
+  createDeal(deal: InsertDeal): Promise<Deal>;
+  updateDeal(id: string, deal: Partial<InsertDeal>): Promise<Deal | undefined>;
+  deleteDeal(id: string): Promise<void>;
+  getAllDeals(): Promise<DealWithStage[]>;
+
   // CSV Imports
   getCsvImports(): Promise<CsvImport[]>;
   createCsvImport(data: InsertCsvImport): Promise<CsvImport>;
@@ -119,6 +131,7 @@ export class DatabaseStorage implements IStorage {
     const notesList = await this.getCallNotesByCompany(id);
     const activitiesList = await this.getActivitiesByCompany(id);
     const tasksList = await this.getTasksByCompany(id);
+    const dealsList = await this.getDealsByCompany(id);
     const stages = await this.getPipelineStages();
     const stage = company.stageId ? stages.find((s) => s.id === company.stageId) : undefined;
 
@@ -128,6 +141,7 @@ export class DatabaseStorage implements IStorage {
       callNotes: notesList,
       activities: activitiesList,
       tasks: tasksList,
+      deals: dealsList,
       stage,
     };
   }
@@ -152,11 +166,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCompany(id: string): Promise<void> {
-    // Delete related contacts, notes, activities, and tasks first
+    // Delete related contacts, notes, activities, tasks, and deals first
     await db.delete(contacts).where(eq(contacts.companyId, id));
     await db.delete(callNotes).where(eq(callNotes.companyId, id));
     await db.delete(activities).where(eq(activities.companyId, id));
     await db.delete(tasks).where(eq(tasks.companyId, id));
+    await db.delete(deals).where(eq(deals.companyId, id));
     await db.delete(companies).where(eq(companies.id, id));
   }
 
@@ -429,6 +444,61 @@ export class DatabaseStorage implements IStorage {
       }));
   }
 
+  // Deals
+  async getDealsByCompany(companyId: string): Promise<DealWithStage[]> {
+    const dealsList = await db
+      .select()
+      .from(deals)
+      .where(eq(deals.companyId, companyId))
+      .orderBy(desc(deals.createdAt));
+
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    return dealsList.map(d => ({
+      ...d,
+      stage: d.stageId ? stageMap.get(d.stageId) : undefined,
+    }));
+  }
+
+  async getDeal(id: string): Promise<Deal | undefined> {
+    const [deal] = await db.select().from(deals).where(eq(deals.id, id));
+    return deal;
+  }
+
+  async createDeal(deal: InsertDeal): Promise<Deal> {
+    const [result] = await db.insert(deals).values(deal).returning();
+    return result;
+  }
+
+  async updateDeal(id: string, deal: Partial<InsertDeal>): Promise<Deal | undefined> {
+    const [result] = await db
+      .update(deals)
+      .set(deal)
+      .where(eq(deals.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteDeal(id: string): Promise<void> {
+    await db.delete(deals).where(eq(deals.id, id));
+  }
+
+  async getAllDeals(): Promise<DealWithStage[]> {
+    const dealsList = await db
+      .select()
+      .from(deals)
+      .orderBy(desc(deals.createdAt));
+
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    return dealsList.map(d => ({
+      ...d,
+      stage: d.stageId ? stageMap.get(d.stageId) : undefined,
+    }));
+  }
+
   // CSV Imports
   async getCsvImports(): Promise<CsvImport[]> {
     return db.select().from(csvImports).orderBy(desc(csvImports.importedAt));
@@ -465,6 +535,7 @@ export class DatabaseStorage implements IStorage {
       await db.delete(callNotes).where(eq(callNotes.companyId, company.id));
       await db.delete(activities).where(eq(activities.companyId, company.id));
       await db.delete(tasks).where(eq(tasks.companyId, company.id));
+      await db.delete(deals).where(eq(deals.companyId, company.id));
     }
 
     // Delete the companies

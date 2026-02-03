@@ -396,20 +396,20 @@ export default function Companies() {
                     <Building2 className="h-5 w-5 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-medium truncate" data-testid={`text-company-name-${company.id}`}>
-                      {company.name}
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-medium truncate" data-testid={`text-company-name-${company.id}`}>
+                        {company.name}
+                      </h3>
+                      <span className="flex items-center gap-1.5 text-sm bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded font-medium flex-shrink-0">
+                        <Phone className="h-3.5 w-3.5" />
+                        {company.phone || "No phone"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
                       {company.location && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
                           {company.location}
-                        </span>
-                      )}
-                      {company.phone && (
-                        <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {company.phone}
                         </span>
                       )}
                       {company.website && (

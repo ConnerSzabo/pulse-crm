@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 
@@ -424,9 +424,11 @@ export async function registerRoutes(
 
   app.post("/api/companies/:companyId/tasks", isAuthenticated, async (req, res) => {
     try {
+      const { dueDate, ...rest } = req.body;
       const validated = insertTaskSchema.parse({
-        ...req.body,
+        ...rest,
         companyId: req.params.companyId,
+        dueDate: dueDate ? new Date(dueDate) : null,
       });
       const task = await storage.createTask(validated);
       res.status(201).json(task);
@@ -440,7 +442,12 @@ export async function registerRoutes(
 
   app.patch("/api/tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const task = await storage.updateTask(req.params.id, req.body);
+      const { dueDate, ...rest } = req.body;
+      const updateData = {
+        ...rest,
+        ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
+      };
+      const task = await storage.updateTask(req.params.id, updateData);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -456,6 +463,69 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete task" });
+    }
+  });
+
+  // Deals routes
+  app.get("/api/deals", isAuthenticated, async (req, res) => {
+    try {
+      const deals = await storage.getAllDeals();
+      res.json(deals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  app.get("/api/companies/:companyId/deals", isAuthenticated, async (req, res) => {
+    try {
+      const deals = await storage.getDealsByCompany(req.params.companyId);
+      res.json(deals);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch deals" });
+    }
+  });
+
+  app.post("/api/companies/:companyId/deals", isAuthenticated, async (req, res) => {
+    try {
+      const { decisionTimeline, ...rest } = req.body;
+      const validated = insertDealSchema.parse({
+        ...rest,
+        companyId: req.params.companyId,
+        decisionTimeline: decisionTimeline ? new Date(decisionTimeline) : null,
+      });
+      const deal = await storage.createDeal(validated);
+      res.status(201).json(deal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create deal" });
+    }
+  });
+
+  app.patch("/api/deals/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { decisionTimeline, ...rest } = req.body;
+      const updateData = {
+        ...rest,
+        ...(decisionTimeline !== undefined && { decisionTimeline: decisionTimeline ? new Date(decisionTimeline) : null }),
+      };
+      const deal = await storage.updateDeal(req.params.id, updateData);
+      if (!deal) {
+        return res.status(404).json({ error: "Deal not found" });
+      }
+      res.json(deal);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update deal" });
+    }
+  });
+
+  app.delete("/api/deals/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteDeal(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete deal" });
     }
   });
 

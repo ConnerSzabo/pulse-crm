@@ -3,7 +3,10 @@
     "allow": [
       "Bash(fuser:*)",
       "Bash(pkill:*)",
-      "Bash(npx tsx:*)"
+      "Bash(npx tsx:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm run db:push:*)",
+      "Bash(yes:*)"
     ]
   }
 }
