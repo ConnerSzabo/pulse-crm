@@ -6,7 +6,8 @@
       "Bash(npx tsx:*)",
       "Bash(npm run check:*)",
       "Bash(npm run db:push:*)",
-      "Bash(yes:*)"
+      "Bash(yes:*)",
+      "Bash(timeout 10 npm run dev:*)"
     ]
   }
 }

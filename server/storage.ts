@@ -545,21 +545,60 @@ export class DatabaseStorage implements IStorage {
 
   // Seed default pipeline stages (Wave Systems)
   async seedData(): Promise<void> {
-    const existingStages = await this.getPipelineStages();
-    if (existingStages.length > 0) return;
+    try {
+      const existingStages = await this.getPipelineStages();
 
-    const defaultStages: InsertPipelineStage[] = [
-      { name: "Future Pipeline", order: 1, color: "#94a3b8" },
-      { name: "Quote Presented", order: 2, color: "#f59e0b" },
-      { name: "Decision Maker Brought In", order: 3, color: "#3b82f6" },
-      { name: "Awaiting Order", order: 4, color: "#8b5cf6" },
-      { name: "Closed Won", order: 5, color: "#10b981" },
-      { name: "Closed Lost", order: 6, color: "#ef4444" },
-      { name: "Recycled", order: 7, color: "#6366f1" },
-    ];
+      const defaultStages: InsertPipelineStage[] = [
+        { name: "Contacted", order: 1, color: "#94a3b8" },
+        { name: "Future Deal", order: 2, color: "#f59e0b" },
+        { name: "Quote Presented", order: 3, color: "#3b82f6" },
+        { name: "Decision Maker Brought In", order: 4, color: "#8b5cf6" },
+        { name: "Awaiting Order", order: 5, color: "#a855f7" },
+        { name: "Closed Won", order: 6, color: "#10b981" },
+        { name: "Closed Lost", order: 7, color: "#ef4444" },
+      ];
 
-    for (const stage of defaultStages) {
-      await this.createPipelineStage(stage);
+      if (existingStages.length === 0) {
+        // Create new stages
+        for (const stage of defaultStages) {
+          await this.createPipelineStage(stage);
+        }
+      } else {
+        // Update existing stages to match the new names/order
+        const targetNames = new Set(defaultStages.map(s => s.name));
+
+        // Find stages that shouldn't exist (like "Future Pipeline", "Recycled")
+        const stagesToDelete = existingStages.filter(s => !targetNames.has(s.name));
+
+        // First, unassign companies and deals from stages we're about to delete
+        for (const stage of stagesToDelete) {
+          // Set stageId to null for companies referencing this stage
+          await db.update(companies)
+            .set({ stageId: null })
+            .where(eq(companies.stageId, stage.id));
+          // Set stageId to null for deals referencing this stage
+          await db.update(deals)
+            .set({ stageId: null })
+            .where(eq(deals.stageId, stage.id));
+          // Now safe to delete the stage
+          await db.delete(pipelineStages).where(eq(pipelineStages.id, stage.id));
+        }
+
+        // Update order/color for existing stages and create missing ones
+        for (const stage of defaultStages) {
+          const existing = existingStages.find(s => s.name === stage.name);
+          if (existing) {
+            await db.update(pipelineStages)
+              .set({ order: stage.order, color: stage.color })
+              .where(eq(pipelineStages.id, existing.id));
+          } else {
+            await this.createPipelineStage(stage);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error seeding pipeline stages:", error);
+      // Don't throw - allow app to start even if seeding fails
     }
   }
 }
