@@ -1,40 +1,43 @@
-import { Building2, GitBranch, Upload, LayoutDashboard, ListTodo } from "lucide-react";
-import { Link, useLocation } from "wouter";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarHeader,
-} from "@/components/ui/sidebar";
+  Building2,
+  LayoutDashboard,
+  Users,
+  Briefcase,
+  ListTodo,
+  Upload,
+  Settings,
+  HelpCircle,
+  ChevronDown
+} from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 
-const menuItems = [
+const mainMenuItems = [
   {
     title: "Dashboard",
     url: "/",
     icon: LayoutDashboard,
   },
   {
-    title: "Schools",
+    title: "Companies",
     url: "/companies",
     icon: Building2,
+  },
+  {
+    title: "Deals",
+    url: "/pipeline",
+    icon: Briefcase,
   },
   {
     title: "Tasks",
     url: "/tasks",
     icon: ListTodo,
   },
+];
+
+const toolsMenuItems = [
   {
-    title: "Pipeline",
-    url: "/pipeline",
-    icon: GitBranch,
-  },
-  {
-    title: "Import CSV",
+    title: "Import Data",
     url: "/import",
     icon: Upload,
   },
@@ -43,39 +46,84 @@ const menuItems = [
 export function AppSidebar() {
   const [location] = useLocation();
 
+  const isActive = (url: string) => {
+    if (url === "/") return location === "/";
+    if (url === "/companies") return location === "/companies" || location.startsWith("/company/");
+    return location.startsWith(url);
+  };
+
   return (
-    <Sidebar>
-      <SidebarHeader className="px-4 py-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <Building2 className="h-4 w-4 text-primary-foreground" />
+    <aside className="w-[220px] bg-[#2d3e50] flex flex-col h-screen flex-shrink-0">
+      {/* Logo */}
+      <div className="p-4 border-b border-white/10">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-400 to-cyan-600 flex items-center justify-center">
+            <Building2 className="h-4 w-4 text-white" />
           </div>
-          <span className="font-semibold text-lg">School CRM</span>
+          <span className="font-semibold text-white text-lg">Wave CRM</span>
+        </Link>
+      </div>
+
+      {/* Main Navigation */}
+      <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+        <div className="px-3 mb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3">
+            Main
+          </span>
         </div>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location === item.url || 
-                  (item.url === "/companies" && location.startsWith("/company/"));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+        <ul className="space-y-0.5 px-3">
+          {mainMenuItems.map((item) => (
+            <li key={item.title}>
+              <Link
+                href={item.url}
+                data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
+                  isActive(item.url)
+                    ? "bg-white/15 text-white font-medium"
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <item.icon className="h-[18px] w-[18px]" />
+                <span>{item.title}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+
+        <div className="px-3 mt-6 mb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3">
+            Tools
+          </span>
+        </div>
+        <ul className="space-y-0.5 px-3">
+          {toolsMenuItems.map((item) => (
+            <li key={item.title}>
+              <Link
+                href={item.url}
+                data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
+                  isActive(item.url)
+                    ? "bg-white/15 text-white font-medium"
+                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                )}
+              >
+                <item.icon className="h-[18px] w-[18px]" />
+                <span>{item.title}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* Bottom section */}
+      <div className="border-t border-white/10 p-3">
+        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-md text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors">
+          <HelpCircle className="h-[18px] w-[18px]" />
+          <span>Help & Support</span>
+        </button>
+      </div>
+    </aside>
   );
 }

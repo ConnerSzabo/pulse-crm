@@ -4,12 +4,11 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LogOut } from "lucide-react";
+import { LogOut, Search, Bell, User, ChevronDown } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
@@ -34,6 +33,49 @@ function Router() {
   );
 }
 
+function TopNavBar({ onLogout, isLoggingOut }: { onLogout: () => void; isLoggingOut: boolean }) {
+  return (
+    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
+      {/* Search */}
+      <div className="flex-1 max-w-xl">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="search"
+            placeholder="Search companies, contacts, deals..."
+            className="w-full h-9 pl-10 pr-4 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-colors"
+          />
+        </div>
+      </div>
+
+      {/* Right side actions */}
+      <div className="flex items-center gap-3">
+        <ThemeToggle />
+
+        <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+          <Bell className="h-5 w-5" />
+          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+        </button>
+
+        <div className="h-6 w-px bg-gray-200" />
+
+        <button
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+          onClick={onLogout}
+          disabled={isLoggingOut}
+          data-testid="button-logout"
+        >
+          <div className="w-7 h-7 rounded-full bg-cyan-600 flex items-center justify-center">
+            <span className="text-xs font-semibold text-white">CS</span>
+          </div>
+          <span className="font-medium">{isLoggingOut ? "..." : "Conner"}</span>
+          <ChevronDown className="h-4 w-4 text-gray-400" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
 function AuthenticatedApp() {
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -54,38 +96,16 @@ function AuthenticatedApp() {
     }
   };
 
-  const style = {
-    "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
-  };
-
   return (
-    <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex h-screen w-full">
-        <AppSidebar />
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <header className="flex items-center justify-between gap-2 p-3 border-b bg-background sticky top-0 z-50">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                data-testid="button-logout"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                {isLoggingOut ? "Logging out..." : "Logout"}
-              </Button>
-            </div>
-          </header>
-          <main className="flex-1 overflow-auto">
-            <Router />
-          </main>
-        </div>
+    <div className="flex h-screen w-full bg-[#f5f8fa]">
+      <AppSidebar />
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <TopNavBar onLogout={handleLogout} isLoggingOut={isLoggingOut} />
+        <main className="flex-1 overflow-auto">
+          <Router />
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }
 
@@ -113,7 +133,7 @@ function AppContent() {
 
   if (!authChecked || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#f5f8fa]">
         <div className="space-y-4 w-64">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-3/4" />
