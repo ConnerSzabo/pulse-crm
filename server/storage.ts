@@ -31,6 +31,7 @@ import {
   type Deal,
   type InsertDeal,
   type DealWithStage,
+  type DealWithCompanyAndStage,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -87,7 +88,7 @@ export interface IStorage {
   createDeal(deal: InsertDeal): Promise<Deal>;
   updateDeal(id: string, deal: Partial<InsertDeal>): Promise<Deal | undefined>;
   deleteDeal(id: string): Promise<void>;
-  getAllDeals(): Promise<DealWithStage[]>;
+  getAllDeals(): Promise<DealWithCompanyAndStage[]>;
 
   // CSV Imports
   getCsvImports(): Promise<CsvImport[]>;
@@ -484,7 +485,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(deals).where(eq(deals.id, id));
   }
 
-  async getAllDeals(): Promise<DealWithStage[]> {
+  async getAllDeals(): Promise<DealWithCompanyAndStage[]> {
     const dealsList = await db
       .select()
       .from(deals)
@@ -493,9 +494,17 @@ export class DatabaseStorage implements IStorage {
     const stages = await this.getPipelineStages();
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
+    // Get all companies for the deals
+    const companyIds = Array.from(new Set(dealsList.map(d => d.companyId)));
+    const companiesList = companyIds.length > 0
+      ? await db.select().from(companies).where(inArray(companies.id, companyIds))
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c]));
+
     return dealsList.map(d => ({
       ...d,
       stage: d.stageId ? stageMap.get(d.stageId) : undefined,
+      company: companyMap.get(d.companyId),
     }));
   }
 
@@ -549,13 +558,12 @@ export class DatabaseStorage implements IStorage {
       const existingStages = await this.getPipelineStages();
 
       const defaultStages: InsertPipelineStage[] = [
-        { name: "Contacted", order: 1, color: "#94a3b8" },
-        { name: "Future Deal", order: 2, color: "#f59e0b" },
-        { name: "Quote Presented", order: 3, color: "#3b82f6" },
-        { name: "Decision Maker Brought In", order: 4, color: "#8b5cf6" },
-        { name: "Awaiting Order", order: 5, color: "#a855f7" },
-        { name: "Closed Won", order: 6, color: "#10b981" },
-        { name: "Closed Lost", order: 7, color: "#ef4444" },
+        { name: "Qualified Opportunity", order: 1, color: "#3b82f6" },
+        { name: "Quote Presented", order: 2, color: "#8b5cf6" },
+        { name: "Decision Maker Brought-In", order: 3, color: "#f59e0b" },
+        { name: "Awaiting Order", order: 4, color: "#a855f7" },
+        { name: "Closed Won", order: 5, color: "#10b981" },
+        { name: "Closed Lost", order: 6, color: "#ef4444" },
       ];
 
       if (existingStages.length === 0) {

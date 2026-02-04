@@ -48,8 +48,8 @@ export const companies = pgTable("companies", {
   lastContactDate: timestamp("last_contact_date"),
   nextAction: text("next_action"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  // Wave Systems specific fields
-  budgetStatus: text("budget_status"), // Confirmed / Indicative / Unknown
+  // Wave Systems specific fields - Lead Status for sales pipeline
+  budgetStatus: text("budget_status").default("0-unqualified"), // Lead status: 0-unqualified, 1-qualified, 2-intent, 3-quote-presented, 3b-quoted-lost, 4-account-active
   decisionTimeline: text("decision_timeline"),
   decisionMakerName: text("decision_maker_name"),
   decisionMakerRole: text("decision_maker_role"),
@@ -207,6 +207,11 @@ export type TaskWithCompany = Task & {
 
 export type DealWithStage = Deal & {
   stage?: PipelineStage;
+};
+
+export type DealWithCompanyAndStage = Deal & {
+  stage?: PipelineStage;
+  company?: Company;
 };
 
 export type CompanyWithRelations = Company & {

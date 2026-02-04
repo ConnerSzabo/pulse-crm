@@ -1,51 +1,216 @@
+import { useState, useMemo, DragEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
-import type { Company, PipelineStage } from "@shared/schema";
+import type { PipelineStage, DealWithCompanyAndStage, Company } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Building2, MapPin, Clock, ArrowRight, GripVertical } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
-import { useState, DragEvent } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  Search,
+  LayoutGrid,
+  Filter,
+  ArrowUpDown,
+  Plus,
+  Building2,
+  Calendar,
+  User,
+  GripVertical,
+  ChevronDown,
+  DollarSign,
+  Clock,
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
-type CompanyWithStage = Company & { stage?: PipelineStage };
+const dealSchema = z.object({
+  title: z.string().min(1, "Deal title is required"),
+  companyId: z.string().min(1, "Please select a company"),
+  stageId: z.string().min(1, "Please select a stage"),
+  expectedGP: z.string().optional(),
+  budgetStatus: z.string().optional(),
+  decisionTimeline: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// Probability weights for each stage (for weighted amount calculation)
+const stageProbabilities: Record<string, number> = {
+  "Qualified Opportunity": 0.2,
+  "Quote Presented": 0.4,
+  "Decision Maker Brought-In": 0.6,
+  "Awaiting Order": 0.8,
+  "Closed Won": 1.0,
+  "Closed Lost": 0,
+};
 
 export default function Pipeline() {
-  const [draggedCompanyId, setDraggedCompanyId] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [draggedDealId, setDraggedDealId] = useState<string | null>(null);
   const [dragOverStageId, setDragOverStageId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"created" | "amount" | "close">("created");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [showAddDealDialog, setShowAddDealDialog] = useState(false);
+  const [selectedStageForNewDeal, setSelectedStageForNewDeal] = useState<string>("");
 
-  const { data: companies, isLoading: loadingCompanies } = useQuery<CompanyWithStage[]>({
-    queryKey: ["/api/companies"],
+  const { data: deals, isLoading: loadingDeals } = useQuery<DealWithCompanyAndStage[]>({
+    queryKey: ["/api/deals"],
   });
 
   const { data: stages, isLoading: loadingStages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
   });
 
-  const updateStageMutation = useMutation({
-    mutationFn: async ({ companyId, stageId }: { companyId: string; stageId: string | null }) => {
-      return apiRequest("PATCH", `/api/companies/${companyId}`, { stageId });
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
+  });
+
+  const dealForm = useForm<z.infer<typeof dealSchema>>({
+    resolver: zodResolver(dealSchema),
+    defaultValues: {
+      title: "",
+      companyId: "",
+      stageId: "",
+      expectedGP: "",
+      budgetStatus: "",
+      decisionTimeline: "",
+      notes: "",
+    },
+  });
+
+  const updateDealStageMutation = useMutation({
+    mutationFn: async ({ dealId, stageId }: { dealId: string; stageId: string }) => {
+      return apiRequest("PATCH", `/api/deals/${dealId}`, { stageId });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
     },
   });
 
-  // Only show companies that have been explicitly added to the pipeline (have a stageId)
-  const getCompaniesByStage = (stageId: string) => {
-    return companies?.filter((c) => c.stageId === stageId) || [];
+  const addDealMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof dealSchema>) => {
+      return apiRequest("POST", `/api/companies/${data.companyId}/deals`, {
+        companyId: data.companyId,
+        title: data.title,
+        stageId: data.stageId,
+        expectedGP: data.expectedGP || null,
+        budgetStatus: data.budgetStatus || null,
+        decisionTimeline: data.decisionTimeline ? new Date(data.decisionTimeline).toISOString() : null,
+        notes: data.notes || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      dealForm.reset();
+      setShowAddDealDialog(false);
+      toast({ title: "Deal created successfully" });
+    },
+  });
+
+  // Filter and sort deals
+  const filteredDeals = useMemo(() => {
+    if (!deals) return [];
+
+    let filtered = deals;
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (deal) =>
+          deal.title.toLowerCase().includes(query) ||
+          deal.company?.name?.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply sorting
+    filtered = [...filtered].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortBy) {
+        case "amount":
+          const amountA = a.expectedGP ? parseFloat(a.expectedGP) : 0;
+          const amountB = b.expectedGP ? parseFloat(b.expectedGP) : 0;
+          comparison = amountA - amountB;
+          break;
+        case "close":
+          const dateA = a.decisionTimeline ? new Date(a.decisionTimeline).getTime() : 0;
+          const dateB = b.decisionTimeline ? new Date(b.decisionTimeline).getTime() : 0;
+          comparison = dateA - dateB;
+          break;
+        case "created":
+        default:
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    return filtered;
+  }, [deals, searchQuery, sortBy, sortOrder]);
+
+  const getDealsByStage = (stageId: string) => {
+    return filteredDeals.filter((d) => d.stageId === stageId);
   };
 
-  const handleDragStart = (e: DragEvent, companyId: string) => {
-    setDraggedCompanyId(companyId);
+  const getStageStats = (stageId: string, stageName: string) => {
+    const stageDeals = getDealsByStage(stageId);
+    const totalAmount = stageDeals.reduce((sum, deal) => {
+      return sum + (deal.expectedGP ? parseFloat(deal.expectedGP) : 0);
+    }, 0);
+    const probability = stageProbabilities[stageName] ?? 0.5;
+    const weightedAmount = totalAmount * probability;
+
+    return { count: stageDeals.length, totalAmount, weightedAmount };
+  };
+
+  const handleDragStart = (e: DragEvent, dealId: string) => {
+    setDraggedDealId(dealId);
     e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", companyId);
+    e.dataTransfer.setData("text/plain", dealId);
+    // Add a slight delay for visual feedback
+    const target = e.currentTarget as HTMLElement;
+    setTimeout(() => {
+      target.style.opacity = "0.5";
+    }, 0);
   };
 
-  const handleDragEnd = () => {
-    setDraggedCompanyId(null);
+  const handleDragEnd = (e: DragEvent) => {
+    setDraggedDealId(null);
     setDragOverStageId(null);
+    const target = e.currentTarget as HTMLElement;
+    target.style.opacity = "1";
   };
 
   const handleDragOver = (e: DragEvent, stageId: string) => {
@@ -54,116 +219,436 @@ export default function Pipeline() {
     setDragOverStageId(stageId);
   };
 
-  const handleDragLeave = () => {
-    setDragOverStageId(null);
+  const handleDragLeave = (e: DragEvent) => {
+    // Only reset if we're leaving the column entirely
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (
+      e.clientX < rect.left ||
+      e.clientX > rect.right ||
+      e.clientY < rect.top ||
+      e.clientY > rect.bottom
+    ) {
+      setDragOverStageId(null);
+    }
   };
 
   const handleDrop = (e: DragEvent, stageId: string) => {
     e.preventDefault();
-    const companyId = e.dataTransfer.getData("text/plain");
-    if (companyId && companyId !== "") {
-      updateStageMutation.mutate({ companyId, stageId });
+    const dealId = e.dataTransfer.getData("text/plain");
+    if (dealId && dealId !== "") {
+      // Find the deal to check if stage actually changed
+      const deal = deals?.find((d) => d.id === dealId);
+      if (deal && deal.stageId !== stageId) {
+        updateDealStageMutation.mutate({ dealId, stageId });
+        toast({ title: "Deal moved to new stage" });
+      }
     }
-    setDraggedCompanyId(null);
+    setDraggedDealId(null);
     setDragOverStageId(null);
   };
 
-  if (loadingCompanies || loadingStages) {
+  const openAddDealWithStage = (stageId: string) => {
+    setSelectedStageForNewDeal(stageId);
+    dealForm.setValue("stageId", stageId);
+    setShowAddDealDialog(true);
+  };
+
+  const handleAddDealSubmit = (data: z.infer<typeof dealSchema>) => {
+    addDealMutation.mutate(data);
+  };
+
+  if (loadingDeals || loadingStages) {
     return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="flex gap-4">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} className="h-[400px] w-[260px] flex-shrink-0" />
-          ))}
+      <div className="h-full flex flex-col">
+        <div className="p-4 border-b bg-white dark:bg-card">
+          <Skeleton className="h-10 w-full max-w-md" />
+        </div>
+        <div className="flex-1 p-4">
+          <div className="flex gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-[500px] w-[300px] flex-shrink-0" />
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
+  // Calculate overall pipeline stats
+  const totalPipelineValue = deals?.reduce((sum, deal) => {
+    return sum + (deal.expectedGP ? parseFloat(deal.expectedGP) : 0);
+  }, 0) || 0;
+
+  const totalDeals = deals?.length || 0;
+
   return (
-    <div className="p-6 space-y-6 h-full flex flex-col">
-      <div>
-        <h1 className="text-2xl font-semibold">Pipeline</h1>
-        <p className="text-muted-foreground">Drag deals between stages to update their status</p>
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-background">
+      {/* Top Controls Bar */}
+      <div className="bg-white dark:bg-card border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-4">
+          {/* Left side controls */}
+          <div className="flex items-center gap-3 flex-1">
+            {/* Search */}
+            <div className="relative max-w-xs flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search deals..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+
+            {/* Board View Toggle */}
+            <Button variant="outline" size="sm" className="h-9 gap-2">
+              <LayoutGrid className="h-4 w-4" />
+              Board view
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+
+            {/* Filters */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-2">
+                  <Filter className="h-4 w-4" />
+                  Filters
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuLabel>Filter by</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>All deals</DropdownMenuItem>
+                <DropdownMenuItem>My deals</DropdownMenuItem>
+                <DropdownMenuItem>High value (&gt; £10k)</DropdownMenuItem>
+                <DropdownMenuItem>Closing this month</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Sort */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-2">
+                  <ArrowUpDown className="h-4 w-4" />
+                  Sort
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { setSortBy("created"); setSortOrder("desc"); }}>
+                  Newest first
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("created"); setSortOrder("asc"); }}>
+                  Oldest first
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("amount"); setSortOrder("desc"); }}>
+                  Highest value
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("amount"); setSortOrder("asc"); }}>
+                  Lowest value
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setSortBy("close"); setSortOrder("asc"); }}>
+                  Closing soon
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Right side - Stats and Add button */}
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden md:block">
+              <p className="text-xs text-muted-foreground">{totalDeals} deals</p>
+              <p className="text-sm font-semibold text-emerald-600">
+                £{totalPipelineValue.toLocaleString()}
+              </p>
+            </div>
+
+            <Button
+              onClick={() => setShowAddDealDialog(true)}
+              className="bg-blue-600 hover:bg-blue-700 h-9"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add deal
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Horizontal scrolling container */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden">
-        <div className="flex gap-3 pb-4 min-w-max">
-          {/* Stage columns */}
+      {/* Pipeline Board */}
+      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4">
+        <div className="flex gap-3 h-full min-w-max">
           {stages?.map((stage) => {
-            const stageCompanies = getCompaniesByStage(stage.id);
+            const stats = getStageStats(stage.id, stage.name);
+            const stageDeals = getDealsByStage(stage.id);
             const isDropTarget = dragOverStageId === stage.id;
 
             return (
               <div
                 key={stage.id}
-                className={`w-[280px] flex-shrink-0 rounded-lg transition-all duration-200 ${
-                  isDropTarget ? "ring-2 ring-primary ring-offset-2" : ""
+                className={`w-[300px] flex-shrink-0 flex flex-col bg-white dark:bg-card rounded-lg shadow-sm transition-all duration-200 ${
+                  isDropTarget ? "ring-2 ring-blue-500 ring-offset-2" : ""
                 }`}
                 data-testid={`pipeline-column-${stage.id}`}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
+                {/* Stage Header */}
                 <div
-                  className="flex items-center justify-between p-3 rounded-t-lg"
-                  style={{ backgroundColor: stage.color + "15" }}
+                  className="p-3 border-b rounded-t-lg"
+                  style={{ borderTopColor: stage.color, borderTopWidth: "3px" }}
                 >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: stage.color }}
-                    />
-                    <span className="font-medium text-sm">{stage.name}</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm">{stage.name}</span>
+                      <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                        {stats.count}
+                      </Badge>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => openAddDealWithStage(stage.id)}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <Badge variant="secondary" className="text-xs">
-                    {stageCompanies.length}
-                  </Badge>
                 </div>
-                {/* Vertically scrollable column content */}
+
+                {/* Stage Content - Scrollable */}
                 <div
-                  className={`space-y-2 p-2 bg-muted/20 rounded-b-lg min-h-[200px] max-h-[calc(100vh-220px)] overflow-y-auto transition-colors duration-200 ${
-                    isDropTarget ? "bg-primary/5" : ""
+                  className={`flex-1 overflow-y-auto p-2 space-y-2 min-h-[200px] transition-colors duration-200 ${
+                    isDropTarget ? "bg-blue-50 dark:bg-blue-950/20" : "bg-gray-50/50 dark:bg-muted/20"
                   }`}
                 >
-                  {stageCompanies.map((company) => (
-                    <PipelineCard
-                      key={company.id}
-                      company={company}
-                      isDragging={draggedCompanyId === company.id}
-                      onDragStart={(e) => handleDragStart(e, company.id)}
-                      onDragEnd={handleDragEnd}
-                    />
-                  ))}
-                  {stageCompanies.length === 0 && (
-                    <div className={`text-center py-12 text-muted-foreground text-xs border-2 border-dashed rounded-lg ${
-                      isDropTarget ? "border-primary bg-primary/5" : "border-transparent"
-                    }`}>
-                      {isDropTarget ? "Drop here" : "No deals"}
+                  {stageDeals.length === 0 ? (
+                    <div
+                      className={`text-center py-12 text-muted-foreground text-xs border-2 border-dashed rounded-lg transition-colors ${
+                        isDropTarget
+                          ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30"
+                          : "border-gray-200 dark:border-gray-700"
+                      }`}
+                    >
+                      {isDropTarget ? "Drop deal here" : "No deals in this stage"}
                     </div>
+                  ) : (
+                    stageDeals.map((deal) => (
+                      <DealCard
+                        key={deal.id}
+                        deal={deal}
+                        isDragging={draggedDealId === deal.id}
+                        onDragStart={(e) => handleDragStart(e, deal.id)}
+                        onDragEnd={handleDragEnd}
+                      />
+                    ))
                   )}
+                </div>
+
+                {/* Stage Footer - Totals */}
+                <div className="p-3 border-t bg-gray-50 dark:bg-muted/30 rounded-b-lg">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Total</p>
+                      <p className="font-semibold text-emerald-600">
+                        £{stats.totalAmount.toLocaleString()}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Weighted</p>
+                      <p className="font-semibold text-blue-600">
+                        £{Math.round(stats.weightedAmount).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Add Deal Dialog */}
+      <Dialog open={showAddDealDialog} onOpenChange={(open) => {
+        setShowAddDealDialog(open);
+        if (!open) {
+          dealForm.reset();
+          setSelectedStageForNewDeal("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create Deal</DialogTitle>
+          </DialogHeader>
+          <Form {...dealForm}>
+            <form onSubmit={dealForm.handleSubmit(handleAddDealSubmit)} className="space-y-4">
+              <FormField
+                control={dealForm.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Deal Name *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g. Laptop Refresh Project" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={dealForm.control}
+                name="companyId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Associated Company *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a company" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {companies?.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            {company.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={dealForm.control}
+                name="stageId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Pipeline Stage *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a stage" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {stages?.map((stage) => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-2 w-2 rounded-full"
+                                style={{ backgroundColor: stage.color }}
+                              />
+                              {stage.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={dealForm.control}
+                  name="expectedGP"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount (£)</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="e.g. 5000" {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={dealForm.control}
+                  name="decisionTimeline"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Close Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={dealForm.control}
+                name="budgetStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Budget Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="confirmed">Confirmed</SelectItem>
+                        <SelectItem value="indicative">Indicative</SelectItem>
+                        <SelectItem value="unknown">Unknown</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={dealForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notes</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Add any notes..." className="min-h-[80px]" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowAddDealDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700"
+                  disabled={addDealMutation.isPending}
+                >
+                  {addDealMutation.isPending ? "Creating..." : "Create Deal"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function PipelineCard({
-  company,
+function DealCard({
+  deal,
   isDragging,
   onDragStart,
   onDragEnd,
 }: {
-  company: CompanyWithStage;
+  deal: DealWithCompanyAndStage;
   isDragging: boolean;
   onDragStart: (e: DragEvent) => void;
-  onDragEnd: () => void;
+  onDragEnd: (e: DragEvent) => void;
 }) {
   return (
     <div
@@ -171,60 +656,72 @@ function PipelineCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={`transition-all duration-200 ${
-        isDragging ? "opacity-50 scale-95" : "opacity-100"
+        isDragging ? "opacity-50 scale-[0.98] rotate-1" : "opacity-100"
       }`}
     >
-      <Link href={`/company/${company.id}`} data-testid={`link-pipeline-company-${company.id}`}>
-        <Card
-          className="p-3 cursor-grab active:cursor-grabbing hover-elevate group"
-          data-testid={`pipeline-card-${company.id}`}
-        >
-          <div className="space-y-2">
-            <div className="flex items-start gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10 flex-shrink-0">
-                <Building2 className="h-4 w-4 text-primary" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1">
-                  <GripVertical className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                  <h4 className="font-medium text-sm truncate" data-testid={`text-pipeline-company-${company.id}`}>
-                    {company.name}
-                  </h4>
-                </div>
-                {company.location && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    {company.location}
-                  </p>
-                )}
-              </div>
+      <Card
+        className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 group bg-white dark:bg-card"
+        data-testid={`pipeline-card-${deal.id}`}
+      >
+        <div className="space-y-2.5">
+          {/* Drag handle and Deal title */}
+          <div className="flex items-start gap-2">
+            <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <Link href={`/company/${deal.companyId}`}>
+                <h4
+                  className="font-semibold text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer truncate"
+                  data-testid={`text-pipeline-deal-${deal.id}`}
+                >
+                  {deal.title}
+                </h4>
+              </Link>
             </div>
-
-            <div className="space-y-1.5 text-xs text-muted-foreground">
-              {company.lastContactDate && (
-                <div className="flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" />
-                  <span>
-                    Last contact: {formatDistanceToNow(new Date(company.lastContactDate), { addSuffix: true })}
-                  </span>
-                </div>
-              )}
-              {company.nextAction && (
-                <div className="flex items-center gap-1.5">
-                  <ArrowRight className="h-3 w-3" />
-                  <span className="truncate">{company.nextAction}</span>
-                </div>
-              )}
-            </div>
-
-            {company.lastQuoteValue && (
-              <div className="text-xs font-medium text-green-600">
-                Quote: ${parseFloat(company.lastQuoteValue).toLocaleString()}
-              </div>
-            )}
           </div>
-        </Card>
-      </Link>
+
+          {/* Amount */}
+          {deal.expectedGP && (
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+              <span className="text-sm font-bold text-emerald-600">
+                £{parseFloat(deal.expectedGP).toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          {/* Close date */}
+          {deal.decisionTimeline && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Calendar className="h-3 w-3" />
+              <span>Close: {format(new Date(deal.decisionTimeline), "MMM d, yyyy")}</span>
+            </div>
+          )}
+
+          {/* Deal owner - placeholder */}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <User className="h-3 w-3" />
+            <span>Unassigned</span>
+          </div>
+
+          {/* Create date */}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>Created {formatDistanceToNow(new Date(deal.createdAt), { addSuffix: true })}</span>
+          </div>
+
+          {/* Associated company */}
+          {deal.company && (
+            <div className="pt-2 border-t">
+              <Link href={`/company/${deal.companyId}`}>
+                <div className="flex items-center gap-1.5 text-xs hover:text-blue-600 cursor-pointer">
+                  <Building2 className="h-3 w-3" />
+                  <span className="font-medium truncate">{deal.company.name}</span>
+                </div>
+              </Link>
+            </div>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
