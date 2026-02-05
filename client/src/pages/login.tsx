@@ -53,17 +53,17 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-background dark:bg-[#1a1d29] p-4">
+      <Card className="w-full max-w-md dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
-              <Building2 className="h-7 w-7 text-primary-foreground" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0091AE]">
+              <Building2 className="h-7 w-7 text-white" />
             </div>
           </div>
           <div>
-            <CardTitle className="text-2xl">School CRM</CardTitle>
-            <CardDescription className="mt-2">
+            <CardTitle className="text-2xl dark:text-white">School CRM</CardTitle>
+            <CardDescription className="mt-2 dark:text-[#94a3b8]">
               Sign in to access your CRM dashboard
             </CardDescription>
           </div>
@@ -71,32 +71,32 @@ export default function Login({ onLogin }: LoginProps) {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" className="dark:text-[#94a3b8]">Username</Label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-[#64748b]" />
                 <Input
                   id="username"
                   type="text"
                   placeholder="Enter your username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
                   required
                   data-testid="input-username"
                 />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="dark:text-[#94a3b8]">Password</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-[#64748b]" />
                 <Input
                   id="password"
                   type="password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
                   required
                   data-testid="input-password"
                 />
@@ -104,7 +104,7 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white"
               disabled={isLoading}
               data-testid="button-login"
             >

@@ -7,7 +7,9 @@
       "Bash(npm run check:*)",
       "Bash(npm run db:push:*)",
       "Bash(yes:*)",
-      "Bash(timeout 10 npm run dev:*)"
+      "Bash(timeout 10 npm run dev:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl:*)"
     ]
   }
 }

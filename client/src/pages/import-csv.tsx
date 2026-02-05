@@ -116,7 +116,7 @@ export default function ImportCSV() {
     if (delimiter === "\t") {
       return line.split("\t");
     }
-    
+
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
@@ -152,7 +152,7 @@ export default function ImportCSV() {
     reader.onload = (event) => {
       const text = event.target?.result as string;
       const lines = text.split("\n").filter((line) => line.trim());
-      
+
       if (lines.length < 2) {
         toast({ title: "CSV file must have a header row and at least one data row", variant: "destructive" });
         return;
@@ -160,8 +160,8 @@ export default function ImportCSV() {
 
       const delimiter = detectDelimiter(lines[0]);
       const header = parseCSVLine(lines[0], delimiter).map((h) => h.trim().toLowerCase());
-      
-      const nameIndex = header.findIndex((h) => 
+
+      const nameIndex = header.findIndex((h) =>
         h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school") || h === "name"
       );
       const websiteIndex = header.findIndex((h) => h.includes("website"));
@@ -170,10 +170,10 @@ export default function ImportCSV() {
       const trustIndex = header.findIndex((h) => h.includes("trust") || h.includes("academytrustname"));
       const extIndex = header.findIndex((h) => h === "ext" || h.includes("extension"));
       const notesIndex = header.findIndex((h) => h === "notes" || h.includes("note"));
-      const itManagerNameIndex = header.findIndex((h) => 
+      const itManagerNameIndex = header.findIndex((h) =>
         h.includes("it manager name") || h.includes("itmanagername") || h === "it manager name"
       );
-      const itManagerEmailIndex = header.findIndex((h) => 
+      const itManagerEmailIndex = header.findIndex((h) =>
         h.includes("it manager email") || h.includes("itmanageremail") || h === "it manager email"
       );
 
@@ -186,7 +186,7 @@ export default function ImportCSV() {
       for (let i = 1; i < lines.length; i++) {
         const values = parseCSVLine(lines[i], delimiter);
         const name = values[nameIndex]?.trim();
-        
+
         if (name) {
           rows.push({
             name,
@@ -323,19 +323,19 @@ export default function ImportCSV() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 dark:bg-[#1a1d29] min-h-screen">
       <div>
-        <h1 className="text-2xl font-semibold">Import CSV</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl font-semibold dark:text-white">Import CSV</h1>
+        <p className="text-muted-foreground dark:text-[#94a3b8]">
           Import schools and companies from a CSV file
         </p>
       </div>
 
-      <Card>
+      <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader>
-          <CardTitle>Upload CSV File</CardTitle>
-          <CardDescription>
-            Your CSV should have columns for: Company Name, Website, Phone Number, Location, 
+          <CardTitle className="dark:text-white">Upload CSV File</CardTitle>
+          <CardDescription className="dark:text-[#94a3b8]">
+            Your CSV should have columns for: Company Name, Website, Phone Number, Location,
             Academy Trust Name, Ext, Notes, IT Manager Name, IT Manager Email
           </CardDescription>
         </CardHeader>
@@ -352,20 +352,21 @@ export default function ImportCSV() {
                 accept=".csv"
                 onChange={handleFileChange}
                 data-testid="input-csv-file"
+                className="dark:bg-[#252936] dark:border-[#3d4254] dark:text-white file:dark:text-[#94a3b8]"
               />
             </div>
             {file && (
-              <Button variant="ghost" size="icon" onClick={clearFile} data-testid="button-clear-file">
+              <Button variant="ghost" size="icon" onClick={clearFile} data-testid="button-clear-file" className="dark:text-[#94a3b8] dark:hover:bg-[#2d3142]">
                 <X className="h-4 w-4" />
               </Button>
             )}
           </div>
 
           {file && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground dark:text-[#94a3b8]">
               <FileText className="h-4 w-4" />
               <span>{file.name}</span>
-              <Badge variant="secondary">{parsedData.length} rows</Badge>
+              <Badge variant="secondary" className="dark:bg-[#2d3142] dark:text-[#94a3b8] dark:border-[#3d4254]">{parsedData.length} rows</Badge>
             </div>
           )}
 
@@ -373,15 +374,15 @@ export default function ImportCSV() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-end gap-4">
                 <div className="space-y-2">
-                  <Label>Assign to Pipeline Stage (optional)</Label>
+                  <Label className="dark:text-[#94a3b8]">Assign to Pipeline Stage (optional)</Label>
                   <Select value={selectedStage || "none"} onValueChange={(val) => setSelectedStage(val === "none" ? "" : val)}>
-                    <SelectTrigger className="w-[200px]" data-testid="select-import-stage">
+                    <SelectTrigger className="w-[200px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-import-stage">
                       <SelectValue placeholder="Select stage" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No stage</SelectItem>
+                    <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                      <SelectItem value="none" className="dark:text-[#94a3b8] dark:focus:bg-[#2d3142]">No stage</SelectItem>
                       {stages?.map((stage) => (
-                        <SelectItem key={stage.id} value={stage.id}>
+                        <SelectItem key={stage.id} value={stage.id} className="dark:text-white dark:focus:bg-[#2d3142]">
                           {stage.name}
                         </SelectItem>
                       ))}
@@ -389,15 +390,15 @@ export default function ImportCSV() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Duplicate Handling</Label>
+                  <Label className="dark:text-[#94a3b8]">Duplicate Handling</Label>
                   <Select value={updateMode} onValueChange={(val) => setUpdateMode(val as UpdateMode)}>
-                    <SelectTrigger className="w-[200px]" data-testid="select-update-mode">
+                    <SelectTrigger className="w-[200px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-update-mode">
                       <SelectValue placeholder="Select mode" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="skip">Skip duplicates</SelectItem>
-                      <SelectItem value="merge">Merge (fill empty fields)</SelectItem>
-                      <SelectItem value="overwrite">Overwrite existing</SelectItem>
+                    <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                      <SelectItem value="skip" className="dark:text-white dark:focus:bg-[#2d3142]">Skip duplicates</SelectItem>
+                      <SelectItem value="merge" className="dark:text-white dark:focus:bg-[#2d3142]">Merge (fill empty fields)</SelectItem>
+                      <SelectItem value="overwrite" className="dark:text-white dark:focus:bg-[#2d3142]">Overwrite existing</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -405,6 +406,7 @@ export default function ImportCSV() {
                   onClick={handleImport}
                   disabled={importing}
                   data-testid="button-import-csv"
+                  className="bg-[#0091AE] hover:bg-[#007a94] text-white dark:bg-[#0091AE] dark:hover:bg-[#007a94]"
                 >
                   {importing ? (
                     <>
@@ -421,23 +423,23 @@ export default function ImportCSV() {
               </div>
 
               {importResult && (
-                <div className="p-4 rounded-lg bg-muted space-y-2">
-                  <h4 className="font-medium">Import Summary</h4>
+                <div className="p-4 rounded-lg bg-muted dark:bg-[#2d3142] space-y-2">
+                  <h4 className="font-medium dark:text-white">Import Summary</h4>
                   <div className="flex flex-wrap items-center gap-4">
                     {importResult.imported > 0 && (
-                      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                      <div className="flex items-center gap-2 text-green-600 dark:text-[#10b981]">
                         <CheckCircle2 className="h-4 w-4" />
                         <span>{importResult.imported} new schools imported</span>
                       </div>
                     )}
                     {importResult.updated > 0 && (
-                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-[#0091AE]">
                         <RefreshCw className="h-4 w-4" />
                         <span>{importResult.updated} records updated</span>
                       </div>
                     )}
                     {importResult.skipped > 0 && (
-                      <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <div className="flex items-center gap-2 text-amber-600 dark:text-[#f59e0b]">
                         <AlertCircle className="h-4 w-4" />
                         <span>{importResult.skipped} duplicates skipped</span>
                       </div>
@@ -448,7 +450,7 @@ export default function ImportCSV() {
                       variant="outline"
                       size="sm"
                       onClick={() => navigate("/companies")}
-                      className="mt-2"
+                      className="mt-2 dark:border-[#3d4254] dark:text-white dark:hover:bg-[#2d3142]"
                       data-testid="button-view-companies"
                     >
                       View Companies
@@ -459,54 +461,54 @@ export default function ImportCSV() {
               )}
 
               <ScrollArea className="w-full">
-                <div className="border rounded-lg">
+                <div className="border rounded-lg dark:border-[#3d4254]">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead className="min-w-[200px]">Company Name</TableHead>
-                        <TableHead className="min-w-[150px]">Website</TableHead>
-                        <TableHead className="min-w-[120px]">Phone</TableHead>
-                        <TableHead className="min-w-[100px]">Location</TableHead>
-                        <TableHead className="min-w-[150px]">Academy Trust</TableHead>
-                        <TableHead className="min-w-[60px]">Ext</TableHead>
-                        <TableHead className="min-w-[150px]">Notes</TableHead>
-                        <TableHead className="min-w-[120px]">IT Manager</TableHead>
-                        <TableHead className="min-w-[150px]">IT Email</TableHead>
+                      <TableRow className="dark:border-[#3d4254]">
+                        <TableHead className="min-w-[200px] dark:text-[#94a3b8]">Company Name</TableHead>
+                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Website</TableHead>
+                        <TableHead className="min-w-[120px] dark:text-[#94a3b8]">Phone</TableHead>
+                        <TableHead className="min-w-[100px] dark:text-[#94a3b8]">Location</TableHead>
+                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Academy Trust</TableHead>
+                        <TableHead className="min-w-[60px] dark:text-[#94a3b8]">Ext</TableHead>
+                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Notes</TableHead>
+                        <TableHead className="min-w-[120px] dark:text-[#94a3b8]">IT Manager</TableHead>
+                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">IT Email</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {parsedData.slice(0, 10).map((row, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{row.name}</TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
-                            {row.website || "—"}
+                        <TableRow key={index} className="dark:border-[#3d4254] dark:hover:bg-[#2d3142]">
+                          <TableCell className="font-medium dark:text-white">{row.name}</TableCell>
+                          <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
+                            {row.website || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.phone || "—"}
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.phone || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.location || "—"}
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.location || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
-                            {row.academyTrustName || "—"}
+                          <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
+                            {row.academyTrustName || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.ext || "—"}
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.ext || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[150px]">
-                            {row.notes || "—"}
+                          <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
+                            {row.notes || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.itManagerName || "—"}
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.itManagerName || "\u2014"}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {row.itManagerEmail || "—"}
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.itManagerEmail || "\u2014"}
                           </TableCell>
                         </TableRow>
                       ))}
                       {parsedData.length > 10 && (
-                        <TableRow>
-                          <TableCell colSpan={9} className="text-center text-muted-foreground">
+                        <TableRow className="dark:border-[#3d4254]">
+                          <TableCell colSpan={9} className="text-center text-muted-foreground dark:text-[#64748b]">
                             ... and {parsedData.length - 10} more rows
                           </TableCell>
                         </TableRow>
@@ -521,71 +523,71 @@ export default function ImportCSV() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader>
-          <CardTitle>Expected CSV Format</CardTitle>
+          <CardTitle className="dark:text-white">Expected CSV Format</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">
+          <p className="text-sm text-muted-foreground mb-3 dark:text-[#94a3b8]">
             Your CSV should have headers that match these fields (case insensitive):
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-            <div className="bg-muted p-2 rounded">EstablishmentName / Company Name</div>
-            <div className="bg-muted p-2 rounded">SchoolWebsite / Website</div>
-            <div className="bg-muted p-2 rounded">SchoolPhoneNumber / Phone</div>
-            <div className="bg-muted p-2 rounded">Location</div>
-            <div className="bg-muted p-2 rounded">AcademyTrustName</div>
-            <div className="bg-muted p-2 rounded">Ext</div>
-            <div className="bg-muted p-2 rounded">Notes</div>
-            <div className="bg-muted p-2 rounded">IT Manager Name</div>
-            <div className="bg-muted p-2 rounded">IT Manager Email</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">EstablishmentName / Company Name</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">SchoolWebsite / Website</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">SchoolPhoneNumber / Phone</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Location</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">AcademyTrustName</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Ext</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Notes</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Name</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Email</div>
           </div>
         </CardContent>
       </Card>
 
       {/* Import History */}
-      <Card>
+      <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 dark:text-white">
             <History className="h-5 w-5" />
             Import History
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="dark:text-[#94a3b8]">
             View and manage past CSV imports. Deleting an import will remove all companies from that batch.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {importsLoading ? (
-            <p className="text-muted-foreground">Loading...</p>
+            <p className="text-muted-foreground dark:text-[#94a3b8]">Loading...</p>
           ) : csvImports && csvImports.length > 0 ? (
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>File Name</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Imported</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead>Skipped</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                <TableRow className="dark:border-[#3d4254]">
+                  <TableHead className="dark:text-[#94a3b8]">File Name</TableHead>
+                  <TableHead className="dark:text-[#94a3b8]">Date</TableHead>
+                  <TableHead className="dark:text-[#94a3b8]">Imported</TableHead>
+                  <TableHead className="dark:text-[#94a3b8]">Updated</TableHead>
+                  <TableHead className="dark:text-[#94a3b8]">Skipped</TableHead>
+                  <TableHead className="w-[100px] dark:text-[#94a3b8]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {csvImports.map((imp) => (
-                  <TableRow key={imp.id}>
-                    <TableCell className="font-medium">{imp.fileName}</TableCell>
-                    <TableCell>{format(new Date(imp.importedAt), "MMM d, yyyy h:mm a")}</TableCell>
+                  <TableRow key={imp.id} className="dark:border-[#3d4254] dark:hover:bg-[#2d3142]">
+                    <TableCell className="font-medium dark:text-white">{imp.fileName}</TableCell>
+                    <TableCell className="dark:text-[#94a3b8]">{format(new Date(imp.importedAt), "MMM d, yyyy h:mm a")}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                      <Badge variant="secondary" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-[#10b981]">
                         {imp.importedCount}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400">
+                      <Badge variant="secondary" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-[#0091AE]">
                         {imp.updatedCount}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{imp.skippedCount}</Badge>
+                      <Badge variant="outline" className="dark:border-[#3d4254] dark:text-[#94a3b8]">{imp.skippedCount}</Badge>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -597,8 +599,9 @@ export default function ImportCSV() {
                         }}
                         disabled={imp.importedCount === 0}
                         data-testid={`button-delete-import-${imp.id}`}
+                        className="dark:hover:bg-[#2d3142]"
                       >
-                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                        <Trash2 className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -606,16 +609,16 @@ export default function ImportCSV() {
               </TableBody>
             </Table>
           ) : (
-            <p className="text-muted-foreground text-center py-8">No import history yet</p>
+            <p className="text-muted-foreground text-center py-8 dark:text-[#64748b]">No import history yet</p>
           )}
         </CardContent>
       </Card>
 
       <AlertDialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Update Existing Records?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="dark:text-white">Update Existing Records?</AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
               Found {duplicatesWithNewInfo} duplicate school(s) with new information
               (like IT Manager details) that the existing records don't have.
               <br /><br />
@@ -623,16 +626,23 @@ export default function ImportCSV() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setShowUpdateDialog(false);
-              toast({
-                title: "Import Complete",
-                description: `Imported ${importResult?.imported || 0} new schools, skipped ${importResult?.skipped || 0} duplicates`
-              });
-            }}>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowUpdateDialog(false);
+                toast({
+                  title: "Import Complete",
+                  description: `Imported ${importResult?.imported || 0} new schools, skipped ${importResult?.skipped || 0} duplicates`
+                });
+              }}
+              className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+            >
               Skip Updates
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => performImport("merge")} data-testid="button-update-existing">
+            <AlertDialogAction
+              onClick={() => performImport("merge")}
+              data-testid="button-update-existing"
+              className="bg-[#0091AE] hover:bg-[#007a94] text-white dark:bg-[#0091AE] dark:hover:bg-[#007a94]"
+            >
               Update Existing Records
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -640,10 +650,10 @@ export default function ImportCSV() {
       </AlertDialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Import?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="dark:text-white">Delete Import?</AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
               This will permanently delete all {importToDelete?.importedCount || 0} companies
               that were imported from "{importToDelete?.fileName}".
               <br /><br />
@@ -651,15 +661,18 @@ export default function ImportCSV() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setShowDeleteDialog(false);
-              setImportToDelete(null);
-            }}>
+            <AlertDialogCancel
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setImportToDelete(null);
+              }}
+              className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+            >
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => importToDelete && deleteImportMutation.mutate(importToDelete.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-[#ef4444] dark:text-white dark:hover:bg-[#dc2626]"
               data-testid="button-confirm-delete-import"
             >
               Delete Import

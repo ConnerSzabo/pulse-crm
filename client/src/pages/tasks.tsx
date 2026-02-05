@@ -97,13 +97,13 @@ export default function TasksPage() {
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high":
-        return "text-red-600 dark:text-red-400";
+        return "text-red-600 dark:text-[#ef4444]";
       case "medium":
-        return "text-amber-600 dark:text-amber-400";
+        return "text-amber-600 dark:text-[#f59e0b]";
       case "low":
-        return "text-green-600 dark:text-green-400";
+        return "text-green-600 dark:text-[#10b981]";
       default:
-        return "text-muted-foreground";
+        return "text-muted-foreground dark:text-[#64748b]";
     }
   };
 
@@ -120,69 +120,82 @@ export default function TasksPage() {
     }
   };
 
+  const getPriorityBadgeClass = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return "dark:bg-[#ef4444]/20 dark:text-[#ef4444] dark:border-[#ef4444]/30";
+      case "medium":
+        return "dark:bg-[#f59e0b]/20 dark:text-[#f59e0b] dark:border-[#f59e0b]/30";
+      case "low":
+        return "dark:bg-[#10b981]/20 dark:text-[#10b981] dark:border-[#10b981]/30";
+      default:
+        return "dark:bg-[#252936] dark:text-[#94a3b8] dark:border-[#3d4254]";
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400">Completed</Badge>;
+        return <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-[#10b981]/20 dark:text-[#10b981] dark:border-[#10b981]/30">Completed</Badge>;
       case "in_progress":
-        return <Badge variant="secondary">In Progress</Badge>;
+        return <Badge variant="secondary" className="dark:bg-[#0091AE]/20 dark:text-[#06b6d4] dark:border-[#0091AE]/30">In Progress</Badge>;
       case "todo":
       default:
-        return <Badge variant="outline">To Do</Badge>;
+        return <Badge variant="outline" className="dark:bg-[#252936] dark:text-[#94a3b8] dark:border-[#3d4254]">To Do</Badge>;
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 dark:bg-[#1a1d29] min-h-screen">
       <div>
-        <h1 className="text-2xl font-semibold">Tasks</h1>
-        <p className="text-muted-foreground">Manage tasks across all schools</p>
+        <h1 className="text-2xl font-semibold dark:text-white">Tasks</h1>
+        <p className="text-muted-foreground dark:text-[#94a3b8]">Manage tasks across all schools</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-[#64748b]" />
           <Input
             placeholder="Search tasks..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 dark:bg-[#252936] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
             data-testid="input-search-tasks"
           />
         </div>
         <Select value={schoolFilter} onValueChange={setSchoolFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-school-filter">
+          <SelectTrigger className="w-[180px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-school-filter">
             <SelectValue placeholder="Filter by school" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Schools</SelectItem>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+            <SelectItem value="all" className="dark:text-white dark:focus:bg-[#2d3142]">All Schools</SelectItem>
             {companies?.map((company) => (
-              <SelectItem key={company.id} value={company.id}>
+              <SelectItem key={company.id} value={company.id} className="dark:text-white dark:focus:bg-[#2d3142]">
                 {company.name}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-status-filter">
+          <SelectTrigger className="w-[140px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-status-filter">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="todo">To Do</SelectItem>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+            <SelectItem value="all" className="dark:text-white dark:focus:bg-[#2d3142]">All Status</SelectItem>
+            <SelectItem value="todo" className="dark:text-white dark:focus:bg-[#2d3142]">To Do</SelectItem>
+            <SelectItem value="in_progress" className="dark:text-white dark:focus:bg-[#2d3142]">In Progress</SelectItem>
+            <SelectItem value="completed" className="dark:text-white dark:focus:bg-[#2d3142]">Completed</SelectItem>
           </SelectContent>
         </Select>
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-priority-filter">
+          <SelectTrigger className="w-[140px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-priority-filter">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Priority</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+            <SelectItem value="all" className="dark:text-white dark:focus:bg-[#2d3142]">All Priority</SelectItem>
+            <SelectItem value="high" className="dark:text-white dark:focus:bg-[#2d3142]">High</SelectItem>
+            <SelectItem value="medium" className="dark:text-white dark:focus:bg-[#2d3142]">Medium</SelectItem>
+            <SelectItem value="low" className="dark:text-white dark:focus:bg-[#2d3142]">Low</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex items-center gap-2">
@@ -191,8 +204,9 @@ export default function TasksPage() {
             checked={showOverdueOnly}
             onCheckedChange={(checked) => setShowOverdueOnly(checked === true)}
             data-testid="checkbox-overdue-only"
+            className="dark:border-[#3d4254] dark:data-[state=checked]:bg-[#0091AE] dark:data-[state=checked]:border-[#0091AE]"
           />
-          <label htmlFor="overdue-only" className="text-sm cursor-pointer">
+          <label htmlFor="overdue-only" className="text-sm cursor-pointer dark:text-[#94a3b8]">
             Overdue only
           </label>
         </div>
@@ -201,40 +215,40 @@ export default function TasksPage() {
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-14 w-full" />
+            <Skeleton key={i} className="h-14 w-full dark:bg-[#3d4254]" />
           ))}
         </div>
       ) : sortedTasks?.length === 0 ? (
-        <Card className="p-8 text-center">
-          <ListTodo className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No tasks found</h3>
-          <p className="text-muted-foreground">
-            {tasks?.length === 0 
-              ? "Create tasks from individual school records" 
+        <Card className="p-8 text-center dark:bg-[#252936] dark:border-[#3d4254]">
+          <ListTodo className="h-12 w-12 mx-auto text-muted-foreground dark:text-[#64748b] mb-4" />
+          <h3 className="text-lg font-medium mb-2 dark:text-white">No tasks found</h3>
+          <p className="text-muted-foreground dark:text-[#94a3b8]">
+            {tasks?.length === 0
+              ? "Create tasks from individual school records"
               : "Try adjusting your filters"}
           </p>
         </Card>
       ) : (
-        <Card>
+        <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-12"></TableHead>
-                <TableHead>Task</TableHead>
-                <TableHead>School</TableHead>
-                <TableHead>Due Date</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="w-12"></TableHead>
+              <TableRow className="dark:border-[#3d4254] dark:hover:bg-[#2d3142]">
+                <TableHead className="w-12 dark:text-[#94a3b8]"></TableHead>
+                <TableHead className="dark:text-[#94a3b8]">Task</TableHead>
+                <TableHead className="dark:text-[#94a3b8]">School</TableHead>
+                <TableHead className="dark:text-[#94a3b8]">Due Date</TableHead>
+                <TableHead className="dark:text-[#94a3b8]">Priority</TableHead>
+                <TableHead className="dark:text-[#94a3b8]">Status</TableHead>
+                <TableHead className="w-12 dark:text-[#94a3b8]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedTasks?.map((task) => {
+              {sortedTasks?.map((task, index) => {
                 const overdue = task.status !== "completed" && isOverdue(task.dueDate);
                 return (
                   <TableRow
                     key={task.id}
-                    className={task.status === "completed" ? "opacity-60" : ""}
+                    className={`${task.status === "completed" ? "opacity-60" : ""} ${index % 2 === 0 ? "dark:bg-[#252936]" : "dark:bg-[#1a1d29]"} dark:border-[#3d4254] dark:hover:bg-[#2d3142]`}
                     data-testid={`row-task-${task.id}`}
                   >
                     <TableCell>
@@ -242,17 +256,18 @@ export default function TasksPage() {
                         checked={task.status === "completed"}
                         onCheckedChange={() => toggleComplete(task)}
                         data-testid={`checkbox-complete-${task.id}`}
+                        className="dark:border-[#3d4254] dark:data-[state=checked]:bg-[#0091AE] dark:data-[state=checked]:border-[#0091AE]"
                       />
                     </TableCell>
                     <TableCell>
-                      <span className={task.status === "completed" ? "line-through text-muted-foreground" : ""}>
+                      <span className={`${task.status === "completed" ? "line-through text-muted-foreground dark:text-[#64748b]" : "dark:text-white"}`}>
                         {task.name}
                       </span>
                     </TableCell>
                     <TableCell>
                       <Link
                         href={`/company/${task.companyId}`}
-                        className="text-primary hover:underline"
+                        className="text-[#0091AE] hover:underline"
                         data-testid={`link-school-${task.companyId}`}
                       >
                         {task.company?.name || "Unknown"}
@@ -260,16 +275,16 @@ export default function TasksPage() {
                     </TableCell>
                     <TableCell>
                       {task.dueDate ? (
-                        <span className={overdue ? "text-red-600 dark:text-red-400 font-medium" : ""}>
+                        <span className={overdue ? "text-[#ef4444] font-medium" : "dark:text-[#94a3b8]"}>
                           {overdue && <AlertTriangle className="inline h-3 w-3 mr-1" />}
                           {format(new Date(task.dueDate), "MMM d, yyyy")}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">No due date</span>
+                        <span className="text-muted-foreground dark:text-[#64748b]">No due date</span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={getPriorityBadgeVariant(task.priority)}>
+                      <Badge variant={getPriorityBadgeVariant(task.priority)} className={getPriorityBadgeClass(task.priority)}>
                         {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                       </Badge>
                     </TableCell>
@@ -278,7 +293,7 @@ export default function TasksPage() {
                     </TableCell>
                     <TableCell>
                       <Link href={`/company/${task.companyId}`}>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
                       </Link>
                     </TableCell>
                   </TableRow>

@@ -53,11 +53,11 @@ export function AppSidebar() {
   };
 
   return (
-    <aside className="w-[220px] bg-[#2d3e50] flex flex-col h-screen flex-shrink-0">
+    <aside className="w-[220px] bg-[#2d3142] flex flex-col h-screen flex-shrink-0">
       {/* Logo */}
-      <div className="p-4 border-b border-white/10">
+      <div className="p-4 border-b border-[#3d4254]">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-cyan-400 to-cyan-600 flex items-center justify-center">
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center shadow-lg">
             <Building2 className="h-4 w-4 text-white" />
           </div>
           <span className="font-semibold text-white text-lg">Wave CRM</span>
@@ -67,7 +67,7 @@ export function AppSidebar() {
       {/* Main Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
         <div className="px-3 mb-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b] px-3">
             Main
           </span>
         </div>
@@ -80,8 +80,8 @@ export function AppSidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
                   isActive(item.url)
-                    ? "bg-white/15 text-white font-medium"
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                    ? "bg-[#0091AE]/20 text-[#0091AE] font-medium"
+                    : "text-[#94a3b8] hover:bg-[#3d4254] hover:text-white"
                 )}
               >
                 <item.icon className="h-[18px] w-[18px]" />
@@ -92,7 +92,7 @@ export function AppSidebar() {
         </ul>
 
         <div className="px-3 mt-6 mb-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40 px-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b] px-3">
             Tools
           </span>
         </div>
@@ -105,8 +105,8 @@ export function AppSidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
                   isActive(item.url)
-                    ? "bg-white/15 text-white font-medium"
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                    ? "bg-[#0091AE]/20 text-[#0091AE] font-medium"
+                    : "text-[#94a3b8] hover:bg-[#3d4254] hover:text-white"
                 )}
               >
                 <item.icon className="h-[18px] w-[18px]" />
@@ -118,8 +118,8 @@ export function AppSidebar() {
       </nav>
 
       {/* Bottom section */}
-      <div className="border-t border-white/10 p-3">
-        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-md text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors">
+      <div className="border-t border-[#3d4254] p-3">
+        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-md text-sm text-[#94a3b8] hover:bg-[#3d4254] hover:text-white transition-colors">
           <HelpCircle className="h-[18px] w-[18px]" />
           <span>Help & Support</span>
         </button>

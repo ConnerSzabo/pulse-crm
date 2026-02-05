@@ -71,17 +71,17 @@ type AddCompanyForm = z.infer<typeof addCompanySchema>;
 
 type CompanyWithStage = Company & { stage?: PipelineStage };
 
-type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone";
+type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry";
 type SortDirection = "asc" | "desc";
 
-// Lead Status options with colors
+// Lead Status options with colors - dark mode uses solid colored backgrounds with white text
 const leadStatusOptions = [
-  { value: "0-unqualified", label: "0 - Unqualified", color: "bg-gray-100 text-gray-700", dotColor: "bg-gray-400" },
-  { value: "1-qualified", label: "1 - Qualified", color: "bg-blue-100 text-blue-700", dotColor: "bg-blue-500" },
-  { value: "2-intent", label: "2 - Intent", color: "bg-orange-100 text-orange-700", dotColor: "bg-orange-500" },
-  { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-green-100 text-green-700", dotColor: "bg-green-500" },
-  { value: "3b-quoted-lost", label: "3b - Quoted Lost", color: "bg-red-100 text-red-700", dotColor: "bg-red-500" },
-  { value: "4-account-active", label: "4 - Account Active", color: "bg-emerald-100 text-emerald-800", dotColor: "bg-emerald-600" },
+  { value: "0-unqualified", label: "0 - Unqualified", color: "bg-gray-200 text-gray-700 border-gray-300 dark:bg-gray-600 dark:text-white dark:border-gray-500", dotColor: "bg-gray-500 dark:bg-gray-300" },
+  { value: "1-qualified", label: "1 - Qualified", color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-[#0091AE] dark:text-white dark:border-[#0091AE]", dotColor: "bg-blue-500 dark:bg-white" },
+  { value: "2-intent", label: "2 - Intent", color: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-[#f59e0b] dark:text-white dark:border-[#f59e0b]", dotColor: "bg-orange-500 dark:bg-white" },
+  { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-green-100 text-green-800 border-green-200 dark:bg-[#10b981] dark:text-white dark:border-[#10b981]", dotColor: "bg-green-500 dark:bg-white" },
+  { value: "3b-quoted-lost", label: "3b - Quoted Lost", color: "bg-red-100 text-red-800 border-red-200 dark:bg-[#ef4444] dark:text-white dark:border-[#ef4444]", dotColor: "bg-red-500 dark:bg-white" },
+  { value: "4-account-active", label: "4 - Account Active", color: "bg-emerald-200 text-emerald-900 border-emerald-300 dark:bg-emerald-700 dark:text-white dark:border-emerald-600", dotColor: "bg-emerald-600 dark:bg-white" },
 ];
 
 export default function Companies() {
@@ -181,7 +181,10 @@ export default function Companies() {
     const option = leadStatusOptions.find(opt => opt.value === effectiveStatus);
     if (option) {
       return (
-        <Badge className={`${option.color} hover:${option.color} text-xs font-medium`}>
+        <Badge
+          className={`${option.color} border text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap shadow-sm`}
+        >
+          <span className={`inline-block w-2 h-2 rounded-full ${option.dotColor} mr-1.5`} />
           {option.label}
         </Badge>
       );
@@ -261,6 +264,17 @@ export default function Companies() {
         case "phone":
           comparison = (a.phone || "").localeCompare(b.phone || "");
           break;
+        case "owner":
+          // Currently static owner, but ready for future implementation
+          comparison = 0;
+          break;
+        case "country":
+          // Currently static country, but ready for future implementation
+          comparison = 0;
+          break;
+        case "industry":
+          comparison = (a.academyTrustName || "").localeCompare(b.academyTrustName || "");
+          break;
       }
       return sortDirection === "asc" ? comparison : -comparison;
     });
@@ -319,17 +333,21 @@ export default function Companies() {
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <button
       onClick={() => handleSort(field)}
-      className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 transition-colors"
+      className={`flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider transition-colors whitespace-nowrap ${
+        sortField === field
+          ? "text-blue-600 dark:text-blue-400"
+          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+      }`}
     >
       {children}
       {sortField === field ? (
         sortDirection === "asc" ? (
-          <ArrowUp className="h-3.5 w-3.5 text-blue-600" />
+          <ArrowUp className="h-3.5 w-3.5" />
         ) : (
-          <ArrowDown className="h-3.5 w-3.5 text-blue-600" />
+          <ArrowDown className="h-3.5 w-3.5" />
         )
       ) : (
-        <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
+        <ArrowUpDown className="h-3.5 w-3.5 opacity-50" />
       )}
     </button>
   );
@@ -345,432 +363,457 @@ export default function Companies() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-background">
-      {/* Top Bar */}
-      <div className="bg-white dark:bg-card border-b px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-gray-800 dark:text-foreground">
-              Companies
-            </h1>
-            <Badge variant="secondary" className="text-xs">
-              {totalCompanies}
-            </Badge>
-          </div>
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-[#1a1d29]">
+      {/* Top Bar - HubSpot Style */}
+      <div className="bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254]">
+        {/* Header Row */}
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-[#3d4254]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                Companies
+              </h1>
+              <Badge variant="secondary" className="text-sm font-medium dark:bg-[#3d4254] dark:text-[#94a3b8]">
+                {totalCompanies} records
+              </Badge>
+            </div>
 
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                data-testid="button-add-company"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add company
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add New Company</DialogTitle>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Company Name *</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Enter company name"
-                              data-testid="input-company-name"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="website"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Website</FormLabel>
-                          <FormControl>
-                            <Input placeholder="https://example.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="phone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter phone number" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="location"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>City / Location</FormLabel>
-                          <FormControl>
-                            <Input placeholder="City or address" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="academyTrustName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Academy Trust / Industry</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Trust name or industry" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="stageId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Pipeline Stage</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  className="bg-[#0091AE] hover:bg-[#007a94] text-white font-medium shadow-sm"
+                  data-testid="button-add-company"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Company
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Add New Company</DialogTitle>
+                </DialogHeader>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Company Name *</FormLabel>
                             <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a stage" />
-                              </SelectTrigger>
+                              <Input
+                                placeholder="Enter company name"
+                                data-testid="input-company-name"
+                                {...field}
+                              />
                             </FormControl>
-                            <SelectContent>
-                              {stages?.map((stage) => (
-                                <SelectItem key={stage.id} value={stage.id}>
-                                  {stage.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <Button
-                    type="submit"
-                    className="w-full bg-blue-600 hover:bg-blue-700"
-                    disabled={createMutation.isPending}
-                    data-testid="button-submit-company"
-                  >
-                    {createMutation.isPending ? "Adding..." : "Add Company"}
-                  </Button>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="website"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Website</FormLabel>
+                            <FormControl>
+                              <Input placeholder="https://example.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Phone Number</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Enter phone number" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="location"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>City / Location</FormLabel>
+                            <FormControl>
+                              <Input placeholder="City or address" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="academyTrustName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Academy Trust / Industry</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Trust name or industry" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="stageId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Pipeline Stage</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a stage" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {stages?.map((stage) => (
+                                  <SelectItem key={stage.id} value={stage.id}>
+                                    {stage.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white"
+                      disabled={createMutation.isPending}
+                      data-testid="button-submit-company"
+                    >
+                      {createMutation.isPending ? "Adding..." : "Add Company"}
+                    </Button>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        {/* Search and Filters Row */}
+        <div className="px-6 py-3 flex items-center gap-4">
+          {/* Full-width Search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#64748b]" />
             <Input
               type="search"
-              placeholder="Search companies..."
+              placeholder="Search companies by name, location, phone, or industry..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
                 setCurrentPage(1);
               }}
-              className="pl-10 h-9"
+              className="pl-10 h-10 w-full border-gray-300 dark:border-[#3d4254] dark:bg-[#1a1d29] dark:text-white dark:placeholder:text-[#64748b] focus:border-[#0091AE] focus:ring-[#0091AE]"
               data-testid="input-search-companies"
             />
           </div>
 
-          {/* Owner Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-2">
-                <User className="h-4 w-4" />
-                Owner
-                {ownerFilter !== "all" && (
-                  <Badge variant="secondary" className="ml-1 h-5 px-1">1</Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel>Filter by Owner</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setOwnerFilter("all")}>
-                All owners
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setOwnerFilter("me")}>
-                My companies
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setOwnerFilter("unassigned")}>
-                Unassigned
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Filter Dropdowns */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Owner Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
+                  <User className="h-4 w-4" />
+                  Owner
+                  {ownerFilter !== "all" && (
+                    <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Filter by Owner</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setOwnerFilter("all")}>
+                  All owners
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setOwnerFilter("me")}>
+                  My companies
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setOwnerFilter("unassigned")}>
+                  Unassigned
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* Lead Status Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-2">
-                <Filter className="h-4 w-4" />
-                Lead Status
-                {leadStatusFilter !== "all" && (
-                  <Badge variant="secondary" className="ml-1 h-5 px-1">1</Badge>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel>Filter by Lead Status</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setLeadStatusFilter("all"); setCurrentPage(1); }}>
-                <span className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-gray-300" />
-                  All statuses
-                </span>
-              </DropdownMenuItem>
-              {leadStatusOptions.map((option) => (
-                <DropdownMenuItem
-                  key={option.value}
-                  onClick={() => { setLeadStatusFilter(option.value); setCurrentPage(1); }}
-                >
+            {/* Lead Status Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
+                  <Filter className="h-4 w-4" />
+                  Lead Status
+                  {leadStatusFilter !== "all" && (
+                    <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Filter by Lead Status</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { setLeadStatusFilter("all"); setCurrentPage(1); }}>
                   <span className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${option.dotColor}`} />
-                    {option.label}
+                    <span className="h-2.5 w-2.5 rounded-full bg-gray-300" />
+                    All statuses
                   </span>
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {leadStatusOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onClick={() => { setLeadStatusFilter(option.value); setCurrentPage(1); }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${option.dotColor}`} />
+                      {option.label}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          {/* Date Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-2">
-                <Calendar className="h-4 w-4" />
-                Date
-                {dateFilter !== "all" && (
-                  <Badge variant="secondary" className="ml-1 h-5 px-1">1</Badge>
-                )}
+            {/* Date Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
+                  <Calendar className="h-4 w-4" />
+                  Create Date
+                  {dateFilter !== "all" && (
+                    <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Filter by Create Date</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { setDateFilter("all"); setCurrentPage(1); }}>
+                  All time
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setDateFilter("today"); setCurrentPage(1); }}>
+                  Today
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setDateFilter("week"); setCurrentPage(1); }}>
+                  Last 7 days
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setDateFilter("month"); setCurrentPage(1); }}>
+                  Last 30 days
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-10 text-[#0091AE] hover:text-[#06b6d4] hover:bg-[#0091AE]/10 dark:hover:bg-[#0091AE]/20"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear all
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel>Filter by Create Date</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setDateFilter("all"); setCurrentPage(1); }}>
-                All time
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setDateFilter("today"); setCurrentPage(1); }}>
-                Today
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setDateFilter("week"); setCurrentPage(1); }}>
-                Last 7 days
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setDateFilter("month"); setCurrentPage(1); }}>
-                Last 30 days
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearFilters}
-              className="h-9 text-gray-500 hover:text-gray-700"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Clear
-            </Button>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {loadingCompanies ? (
-          <div className="p-6 space-y-3 bg-white dark:bg-card">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-14 w-full" />
+          <div className="p-6 space-y-2 bg-white dark:bg-[#252936]">
+            <div className="flex items-center gap-4 mb-4">
+              <Skeleton className="h-5 w-5 rounded dark:bg-[#3d4254]" />
+              <Skeleton className="h-5 w-[200px] dark:bg-[#3d4254]" />
+              <Skeleton className="h-5 w-[150px] dark:bg-[#3d4254]" />
+              <Skeleton className="h-5 w-[100px] dark:bg-[#3d4254]" />
+              <Skeleton className="h-5 w-[120px] dark:bg-[#3d4254]" />
+            </div>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <div key={i} className="flex items-center gap-4 py-3 border-b border-gray-100 dark:border-[#3d4254]">
+                <Skeleton className="h-5 w-5 rounded dark:bg-[#3d4254]" />
+                <Skeleton className="h-8 w-8 rounded-md dark:bg-[#3d4254]" />
+                <Skeleton className="h-5 w-[180px] dark:bg-[#3d4254]" />
+                <Skeleton className="h-6 w-6 rounded-full dark:bg-[#3d4254]" />
+                <Skeleton className="h-4 w-[100px] dark:bg-[#3d4254]" />
+                <Skeleton className="h-4 w-[90px] dark:bg-[#3d4254]" />
+                <Skeleton className="h-4 w-[100px] dark:bg-[#3d4254]" />
+                <Skeleton className="h-4 w-[80px] dark:bg-[#3d4254]" />
+                <Skeleton className="h-6 w-[120px] rounded-full dark:bg-[#3d4254]" />
+              </div>
             ))}
           </div>
         ) : paginatedCompanies.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-card">
-            <Building2 className="h-16 w-16 text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-800 dark:text-foreground mb-2">
+          <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-[#252936]">
+            <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-[#3d4254] flex items-center justify-center mb-6">
+              <Building2 className="h-10 w-10 text-gray-400 dark:text-[#64748b]" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
               {hasActiveFilters ? "No companies match your filters" : "No companies yet"}
             </h3>
-            <p className="text-gray-500 mb-4">
-              {hasActiveFilters ? "Try adjusting your filters" : "Add your first company to get started"}
+            <p className="text-gray-500 dark:text-[#94a3b8] mb-6 text-center max-w-md">
+              {hasActiveFilters
+                ? "Try adjusting or clearing your filters to see more results"
+                : "Get started by adding your first company to the CRM"}
             </p>
             {hasActiveFilters ? (
-              <Button variant="outline" onClick={clearFilters}>
-                Clear filters
+              <Button variant="outline" onClick={clearFilters} className="border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-white dark:hover:bg-[#2d3142]">
+                Clear all filters
               </Button>
             ) : (
               <Button
                 onClick={() => setDialogOpen(true)}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-[#0091AE] hover:bg-[#007a94] text-white shadow-sm"
                 data-testid="button-add-first-company"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Add company
+                Add your first company
               </Button>
             )}
           </div>
         ) : (
-          <div className="bg-white dark:bg-card">
-            <table className="w-full">
-              <thead className="bg-gray-50 dark:bg-muted/50 sticky top-0 z-10">
-                <tr className="border-b">
-                  <th className="w-12 px-4 py-3">
+          <div className="bg-white dark:bg-[#252936] border-x border-gray-200 dark:border-[#3d4254]">
+            <table className="w-full table-fixed">
+              <thead className="bg-gray-50 dark:bg-[#2d3142] sticky top-0 z-10 border-b border-gray-200 dark:border-[#3d4254]">
+                <tr>
+                  <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
                     <Checkbox
                       checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
                       onCheckedChange={handleSelectAll}
                     />
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[200px]">
+                  <th className="text-left px-4 py-3 w-[220px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="name">Company Name</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[150px]">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Company Owner
-                    </span>
+                  <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
+                    <SortableHeader field="owner">Company Owner</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[120px]">
+                  <th className="text-left px-4 py-3 w-[120px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="createdAt">Create Date</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[130px]">
+                  <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="phone">Phone Number</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[140px]">
-                    <SortableHeader field="lastContactDate">Last Activity</SortableHeader>
+                  <th className="text-left px-4 py-3 w-[150px] border-r border-gray-100 dark:border-[#3d4254]">
+                    <SortableHeader field="lastContactDate">Last Activity Date</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[100px]">
+                  <th className="text-left px-4 py-3 w-[100px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="location">City</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[120px]">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Country/Region
-                    </span>
+                  <th className="text-left px-4 py-3 w-[130px] border-r border-gray-100 dark:border-[#3d4254]">
+                    <SortableHeader field="country">Country/Region</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[160px]">
+                  <th className="text-left px-4 py-3 w-[170px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="budgetStatus">Lead Status</SortableHeader>
                   </th>
-                  <th className="text-left px-4 py-3 min-w-[120px]">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      Industry
-                    </span>
+                  <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
+                    <SortableHeader field="industry">Industry</SortableHeader>
                   </th>
                   <th className="w-12 px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100 dark:divide-[#3d4254]">
                 {paginatedCompanies.map((company, index) => (
                   <tr
                     key={company.id}
-                    className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-muted/50 transition-colors ${
-                      index % 2 === 1 ? "bg-gray-50/50 dark:bg-muted/20" : "bg-white dark:bg-card"
-                    }`}
+                    className={`group transition-colors cursor-pointer ${
+                      index % 2 === 0
+                        ? "bg-white dark:bg-[#252936]"
+                        : "bg-gray-50/70 dark:bg-[#1a1d29]"
+                    } hover:bg-blue-50/50 dark:hover:bg-[#2d3142]`}
                     data-testid={`row-company-${company.id}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       <Checkbox
                         checked={selectedIds.has(company.id)}
                         onCheckedChange={() => handleSelectOne(company.id)}
+                        onClick={(e) => e.stopPropagation()}
                       />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       <Link
                         href={`/company/${company.id}`}
-                        className="flex items-center gap-3 group"
+                        className="flex items-center gap-3"
                         data-testid={`link-company-${company.id}`}
                       >
-                        <div className="w-8 h-8 rounded bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
-                          <Building2 className="h-4 w-4 text-blue-600" />
+                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#0091AE]/20 to-[#06b6d4]/20 dark:from-[#0091AE]/30 dark:to-[#06b6d4]/30 flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <Building2 className="h-4 w-4 text-[#0091AE]" />
                         </div>
                         <span
-                          className="font-semibold text-blue-600 group-hover:underline truncate"
+                          className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate"
                           data-testid={`text-company-name-${company.id}`}
                         >
                           {company.name}
                         </span>
                       </Link>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                          <span className="text-[10px] font-semibold text-white">CS</span>
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center flex-shrink-0 shadow-sm">
+                          <span className="text-[10px] font-bold text-white">CS</span>
                         </div>
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                        <span className="text-sm text-gray-700 dark:text-[#94a3b8] truncate">
                           Conner Szabo
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
                         {formatDate(company.createdAt)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       {company.phone ? (
                         <a
                           href={`tel:${company.phone}`}
-                          className="text-sm text-blue-600 hover:underline"
+                          className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {company.phone}
                         </a>
                       ) : (
-                        <span className="text-sm text-gray-400">--</span>
+                        <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
-                        {formatDateTime(company.lastContactDate)}
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
+                        {formatDate(company.lastContactDate)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
                         {company.location || "--"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
                         United Kingdom
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       {getLeadStatusBadge(company.budgetStatus)}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
                         {company.academyTrustName || "--"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <button className="p-1.5 hover:bg-gray-100 dark:hover:bg-muted rounded transition-colors">
-                            <MoreHorizontal className="h-4 w-4 text-gray-500" />
+                          <button className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#3d4254] rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                            <MoreHorizontal className="h-4 w-4 text-gray-500 dark:text-[#94a3b8]" />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
@@ -803,13 +846,10 @@ export default function Companies() {
         )}
       </div>
 
-      {/* Pagination */}
+      {/* Pagination - HubSpot Style */}
       {totalCompanies > 0 && (
-        <div className="bg-white dark:bg-card border-t px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-            <span>
-              Showing {(currentPage - 1) * perPage + 1} - {Math.min(currentPage * perPage, totalCompanies)} of {totalCompanies}
-            </span>
+        <div className="bg-white dark:bg-[#252936] border-t border-gray-200 dark:border-[#3d4254] px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#94a3b8]">
             <Select
               value={perPage.toString()}
               onValueChange={(v) => {
@@ -817,7 +857,7 @@ export default function Companies() {
                 setCurrentPage(1);
               }}
             >
-              <SelectTrigger className="w-[120px] h-8">
+              <SelectTrigger className="w-[130px] h-9 border-gray-300 dark:border-[#3d4254] dark:bg-[#1a1d29] dark:text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -827,39 +867,42 @@ export default function Companies() {
                 <SelectItem value="100">100 per page</SelectItem>
               </SelectContent>
             </Select>
+            <span className="text-gray-500 dark:text-[#64748b] ml-2">
+              {(currentPage - 1) * perPage + 1}-{Math.min(currentPage * perPage, totalCompanies)} of {totalCompanies}
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="h-8"
+              className="h-9 px-3 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-white dark:hover:bg-[#2d3142] disabled:opacity-50"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Prev
             </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            <div className="flex items-center">
+              {Array.from({ length: Math.min(7, totalPages) }, (_, i) => {
                 let page: number;
-                if (totalPages <= 5) {
+                if (totalPages <= 7) {
                   page = i + 1;
-                } else if (currentPage <= 3) {
+                } else if (currentPage <= 4) {
                   page = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  page = totalPages - 4 + i;
+                } else if (currentPage >= totalPages - 3) {
+                  page = totalPages - 6 + i;
                 } else {
-                  page = currentPage - 2 + i;
+                  page = currentPage - 3 + i;
                 }
                 return (
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`min-w-[32px] h-8 px-2 text-sm rounded transition-colors ${
+                    className={`min-w-[36px] h-9 px-3 text-sm font-medium rounded-md transition-colors mx-0.5 ${
                       currentPage === page
-                        ? "bg-blue-600 text-white"
-                        : "hover:bg-gray-100 dark:hover:bg-muted text-gray-700 dark:text-gray-300"
+                        ? "bg-[#0091AE] text-white shadow-sm"
+                        : "text-gray-700 dark:text-[#94a3b8] hover:bg-gray-100 dark:hover:bg-[#2d3142]"
                     }`}
                   >
                     {page}
@@ -872,7 +915,7 @@ export default function Companies() {
               size="sm"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="h-8"
+              className="h-9 px-3 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-white dark:hover:bg-[#2d3142] disabled:opacity-50"
             >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />

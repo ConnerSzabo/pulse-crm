@@ -118,8 +118,8 @@ function CollapsibleSection({
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b">
-      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors">
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b dark:border-[#3d4254]">
+      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 dark:hover:bg-[#2d3142] transition-colors">
         <div className="flex items-center gap-2">
           {isOpen ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -127,7 +127,7 @@ function CollapsibleSection({
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           )}
           <Icon className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium text-sm">{title}</span>
+          <span className="font-medium text-sm dark:text-white">{title}</span>
           <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
             {count}
           </Badge>
@@ -136,7 +136,7 @@ function CollapsibleSection({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            className="h-7 px-2 text-[#0091AE] hover:text-[#007a94] hover:bg-blue-50 dark:hover:bg-[#2d3142]"
             onClick={(e) => {
               e.stopPropagation();
               onAdd();
@@ -733,16 +733,16 @@ export default function CompanyDetail() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-background">
+    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
       {/* LEFT SIDEBAR - ~250px */}
-      <div className="w-64 bg-white dark:bg-card border-r flex flex-col">
+      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col">
         {/* Back button */}
-        <div className="p-4 border-b">
+        <div className="p-4 border-b dark:border-[#3d4254]">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate("/companies")}
-            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 -ml-2"
+            className="text-[#0091AE] hover:text-[#007a94] hover:bg-blue-50 dark:hover:bg-[#2d3142] -ml-2"
             data-testid="button-back-to-companies"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -751,8 +751,8 @@ export default function CompanyDetail() {
         </div>
 
         {/* Company name and quick actions */}
-        <div className="p-4 border-b">
-          <h1 className="text-lg font-bold mb-1" data-testid="text-company-detail-name">
+        <div className="p-4 border-b dark:border-[#3d4254]">
+          <h1 className="text-lg font-bold mb-1 dark:text-white" data-testid="text-company-detail-name">
             {company.name}
           </h1>
           {totalExpectedGP > 0 && (
@@ -900,29 +900,29 @@ export default function CompanyDetail() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Tabs */}
         <Tabs defaultValue="activities" className="flex-1 flex flex-col">
-          <div className="bg-white dark:bg-card border-b px-6">
+          <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6">
             <TabsList className="h-12 bg-transparent border-0 p-0 gap-6">
               <TabsTrigger
                 value="about"
-                className="h-12 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none px-0 text-sm font-medium"
+                className="h-12 border-b-2 border-transparent data-[state=active]:border-[#0091AE] data-[state=active]:bg-transparent data-[state=active]:text-[#0091AE] dark:text-[#94a3b8] dark:data-[state=active]:text-[#0091AE] rounded-none px-0 text-sm font-medium"
               >
                 About
               </TabsTrigger>
               <TabsTrigger
                 value="activities"
-                className="h-12 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none px-0 text-sm font-medium"
+                className="h-12 border-b-2 border-transparent data-[state=active]:border-[#0091AE] data-[state=active]:bg-transparent data-[state=active]:text-[#0091AE] dark:text-[#94a3b8] dark:data-[state=active]:text-[#0091AE] rounded-none px-0 text-sm font-medium"
               >
                 Activities
               </TabsTrigger>
               <TabsTrigger
                 value="revenue"
-                className="h-12 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none px-0 text-sm font-medium"
+                className="h-12 border-b-2 border-transparent data-[state=active]:border-[#0091AE] data-[state=active]:bg-transparent data-[state=active]:text-[#0091AE] dark:text-[#94a3b8] dark:data-[state=active]:text-[#0091AE] rounded-none px-0 text-sm font-medium"
               >
                 Revenue
               </TabsTrigger>
               <TabsTrigger
                 value="intelligence"
-                className="h-12 border-b-2 border-transparent data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none px-0 text-sm font-medium"
+                className="h-12 border-b-2 border-transparent data-[state=active]:border-[#0091AE] data-[state=active]:bg-transparent data-[state=active]:text-[#0091AE] dark:text-[#94a3b8] dark:data-[state=active]:text-[#0091AE] rounded-none px-0 text-sm font-medium"
               >
                 Intelligence
               </TabsTrigger>
@@ -980,7 +980,7 @@ export default function CompanyDetail() {
           {/* Activities Tab */}
           <TabsContent value="activities" className="flex-1 flex flex-col overflow-hidden m-0">
             {/* Search and filters */}
-            <div className="bg-white dark:bg-card border-b px-6 py-3">
+            <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-3">
               <div className="flex items-center gap-4">
                 <div className="relative flex-1 max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1006,8 +1006,8 @@ export default function CompanyDetail() {
                       variant={activityFilter === filter.key ? "default" : "ghost"}
                       className={`h-8 px-3 text-xs ${
                         activityFilter === filter.key
-                          ? "bg-blue-600 hover:bg-blue-700"
-                          : ""
+                          ? "bg-[#0091AE] hover:bg-[#007a94] text-white"
+                          : "dark:text-[#94a3b8] dark:hover:bg-[#2d3142]"
                       }`}
                       onClick={() => setActivityFilter(filter.key)}
                     >
@@ -1029,7 +1029,7 @@ export default function CompanyDetail() {
                         <CheckCircle2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
                         <p>No tasks yet</p>
                         <Button
-                          className="mt-3 bg-blue-600 hover:bg-blue-700"
+                          className="mt-3 bg-[#0091AE] hover:bg-[#007a94]"
                           onClick={() => setShowAddTaskDialog(true)}
                         >
                           <Plus className="h-4 w-4 mr-2" />
@@ -1038,7 +1038,7 @@ export default function CompanyDetail() {
                       </div>
                     ) : (
                       company.tasks?.map((task) => (
-                        <Card key={task.id} className={`${isTaskOverdue(task) ? "border-red-200 bg-red-50/50" : ""}`}>
+                        <Card key={task.id} className={`dark:bg-[#252936] dark:border-[#3d4254] ${isTaskOverdue(task) ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
                           <CardContent className="p-4">
                             <div className="flex items-center gap-3">
                               <Checkbox
@@ -1087,7 +1087,7 @@ export default function CompanyDetail() {
                   </div>
                 ) : (
                   <div className="relative">
-                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-gray-700" />
+                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-[#3d4254]" />
                     <div className="space-y-4">
                       {filteredActivities.map((activity) => (
                         <div
@@ -1095,10 +1095,10 @@ export default function CompanyDetail() {
                           className="relative pl-10"
                           data-testid={`card-activity-${activity.id}`}
                         >
-                          <div className={`absolute left-2 top-4 h-5 w-5 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center ring-4 ring-white dark:ring-gray-900`}>
+                          <div className={`absolute left-2 top-4 h-5 w-5 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center ring-4 ring-white dark:ring-[#1a1d29]`}>
                             <span className="text-white scale-75">{getActivityIcon(activity.type)}</span>
                           </div>
-                          <Card className="hover:shadow-md transition-shadow">
+                          <Card className="hover:shadow-md transition-shadow dark:bg-[#252936] dark:border-[#3d4254]">
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
@@ -1116,7 +1116,7 @@ export default function CompanyDetail() {
                                     )}
                                   </div>
                                   {activity.note && (
-                                    <p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300 mt-2">
+                                    <p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-[#94a3b8] mt-2">
                                       {activity.note}
                                     </p>
                                   )}

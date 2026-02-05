@@ -259,14 +259,14 @@ export default function Pipeline() {
 
   if (loadingDeals || loadingStages) {
     return (
-      <div className="h-full flex flex-col">
-        <div className="p-4 border-b bg-white dark:bg-card">
-          <Skeleton className="h-10 w-full max-w-md" />
+      <div className="h-full flex flex-col bg-gray-50 dark:bg-[#1a1d29]">
+        <div className="p-4 border-b bg-white dark:bg-[#252936] dark:border-[#3d4254]">
+          <Skeleton className="h-10 w-full max-w-md dark:bg-[#3d4254]" />
         </div>
         <div className="flex-1 p-4">
           <div className="flex gap-4">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <Skeleton key={i} className="h-[500px] w-[300px] flex-shrink-0" />
+              <Skeleton key={i} className="h-[500px] w-[300px] flex-shrink-0 dark:bg-[#252936]" />
             ))}
           </div>
         </div>
@@ -282,25 +282,25 @@ export default function Pipeline() {
   const totalDeals = deals?.length || 0;
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-background">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-[#1a1d29]">
       {/* Top Controls Bar */}
-      <div className="bg-white dark:bg-card border-b px-4 py-3">
+      <div className="bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254] px-4 py-3">
         <div className="flex items-center justify-between gap-4">
           {/* Left side controls */}
           <div className="flex items-center gap-3 flex-1">
             {/* Search */}
             <div className="relative max-w-xs flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
               <Input
                 placeholder="Search deals..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9"
+                className="pl-9 h-9 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
               />
             </div>
 
             {/* Board View Toggle */}
-            <Button variant="outline" size="sm" className="h-9 gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2 dark:bg-[#252936] dark:border-[#3d4254] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white">
               <LayoutGrid className="h-4 w-4" />
               Board view
               <ChevronDown className="h-3 w-3" />
@@ -309,45 +309,45 @@ export default function Pipeline() {
             {/* Filters */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-2">
+                <Button variant="outline" size="sm" className="h-9 gap-2 dark:bg-[#252936] dark:border-[#3d4254] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white">
                   <Filter className="h-4 w-4" />
                   Filters
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>All deals</DropdownMenuItem>
-                <DropdownMenuItem>My deals</DropdownMenuItem>
-                <DropdownMenuItem>High value (&gt; £10k)</DropdownMenuItem>
-                <DropdownMenuItem>Closing this month</DropdownMenuItem>
+              <DropdownMenuContent align="start" className="w-48 dark:bg-[#252936] dark:border-[#3d4254]">
+                <DropdownMenuLabel className="dark:text-[#94a3b8]">Filter by</DropdownMenuLabel>
+                <DropdownMenuSeparator className="dark:bg-[#3d4254]" />
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]">All deals</DropdownMenuItem>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]">My deals</DropdownMenuItem>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]">High value (&gt; £10k)</DropdownMenuItem>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]">Closing this month</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
             {/* Sort */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-2">
+                <Button variant="outline" size="sm" className="h-9 gap-2 dark:bg-[#252936] dark:border-[#3d4254] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white">
                   <ArrowUpDown className="h-4 w-4" />
                   Sort
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => { setSortBy("created"); setSortOrder("desc"); }}>
+              <DropdownMenuContent align="start" className="w-48 dark:bg-[#252936] dark:border-[#3d4254]">
+                <DropdownMenuLabel className="dark:text-[#94a3b8]">Sort by</DropdownMenuLabel>
+                <DropdownMenuSeparator className="dark:bg-[#3d4254]" />
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={() => { setSortBy("created"); setSortOrder("desc"); }}>
                   Newest first
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("created"); setSortOrder("asc"); }}>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={() => { setSortBy("created"); setSortOrder("asc"); }}>
                   Oldest first
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("amount"); setSortOrder("desc"); }}>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={() => { setSortBy("amount"); setSortOrder("desc"); }}>
                   Highest value
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("amount"); setSortOrder("asc"); }}>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={() => { setSortBy("amount"); setSortOrder("asc"); }}>
                   Lowest value
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setSortBy("close"); setSortOrder("asc"); }}>
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={() => { setSortBy("close"); setSortOrder("asc"); }}>
                   Closing soon
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -357,15 +357,15 @@ export default function Pipeline() {
           {/* Right side - Stats and Add button */}
           <div className="flex items-center gap-4">
             <div className="text-right hidden md:block">
-              <p className="text-xs text-muted-foreground">{totalDeals} deals</p>
-              <p className="text-sm font-semibold text-emerald-600">
+              <p className="text-xs text-muted-foreground dark:text-[#64748b]">{totalDeals} deals</p>
+              <p className="text-sm font-semibold text-[#10b981]">
                 £{totalPipelineValue.toLocaleString()}
               </p>
             </div>
 
             <Button
               onClick={() => setShowAddDealDialog(true)}
-              className="bg-blue-600 hover:bg-blue-700 h-9"
+              className="bg-[#0091AE] hover:bg-[#007a94] text-white h-9"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add deal
@@ -385,8 +385,8 @@ export default function Pipeline() {
             return (
               <div
                 key={stage.id}
-                className={`w-[300px] flex-shrink-0 flex flex-col bg-white dark:bg-card rounded-lg shadow-sm transition-all duration-200 ${
-                  isDropTarget ? "ring-2 ring-blue-500 ring-offset-2" : ""
+                className={`w-[300px] flex-shrink-0 flex flex-col bg-white dark:bg-[#252936] rounded-lg shadow-sm dark:border dark:border-[#3d4254] transition-all duration-200 ${
+                  isDropTarget ? "ring-2 ring-[#0091AE] ring-offset-2 dark:ring-offset-[#1a1d29]" : ""
                 }`}
                 data-testid={`pipeline-column-${stage.id}`}
                 onDragOver={(e) => handleDragOver(e, stage.id)}
@@ -395,20 +395,20 @@ export default function Pipeline() {
               >
                 {/* Stage Header */}
                 <div
-                  className="p-3 border-b rounded-t-lg"
+                  className="p-3 border-b dark:border-[#3d4254] rounded-t-lg"
                   style={{ borderTopColor: stage.color, borderTopWidth: "3px" }}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm">{stage.name}</span>
-                      <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+                      <span className="font-semibold text-sm dark:text-white">{stage.name}</span>
+                      <Badge variant="secondary" className="h-5 px-1.5 text-xs dark:bg-[#3d4254] dark:text-[#94a3b8]">
                         {stats.count}
                       </Badge>
                     </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7"
+                      className="h-7 w-7 dark:text-[#94a3b8] dark:hover:bg-[#3d4254] dark:hover:text-white"
                       onClick={() => openAddDealWithStage(stage.id)}
                     >
                       <Plus className="h-4 w-4" />
@@ -419,15 +419,15 @@ export default function Pipeline() {
                 {/* Stage Content - Scrollable */}
                 <div
                   className={`flex-1 overflow-y-auto p-2 space-y-2 min-h-[200px] transition-colors duration-200 ${
-                    isDropTarget ? "bg-blue-50 dark:bg-blue-950/20" : "bg-gray-50/50 dark:bg-muted/20"
+                    isDropTarget ? "bg-blue-50 dark:bg-[#0091AE]/10" : "bg-gray-50/50 dark:bg-[#1a1d29]/50"
                   }`}
                 >
                   {stageDeals.length === 0 ? (
                     <div
-                      className={`text-center py-12 text-muted-foreground text-xs border-2 border-dashed rounded-lg transition-colors ${
+                      className={`text-center py-12 text-muted-foreground dark:text-[#64748b] text-xs border-2 border-dashed rounded-lg transition-colors ${
                         isDropTarget
-                          ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30"
-                          : "border-gray-200 dark:border-gray-700"
+                          ? "border-[#0091AE] bg-[#0091AE]/10"
+                          : "border-gray-200 dark:border-[#3d4254]"
                       }`}
                     >
                       {isDropTarget ? "Drop deal here" : "No deals in this stage"}
@@ -446,17 +446,17 @@ export default function Pipeline() {
                 </div>
 
                 {/* Stage Footer - Totals */}
-                <div className="p-3 border-t bg-gray-50 dark:bg-muted/30 rounded-b-lg">
+                <div className="p-3 border-t bg-gray-50 dark:bg-[#2d3142] dark:border-[#3d4254] rounded-b-lg">
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-muted-foreground">Total</p>
-                      <p className="font-semibold text-emerald-600">
+                      <p className="text-muted-foreground dark:text-[#64748b]">Total</p>
+                      <p className="font-semibold text-[#10b981]">
                         £{stats.totalAmount.toLocaleString()}
                       </p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground">Weighted</p>
-                      <p className="font-semibold text-blue-600">
+                      <p className="text-muted-foreground dark:text-[#64748b]">Weighted</p>
+                      <p className="font-semibold text-[#0091AE]">
                         £{Math.round(stats.weightedAmount).toLocaleString()}
                       </p>
                     </div>
@@ -625,7 +625,7 @@ export default function Pipeline() {
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-[#0091AE] hover:bg-[#007a94] text-white"
                   disabled={addDealMutation.isPending}
                 >
                   {addDealMutation.isPending ? "Creating..." : "Create Deal"}
@@ -660,17 +660,17 @@ function DealCard({
       }`}
     >
       <Card
-        className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 group bg-white dark:bg-card"
+        className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 group bg-white dark:bg-[#252936] dark:border-[#3d4254] dark:hover:border-[#4d5264]"
         data-testid={`pipeline-card-${deal.id}`}
       >
         <div className="space-y-2.5">
           {/* Drag handle and Deal title */}
           <div className="flex items-start gap-2">
-            <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5" />
+            <GripVertical className="h-4 w-4 text-muted-foreground dark:text-[#64748b] opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <Link href={`/company/${deal.companyId}`}>
                 <h4
-                  className="font-semibold text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer truncate"
+                  className="font-semibold text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline cursor-pointer truncate"
                   data-testid={`text-pipeline-deal-${deal.id}`}
                 >
                   {deal.title}
@@ -682,8 +682,8 @@ function DealCard({
           {/* Amount */}
           {deal.expectedGP && (
             <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
-              <span className="text-sm font-bold text-emerald-600">
+              <DollarSign className="h-3.5 w-3.5 text-[#10b981]" />
+              <span className="text-sm font-bold text-[#10b981]">
                 £{parseFloat(deal.expectedGP).toLocaleString()}
               </span>
             </div>
@@ -691,29 +691,29 @@ function DealCard({
 
           {/* Close date */}
           {deal.decisionTimeline && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground dark:text-[#94a3b8]">
               <Calendar className="h-3 w-3" />
               <span>Close: {format(new Date(deal.decisionTimeline), "MMM d, yyyy")}</span>
             </div>
           )}
 
           {/* Deal owner - placeholder */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground dark:text-[#94a3b8]">
             <User className="h-3 w-3" />
             <span>Unassigned</span>
           </div>
 
           {/* Create date */}
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground dark:text-[#64748b]">
             <Clock className="h-3 w-3" />
             <span>Created {formatDistanceToNow(new Date(deal.createdAt), { addSuffix: true })}</span>
           </div>
 
           {/* Associated company */}
           {deal.company && (
-            <div className="pt-2 border-t">
+            <div className="pt-2 border-t dark:border-[#3d4254]">
               <Link href={`/company/${deal.companyId}`}>
-                <div className="flex items-center gap-1.5 text-xs hover:text-blue-600 cursor-pointer">
+                <div className="flex items-center gap-1.5 text-xs dark:text-[#94a3b8] hover:text-[#0091AE] cursor-pointer">
                   <Building2 className="h-3 w-3" />
                   <span className="font-medium truncate">{deal.company.name}</span>
                 </div>

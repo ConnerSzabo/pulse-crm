@@ -162,132 +162,132 @@ export default function Dashboard() {
 
   if (loadingCompanies) {
     return (
-      <div className="p-6 space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-96 w-full" />
+      <div className="p-6 space-y-6 bg-gray-50 dark:bg-[#1a1d29] min-h-full">
+        <Skeleton className="h-8 w-48 dark:bg-[#3d4254]" />
+        <Skeleton className="h-10 w-full dark:bg-[#3d4254]" />
+        <Skeleton className="h-96 w-full dark:bg-[#3d4254]" />
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-gray-50 dark:bg-[#1a1d29] min-h-full">
       <div>
-        <h1 className="text-2xl font-semibold">Wave Systems CRM</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Wave Systems CRM</h1>
+        <p className="text-muted-foreground dark:text-[#94a3b8]">
           Managing {companies?.length || 0} schools in your pipeline
         </p>
       </div>
 
       {/* Business Intelligence Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card data-testid="card-pipeline-value">
+        <Card data-testid="card-pipeline-value" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pipeline Value</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Pipeline Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-[#10b981]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold dark:text-white">
               £{(pipelineValueData?.value || 0).toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">Active quotes total</p>
+            <p className="text-xs text-muted-foreground dark:text-[#64748b]">Active quotes total</p>
           </CardContent>
         </Card>
 
-        <Card data-testid="card-gp-this-month">
+        <Card data-testid="card-gp-this-month" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">GP This Month</CardTitle>
-            <TrendingUp className="h-4 w-4 text-emerald-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">GP This Month</CardTitle>
+            <TrendingUp className="h-4 w-4 text-[#10b981]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            <div className="text-2xl font-bold text-[#10b981]">
               £{(gpThisMonthData?.value || 0).toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">Gross profit from won deals</p>
+            <p className="text-xs text-muted-foreground dark:text-[#64748b]">Gross profit from won deals</p>
           </CardContent>
         </Card>
 
-        <Card data-testid="card-calls-today">
+        <Card data-testid="card-calls-today" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Calls Today</CardTitle>
-            <Phone className="h-4 w-4 text-blue-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Calls Today</CardTitle>
+            <Phone className="h-4 w-4 text-[#0091AE]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{todayStatsData?.callsMade || 0}</div>
-            <p className="text-xs text-muted-foreground">Logged call activities</p>
+            <div className="text-2xl font-bold dark:text-white">{todayStatsData?.callsMade || 0}</div>
+            <p className="text-xs text-muted-foreground dark:text-[#64748b]">Logged call activities</p>
           </CardContent>
         </Card>
 
-        <Card data-testid="card-needs-followup">
+        <Card data-testid="card-needs-followup" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Needs Follow-up</CardTitle>
-            <Users className="h-4 w-4 text-amber-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Needs Follow-up</CardTitle>
+            <Users className="h-4 w-4 text-[#f59e0b]" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${(dealsNeedingFollowup?.length || 0) > 0 ? "text-amber-600 dark:text-amber-400" : ""}`}>
+            <div className={`text-2xl font-bold ${(dealsNeedingFollowup?.length || 0) > 0 ? "text-[#f59e0b]" : "dark:text-white"}`}>
               {dealsNeedingFollowup?.length || 0}
             </div>
-            <p className="text-xs text-muted-foreground">Quoted 3+ days ago</p>
+            <p className="text-xs text-muted-foreground dark:text-[#64748b]">Quoted 3+ days ago</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Task Widgets */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card data-testid="card-tasks-due-today">
+        <Card data-testid="card-tasks-due-today" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Tasks Due Today</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Tasks Due Today</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{tasksDueToday?.length || 0}</div>
+            <div className="text-2xl font-bold dark:text-white">{tasksDueToday?.length || 0}</div>
           </CardContent>
         </Card>
 
-        <Card data-testid="card-overdue-tasks">
+        <Card data-testid="card-overdue-tasks" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Overdue Tasks</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Overdue Tasks</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-[#ef4444]" />
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold ${(overdueTasks?.length || 0) > 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+            <div className={`text-2xl font-bold ${(overdueTasks?.length || 0) > 0 ? "text-[#ef4444]" : "dark:text-white"}`}>
               {overdueTasks?.length || 0}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2" data-testid="card-upcoming-tasks">
+        <Card className="md:col-span-2 dark:bg-[#252936] dark:border-[#3d4254]" data-testid="card-upcoming-tasks">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Next 5 Upcoming Tasks</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Next 5 Upcoming Tasks</CardTitle>
             <Link href="/tasks">
-              <div className="flex items-center gap-1 text-xs text-primary hover:underline">
+              <div className="flex items-center gap-1 text-xs text-[#0091AE] hover:underline">
                 View all <ChevronRight className="h-3 w-3" />
               </div>
             </Link>
           </CardHeader>
           <CardContent>
             {upcomingTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No upcoming tasks</p>
+              <p className="text-sm text-muted-foreground dark:text-[#64748b]">No upcoming tasks</p>
             ) : (
               <div className="space-y-2">
                 {upcomingTasks.map((task) => {
                   const today = startOfToday();
                   const isOverdue = task.dueDate && isBefore(new Date(task.dueDate), today);
                   const isDueToday = task.dueDate && isToday(new Date(task.dueDate));
-                  
+
                   return (
                     <div key={task.id} className="flex items-center justify-between gap-2 text-sm">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate font-medium">{task.name}</span>
+                        <span className="truncate font-medium dark:text-white">{task.name}</span>
                         <Link href={`/company/${task.companyId}`}>
-                          <span className="text-muted-foreground hover:text-primary hover:underline truncate text-xs">
+                          <span className="text-muted-foreground dark:text-[#94a3b8] hover:text-[#0091AE] hover:underline truncate text-xs">
                             {task.company?.name}
                           </span>
                         </Link>
                       </div>
                       <div className={`flex-shrink-0 text-xs ${
-                        isOverdue ? "text-red-600 dark:text-red-400" : 
-                        isDueToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                        isOverdue ? "text-[#ef4444]" :
+                        isDueToday ? "text-[#f59e0b]" : "text-muted-foreground dark:text-[#64748b]"
                       }`}>
                         {isOverdue && <AlertTriangle className="inline h-3 w-3 mr-1" />}
                         {task.dueDate && format(new Date(task.dueDate), "MMM d")}
@@ -303,21 +303,21 @@ export default function Dashboard() {
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[250px]">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground dark:text-[#64748b]" />
           <Input
             placeholder="Search schools, locations, trusts, IT managers..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="pl-10 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
             data-testid="input-dashboard-search"
           />
         </div>
 
         <Select value={locationFilter} onValueChange={setLocationFilter}>
-          <SelectTrigger className="w-[150px]" data-testid="select-filter-location">
+          <SelectTrigger className="w-[150px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-filter-location">
             <SelectValue placeholder="Location" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
             <SelectItem value="all">All Locations</SelectItem>
             {uniqueLocations.map((loc) => (
               <SelectItem key={loc} value={loc}>
@@ -328,10 +328,10 @@ export default function Dashboard() {
         </Select>
 
         <Select value={stageFilter} onValueChange={setStageFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-filter-stage">
+          <SelectTrigger className="w-[180px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-filter-stage">
             <SelectValue placeholder="Pipeline Stage" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
             <SelectItem value="all">All Stages</SelectItem>
             {stages?.map((stage) => (
               <SelectItem key={stage.id} value={stage.id}>
@@ -348,10 +348,10 @@ export default function Dashboard() {
         </Select>
 
         <Select value={trustFilter} onValueChange={setTrustFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-filter-trust">
+          <SelectTrigger className="w-[180px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-filter-trust">
             <SelectValue placeholder="Academy Trust" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
             <SelectItem value="all">All Trusts</SelectItem>
             {uniqueTrusts.map((trust) => (
               <SelectItem key={trust} value={trust}>
@@ -362,10 +362,10 @@ export default function Dashboard() {
         </Select>
 
         <Select value={hasITManagerFilter} onValueChange={setHasITManagerFilter}>
-          <SelectTrigger className="w-[160px]" data-testid="select-filter-it-manager">
+          <SelectTrigger className="w-[160px] dark:bg-[#252936] dark:border-[#3d4254] dark:text-white" data-testid="select-filter-it-manager">
             <SelectValue placeholder="IT Manager" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="yes">Has IT Manager</SelectItem>
             <SelectItem value="no">No IT Manager</SelectItem>
@@ -373,14 +373,14 @@ export default function Dashboard() {
         </Select>
       </div>
 
-      <div className="text-sm text-muted-foreground">
+      <div className="text-sm text-muted-foreground dark:text-[#94a3b8]">
         Showing {filteredAndSortedCompanies.length} of {companies?.length || 0} schools
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-hidden dark:border-[#3d4254] dark:bg-[#252936]">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30">
+            <TableRow className="bg-muted/30 dark:bg-[#2d3142]">
               <TableHead 
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={() => toggleSort("name")}
@@ -425,38 +425,38 @@ export default function Dashboard() {
           <TableBody>
             {filteredAndSortedCompanies.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12">
-                  <Building2 className="h-10 w-10 mx-auto mb-2 text-muted-foreground opacity-50" />
-                  <p className="text-muted-foreground">No schools match your filters</p>
+                <TableCell colSpan={7} className="text-center py-12 dark:bg-[#252936]">
+                  <Building2 className="h-10 w-10 mx-auto mb-2 text-muted-foreground dark:text-[#64748b] opacity-50" />
+                  <p className="text-muted-foreground dark:text-[#94a3b8]">No schools match your filters</p>
                 </TableCell>
               </TableRow>
             ) : (
-              filteredAndSortedCompanies.map((company) => (
+              filteredAndSortedCompanies.map((company, index) => (
                 <TableRow
                   key={company.id}
-                  className="cursor-pointer hover:bg-muted/30"
+                  className={`cursor-pointer hover:bg-muted/30 dark:hover:bg-[#2d3142] ${index % 2 === 0 ? 'dark:bg-[#252936]' : 'dark:bg-[#1a1d29]'}`}
                   data-testid={`row-company-${company.id}`}
                 >
-                  <TableCell>
+                  <TableCell className="dark:border-[#3d4254]">
                     <Link href={`/company/${company.id}`}>
-                      <div className="flex items-center gap-2 font-medium text-primary hover:underline">
+                      <div className="flex items-center gap-2 font-medium text-[#0091AE] hover:underline">
                         {company.name}
                         <ExternalLink className="h-3 w-3" />
                       </div>
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground dark:text-[#94a3b8] dark:border-[#3d4254]">
                     {company.location || "—"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-muted-foreground dark:text-[#94a3b8] dark:border-[#3d4254]">
                     {company.academyTrustName || "—"}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="dark:border-[#3d4254]">
                     {company.stage ? (
                       <Badge
                         variant="secondary"
-                        style={{ 
-                          backgroundColor: company.stage.color + "20", 
+                        style={{
+                          backgroundColor: company.stage.color + "20",
                           color: company.stage.color,
                           borderColor: company.stage.color + "40"
                         }}
@@ -464,28 +464,28 @@ export default function Dashboard() {
                         {company.stage.name}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground dark:text-[#64748b]">—</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="dark:border-[#3d4254]">
                     {company.itManagerName ? (
                       <div className="flex items-center gap-1.5">
-                        <Check className="h-3 w-3 text-green-500" />
-                        <span className="text-sm">{company.itManagerName}</span>
+                        <Check className="h-3 w-3 text-[#10b981]" />
+                        <span className="text-sm dark:text-white">{company.itManagerName}</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <div className="flex items-center gap-1.5 text-muted-foreground dark:text-[#64748b]">
                         <X className="h-3 w-3" />
                         <span className="text-sm">No</span>
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
+                  <TableCell className="text-muted-foreground dark:text-[#94a3b8] text-sm dark:border-[#3d4254]">
                     {company.lastContactDate
                       ? formatDistanceToNow(new Date(company.lastContactDate), { addSuffix: true })
                       : "—"}
                   </TableCell>
-                  <TableCell className="text-sm max-w-[200px] truncate">
+                  <TableCell className="text-sm max-w-[200px] truncate dark:text-[#94a3b8] dark:border-[#3d4254]">
                     {company.nextAction || "—"}
                   </TableCell>
                 </TableRow>

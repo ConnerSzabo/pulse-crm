@@ -35,15 +35,15 @@ function Router() {
 
 function TopNavBar({ onLogout, isLoggingOut }: { onLogout: () => void; isLoggingOut: boolean }) {
   return (
-    <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0">
+    <header className="h-14 flex items-center justify-between px-6 flex-shrink-0 bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254]">
       {/* Search */}
       <div className="flex-1 max-w-xl">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#64748b]" />
           <input
             type="search"
             placeholder="Search companies, contacts, deals..."
-            className="w-full h-9 pl-10 pr-4 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-colors"
+            className="w-full h-9 pl-10 pr-4 text-sm rounded-md transition-colors bg-white dark:bg-[#1a1d29] border border-gray-300 dark:border-[#3d4254] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#64748b] focus:outline-none focus:ring-2 focus:ring-[#0091AE]/20 focus:border-[#0091AE]"
           />
         </div>
       </div>
@@ -52,24 +52,24 @@ function TopNavBar({ onLogout, isLoggingOut }: { onLogout: () => void; isLogging
       <div className="flex items-center gap-3">
         <ThemeToggle />
 
-        <button className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+        <button className="relative p-2 rounded-md transition-colors text-gray-500 dark:text-[#94a3b8] hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d3142]">
           <Bell className="h-5 w-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </button>
 
-        <div className="h-6 w-px bg-gray-200" />
+        <div className="h-6 w-px bg-gray-200 dark:bg-[#3d4254]" />
 
         <button
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-[#2d3142]"
           onClick={onLogout}
           disabled={isLoggingOut}
           data-testid="button-logout"
         >
-          <div className="w-7 h-7 rounded-full bg-cyan-600 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-full bg-[#0091AE] flex items-center justify-center">
             <span className="text-xs font-semibold text-white">CS</span>
           </div>
           <span className="font-medium">{isLoggingOut ? "..." : "Conner"}</span>
-          <ChevronDown className="h-4 w-4 text-gray-400" />
+          <ChevronDown className="h-4 w-4 text-gray-400 dark:text-[#64748b]" />
         </button>
       </div>
     </header>
@@ -97,11 +97,11 @@ function AuthenticatedApp() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#f5f8fa]">
+    <div className="flex h-screen w-full bg-[#f5f8fa] dark:bg-[#1a1d29]">
       <AppSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopNavBar onLogout={handleLogout} isLoggingOut={isLoggingOut} />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-[#1a1d29]">
           <Router />
         </main>
       </div>
@@ -133,7 +133,7 @@ function AppContent() {
 
   if (!authChecked || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f5f8fa]">
+      <div className="min-h-screen flex items-center justify-center bg-[#f5f8fa] dark:bg-[#1a1d29]">
         <div className="space-y-4 w-64">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-3/4" />
