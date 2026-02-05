@@ -93,16 +93,18 @@ export const activities = pgTable("activities", {
   companyId: varchar("company_id").references(() => companies.id).notNull(),
   type: text("type").notNull(), // call, email, quote, follow_up, deal_won, deal_lost
   note: text("note"),
-  outcome: text("outcome"), // For calls: connected, voicemail, no_answer, callback_requested
+  outcome: text("outcome"), // For calls: Reception / Voicemail, Decision Maker Details, Connected to DM
   quoteValue: numeric("quote_value", { precision: 12, scale: 2 }), // For quotes
   grossProfit: numeric("gross_profit", { precision: 12, scale: 2 }), // For deals
   loggedBy: text("logged_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  editedAt: timestamp("edited_at"),
 });
 
 export const insertActivitySchema = createInsertSchema(activities).omit({
   id: true,
   createdAt: true,
+  editedAt: true,
 });
 
 export type InsertActivity = z.infer<typeof insertActivitySchema>;

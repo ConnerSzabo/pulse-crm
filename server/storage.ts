@@ -59,9 +59,13 @@ export interface IStorage {
 
   // Activities
   getActivitiesByCompany(companyId: string): Promise<Activity[]>;
+  getActivity(id: string): Promise<Activity | undefined>;
   createActivity(activity: InsertActivity): Promise<Activity>;
+  updateActivity(id: string, data: Partial<InsertActivity> & { editedAt?: Date }): Promise<Activity | undefined>;
   deleteActivity(id: string): Promise<void>;
   getActivitiesThisMonth(type?: string): Promise<Activity[]>;
+  getCallActivities(startDate: Date, endDate: Date): Promise<(Activity & { companyName?: string })[]>;
+  migrateCallOutcomes(): Promise<{ updated: number }>;
 
   // Tasks
   getTasks(): Promise<TaskWithCompany[]>;
@@ -320,13 +324,118 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(activities.createdAt));
   }
 
+  async getActivity(id: string): Promise<Activity | undefined> {
+    const [activity] = await db.select().from(activities).where(eq(activities.id, id));
+    return activity;
+  }
+
   async createActivity(activity: InsertActivity): Promise<Activity> {
     const [result] = await db.insert(activities).values(activity).returning();
     return result;
   }
 
+  async updateActivity(id: string, data: Partial<InsertActivity> & { editedAt?: Date }): Promise<Activity | undefined> {
+    const [result] = await db
+      .update(activities)
+      .set(data)
+      .where(eq(activities.id, id))
+      .returning();
+    return result;
+  }
+
   async deleteActivity(id: string): Promise<void> {
     await db.delete(activities).where(eq(activities.id, id));
+  }
+
+  async getCallActivities(startDate: Date, endDate: Date): Promise<(Activity & { companyName?: string })[]> {
+    const callActivities = await db
+      .select()
+      .from(activities)
+      .where(
+        and(
+          eq(activities.type, "call"),
+          gte(activities.createdAt, startDate),
+          lt(activities.createdAt, endDate)
+        )
+      )
+      .orderBy(desc(activities.createdAt));
+
+    // Get company names
+    const companyIds = Array.from(new Set(callActivities.map(a => a.companyId)));
+    const companiesList = companyIds.length > 0
+      ? await db.select().from(companies).where(inArray(companies.id, companyIds))
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c.name]));
+
+    return callActivities.map(a => ({
+      ...a,
+      companyName: companyMap.get(a.companyId),
+    }));
+  }
+
+  async migrateCallOutcomes(): Promise<{ updated: number }> {
+    // Map old outcomes to new ones
+    const receptionVoicemailOutcomes = ['voicemail', 'no_answer', 'busy', 'wrong_number', 'Reception / Voicemail'];
+    const connectedOutcomes = ['answered', 'connected', 'spoke', 'Connected to DM'];
+    const detailsOutcomes = ['got details', 'info received', 'Decision Maker Details'];
+
+    let updated = 0;
+
+    // Migrate reception/voicemail
+    const r1 = await db.update(activities)
+      .set({ outcome: 'Reception / Voicemail' })
+      .where(
+        and(
+          eq(activities.type, 'call'),
+          inArray(activities.outcome, receptionVoicemailOutcomes)
+        )
+      )
+      .returning();
+    updated += r1.length;
+
+    // Migrate connected to DM
+    const r2 = await db.update(activities)
+      .set({ outcome: 'Connected to DM' })
+      .where(
+        and(
+          eq(activities.type, 'call'),
+          inArray(activities.outcome, connectedOutcomes)
+        )
+      )
+      .returning();
+    updated += r2.length;
+
+    // Migrate decision maker details
+    const r3 = await db.update(activities)
+      .set({ outcome: 'Decision Maker Details' })
+      .where(
+        and(
+          eq(activities.type, 'call'),
+          inArray(activities.outcome, detailsOutcomes)
+        )
+      )
+      .returning();
+    updated += r3.length;
+
+    // Any remaining non-null outcomes that don't match the 3 valid ones → map to Reception / Voicemail
+    const validOutcomes = ['Reception / Voicemail', 'Connected to DM', 'Decision Maker Details'];
+    const remaining = await db.select().from(activities).where(
+      and(
+        eq(activities.type, 'call'),
+        isNotNull(activities.outcome),
+        sql`${activities.outcome} NOT IN ('Reception / Voicemail', 'Connected to DM', 'Decision Maker Details')`
+      )
+    );
+    if (remaining.length > 0) {
+      const remainingIds = remaining.map(r => r.id);
+      const r4 = await db.update(activities)
+        .set({ outcome: 'Reception / Voicemail' })
+        .where(inArray(activities.id, remainingIds))
+        .returning();
+      updated += r4.length;
+    }
+
+    return { updated };
   }
 
   async getActivitiesThisMonth(type?: string): Promise<Activity[]> {

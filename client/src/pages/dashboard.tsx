@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { Activity } from "@shared/schema";
 import { Link } from "wouter";
 import type { Company, PipelineStage, TaskWithCompany } from "@shared/schema";
 import { Input } from "@/components/ui/input";
@@ -70,6 +71,28 @@ export default function Dashboard() {
   const { data: todayStatsData } = useQuery<{ callsMade: number }>({
     queryKey: ["/api/stats/today"],
   });
+
+  // Today's call analytics for enhanced widget
+  const { data: todayCalls } = useQuery<Activity[]>({
+    queryKey: ["/api/call-analytics", "dashboard-today"],
+    queryFn: async () => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      const res = await fetch(`/api/call-analytics?startDate=${start.toISOString()}&endDate=${end.toISOString()}`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
+  const todayCallBreakdown = useMemo(() => {
+    if (!todayCalls) return { connected: 0, details: 0, reception: 0, total: 0, connectRate: 0 };
+    const connected = todayCalls.filter(c => c.outcome === "Connected to DM").length;
+    const details = todayCalls.filter(c => c.outcome === "Decision Maker Details").length;
+    const reception = todayCalls.filter(c => c.outcome === "Reception / Voicemail" || !c.outcome).length;
+    const total = todayCalls.length;
+    return { connected, details, reception, total, connectRate: total > 0 ? (connected / total) * 100 : 0 };
+  }, [todayCalls]);
 
   const { data: dealsNeedingFollowup } = useQuery<CompanyWithStage[]>({
     queryKey: ["/api/dashboard/deals-needing-followup"],
@@ -207,16 +230,32 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card data-testid="card-calls-today" className="dark:bg-[#252936] dark:border-[#3d4254]">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Calls Today</CardTitle>
-            <Phone className="h-4 w-4 text-[#0091AE]" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold dark:text-white">{todayStatsData?.callsMade || 0}</div>
-            <p className="text-xs text-muted-foreground dark:text-[#64748b]">Logged call activities</p>
-          </CardContent>
-        </Card>
+        <Link href="/call-analytics">
+          <Card data-testid="card-calls-today" className="dark:bg-[#252936] dark:border-[#3d4254] cursor-pointer hover:shadow-md transition-shadow group">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Calls Today</CardTitle>
+              <div className="flex items-center gap-1">
+                <Phone className="h-4 w-4 text-[#0091AE]" />
+                <ChevronRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-[#0091AE]" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold dark:text-white">{todayCallBreakdown.total || todayStatsData?.callsMade || 0}</div>
+              {todayCallBreakdown.total > 0 ? (
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-xs text-[#10b981]" title="Connected to DM">{todayCallBreakdown.connected} DM</span>
+                  <span className="text-xs text-[#0091AE]" title="Decision Maker Details">{todayCallBreakdown.details} details</span>
+                  <span className="text-xs text-[#f59e0b]" title="Reception / Voicemail">{todayCallBreakdown.reception} VM</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground dark:text-[#64748b]">Logged call activities</p>
+              )}
+              {todayCallBreakdown.total > 0 && (
+                <p className="text-xs dark:text-[#64748b] mt-0.5">{todayCallBreakdown.connectRate.toFixed(0)}% connect rate</p>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
         <Card data-testid="card-needs-followup" className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

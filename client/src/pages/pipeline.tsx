@@ -16,6 +16,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -48,6 +58,7 @@ import {
   ChevronDown,
   DollarSign,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -81,6 +92,8 @@ export default function Pipeline() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [showAddDealDialog, setShowAddDealDialog] = useState(false);
   const [selectedStageForNewDeal, setSelectedStageForNewDeal] = useState<string>("");
+  const [showDeleteDealDialog, setShowDeleteDealDialog] = useState(false);
+  const [dealToDelete, setDealToDelete] = useState<DealWithCompanyAndStage | null>(null);
 
   const { data: deals, isLoading: loadingDeals } = useQuery<DealWithCompanyAndStage[]>({
     queryKey: ["/api/deals"],
@@ -135,6 +148,19 @@ export default function Pipeline() {
       dealForm.reset();
       setShowAddDealDialog(false);
       toast({ title: "Deal created successfully" });
+    },
+  });
+
+  const deleteDealMutation = useMutation({
+    mutationFn: async (dealId: string) => {
+      return apiRequest("DELETE", `/api/deals/${dealId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      setShowDeleteDealDialog(false);
+      setDealToDelete(null);
+      toast({ title: "Deal deleted successfully" });
     },
   });
 
@@ -440,6 +466,10 @@ export default function Pipeline() {
                         isDragging={draggedDealId === deal.id}
                         onDragStart={(e) => handleDragStart(e, deal.id)}
                         onDragEnd={handleDragEnd}
+                        onDelete={(d) => {
+                          setDealToDelete(d);
+                          setShowDeleteDealDialog(true);
+                        }}
                       />
                     ))
                   )}
@@ -635,6 +665,33 @@ export default function Pipeline() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Deal Confirmation Dialog */}
+      <AlertDialog open={showDeleteDealDialog} onOpenChange={(open) => {
+        setShowDeleteDealDialog(open);
+        if (!open) setDealToDelete(null);
+      }}>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">Delete this deal?</AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
+              This will permanently remove this deal from the pipeline. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteDealMutation.isPending}
+              onClick={() => dealToDelete && deleteDealMutation.mutate(dealToDelete.id)}
+              className="bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700"
+            >
+              {deleteDealMutation.isPending ? "Deleting..." : "Delete Deal"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -644,11 +701,13 @@ function DealCard({
   isDragging,
   onDragStart,
   onDragEnd,
+  onDelete,
 }: {
   deal: DealWithCompanyAndStage;
   isDragging: boolean;
   onDragStart: (e: DragEvent) => void;
   onDragEnd: (e: DragEvent) => void;
+  onDelete: (deal: DealWithCompanyAndStage) => void;
 }) {
   return (
     <div
@@ -660,9 +719,21 @@ function DealCard({
       }`}
     >
       <Card
-        className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 group bg-white dark:bg-[#252936] dark:border-[#3d4254] dark:hover:border-[#4d5264]"
+        className="p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-all duration-200 group relative bg-white dark:bg-[#252936] dark:border-[#3d4254] dark:hover:border-[#4d5264]"
         data-testid={`pipeline-card-${deal.id}`}
       >
+        {/* Delete button - visible on hover */}
+        <button
+          className="absolute top-2 right-2 h-6 w-6 rounded flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 dark:text-[#64748b] dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-[#2d3142] z-10"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onDelete(deal);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
         <div className="space-y-2.5">
           {/* Drag handle and Deal title */}
           <div className="flex items-start gap-2">

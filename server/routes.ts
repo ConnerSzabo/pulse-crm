@@ -574,6 +574,25 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/activities/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { note, outcome, createdAt } = req.body;
+      const updateData: Record<string, unknown> = { editedAt: new Date() };
+      if (note !== undefined) updateData.note = note;
+      if (outcome !== undefined) updateData.outcome = outcome;
+      if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
+
+      const activity = await storage.updateActivity(req.params.id, updateData);
+      if (!activity) {
+        return res.status(404).json({ error: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error) {
+      console.error("Failed to update activity:", error);
+      res.status(500).json({ error: "Failed to update activity" });
+    }
+  });
+
   app.delete("/api/activities/:id", isAuthenticated, async (req, res) => {
     try {
       await storage.deleteActivity(req.params.id);
@@ -599,6 +618,38 @@ export async function registerRoutes(
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to increment call counter" });
+    }
+  });
+
+  // Call Analytics routes
+  app.get("/api/call-analytics", isAuthenticated, async (req, res) => {
+    try {
+      const startDateStr = req.query.startDate as string;
+      const endDateStr = req.query.endDate as string;
+
+      if (!startDateStr || !endDateStr) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      const startDate = new Date(startDateStr);
+      const endDate = new Date(endDateStr);
+      endDate.setHours(23, 59, 59, 999);
+
+      const calls = await storage.getCallActivities(startDate, endDate);
+      res.json(calls);
+    } catch (error) {
+      console.error("Call analytics error:", error);
+      res.status(500).json({ error: "Failed to fetch call analytics" });
+    }
+  });
+
+  app.post("/api/call-analytics/migrate-outcomes", isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.migrateCallOutcomes();
+      res.json(result);
+    } catch (error) {
+      console.error("Migration error:", error);
+      res.status(500).json({ error: "Failed to migrate outcomes" });
     }
   });
 

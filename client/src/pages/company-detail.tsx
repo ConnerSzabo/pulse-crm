@@ -26,9 +26,20 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -170,6 +181,10 @@ export default function CompanyDetail() {
   const [showAddContactDialog, setShowAddContactDialog] = useState(false);
   const [showDealDialog, setShowDealDialog] = useState(false);
   const [editingDeal, setEditingDeal] = useState<DealWithStage | null>(null);
+  const [showDeleteCompanyDialog, setShowDeleteCompanyDialog] = useState(false);
+  const [deleteCompanyConfirmName, setDeleteCompanyConfirmName] = useState("");
+  const [showDeleteDealDialog, setShowDeleteDealDialog] = useState(false);
+  const [dealToDelete, setDealToDelete] = useState<DealWithStage | null>(null);
 
   // Key information inline editing
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -178,6 +193,7 @@ export default function CompanyDetail() {
   // Activity filters
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const [activitySearch, setActivitySearch] = useState("");
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
 
   const { data: company, isLoading } = useQuery<CompanyWithRelations>({
     queryKey: ["/api/companies", params.id],
@@ -460,7 +476,22 @@ export default function CompanyDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-      toast({ title: "Deal removed" });
+      setShowDeleteDealDialog(false);
+      setDealToDelete(null);
+      toast({ title: "Deal deleted successfully" });
+    },
+  });
+
+  const deleteCompanyMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      return apiRequest("DELETE", `/api/companies/${companyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      toast({ title: `${company?.name} deleted successfully` });
+      navigate("/companies");
     },
   });
 
@@ -817,14 +848,22 @@ export default function CompanyDetail() {
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={openAddDeal}>
+              <DropdownMenuContent align="end" className="dark:bg-[#252936] dark:border-[#3d4254]">
+                <DropdownMenuItem onClick={openAddDeal} className="dark:text-white dark:focus:bg-[#2d3142]">
                   <Briefcase className="h-4 w-4 mr-2" />
                   Add Deal
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowAddContactDialog(true)}>
+                <DropdownMenuItem onClick={() => setShowAddContactDialog(true)} className="dark:text-white dark:focus:bg-[#2d3142]">
                   <User className="h-4 w-4 mr-2" />
                   Add Contact
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="dark:bg-[#3d4254]" />
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteCompanyDialog(true)}
+                  className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400 dark:focus:bg-[#2d3142]"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Company
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1103,11 +1142,21 @@ export default function CompanyDetail() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <Badge variant="secondary" className="font-medium">
-                                      {getActivityLabel(activity.type)}
-                                    </Badge>
-                                    {activity.outcome && (
-                                      <Badge variant="outline">{activity.outcome}</Badge>
+                                    {activity.type === "call" ? (
+                                      <>
+                                        <Badge variant="secondary" className="font-medium bg-blue-100 text-blue-700 dark:bg-[#0091AE]/20 dark:text-[#06b6d4]">
+                                          Call: {activity.outcome || "No Outcome"}
+                                        </Badge>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Badge variant="secondary" className="font-medium">
+                                          {getActivityLabel(activity.type)}
+                                        </Badge>
+                                        {activity.outcome && (
+                                          <Badge variant="outline">{activity.outcome}</Badge>
+                                        )}
+                                      </>
                                     )}
                                     {activity.quoteValue && (
                                       <span className="text-sm font-medium text-emerald-600">
@@ -1115,15 +1164,49 @@ export default function CompanyDetail() {
                                       </span>
                                     )}
                                   </div>
-                                  {activity.note && (
-                                    <p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-[#94a3b8] mt-2">
-                                      {activity.note}
-                                    </p>
-                                  )}
+                                  {activity.note && (() => {
+                                    const lines = activity.note.split('\n');
+                                    const isLong = lines.length > 2 || activity.note.length > 150;
+                                    const isExpanded = expandedActivities.has(activity.id);
+                                    const displayText = isLong && !isExpanded
+                                      ? activity.note.split('\n').slice(0, 2).join('\n').substring(0, 150) + (activity.note.length > 150 ? '...' : '')
+                                      : activity.note;
+
+                                    return (
+                                      <div className="mt-2">
+                                        <p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-[#94a3b8]">
+                                          {displayText}
+                                        </p>
+                                        {isLong && (
+                                          <button
+                                            className="text-xs text-[#0091AE] hover:text-[#06b6d4] mt-1 font-medium"
+                                            onClick={() => {
+                                              setExpandedActivities(prev => {
+                                                const next = new Set(prev);
+                                                if (isExpanded) next.delete(activity.id);
+                                                else next.add(activity.id);
+                                                return next;
+                                              });
+                                            }}
+                                          >
+                                            {isExpanded ? "Show less" : "Read more"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                   <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                                     <span className="flex items-center gap-1">
                                       <Clock className="h-3 w-3" />
-                                      {format(new Date(activity.createdAt), "MMM d, yyyy 'at' h:mm a")}
+                                      {(() => {
+                                        const activityDate = new Date(activity.createdAt);
+                                        const now = new Date();
+                                        const diffHours = (now.getTime() - activityDate.getTime()) / (1000 * 60 * 60);
+                                        if (diffHours < 24) {
+                                          return formatDistanceToNow(activityDate, { addSuffix: true });
+                                        }
+                                        return format(activityDate, "MMM d, yyyy 'at' h:mm a");
+                                      })()}
                                     </span>
                                     {activity.loggedBy && (
                                       <span className="flex items-center gap-1">
@@ -1227,7 +1310,10 @@ export default function CompanyDetail() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={() => deleteDealMutation.mutate(deal.id)}
+                              onClick={() => {
+                                setDealToDelete(deal);
+                                setShowDeleteDealDialog(true);
+                              }}
                               className="h-8 w-8 text-muted-foreground hover:text-red-600"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -1369,10 +1455,22 @@ export default function CompanyDetail() {
                 {company.deals?.map((deal) => (
                   <div
                     key={deal.id}
-                    className="p-3 border rounded-lg hover:bg-muted/50 cursor-pointer group"
+                    className="p-3 border rounded-lg hover:bg-muted/50 dark:hover:bg-[#2d3142] cursor-pointer group relative"
                     onClick={() => openEditDeal(deal)}
                     data-testid={`card-deal-${deal.id}`}
                   >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 dark:hover:bg-[#2d3142] transition-opacity z-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDealToDelete(deal);
+                        setShowDeleteDealDialog(true);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="font-medium text-sm">{deal.title}</p>
@@ -1560,13 +1658,13 @@ export default function CompanyDetail() {
 
       {/* Log Call Dialog */}
       <Dialog open={showLogCallDialog} onOpenChange={setShowLogCallDialog}>
-        <DialogContent>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
           <DialogHeader>
-            <DialogTitle>Log Call</DialogTitle>
+            <DialogTitle className="dark:text-white">Log Call</DialogTitle>
           </DialogHeader>
           <Form {...logCallForm}>
             <form onSubmit={logCallForm.handleSubmit((data) => logCallMutation.mutate(data))} className="space-y-4">
-              <div className="text-sm text-muted-foreground bg-gray-50 dark:bg-muted p-3 rounded-md">
+              <div className="text-sm text-muted-foreground bg-gray-50 dark:bg-[#1a1d29] p-3 rounded-md dark:text-[#94a3b8]">
                 <Clock className="inline h-4 w-4 mr-1" />
                 {format(new Date(), "MMM d, yyyy 'at' h:mm a")}
               </div>
@@ -1575,19 +1673,32 @@ export default function CompanyDetail() {
                 name="outcome"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Outcome</FormLabel>
+                    <FormLabel className="dark:text-[#94a3b8]">Outcome</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-call-outcome">
+                        <SelectTrigger data-testid="select-call-outcome" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
                           <SelectValue placeholder="Select outcome" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="answered">Answered</SelectItem>
-                        <SelectItem value="voicemail">Voicemail</SelectItem>
-                        <SelectItem value="no_answer">No Answer</SelectItem>
-                        <SelectItem value="busy">Busy</SelectItem>
-                        <SelectItem value="wrong_number">Wrong Number</SelectItem>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        <SelectItem value="Reception / Voicemail" className="dark:text-white dark:focus:bg-[#2d3142]">
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
+                            Reception / Voicemail
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="Decision Maker Details" className="dark:text-white dark:focus:bg-[#2d3142]">
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-[#0091AE]" />
+                            Decision Maker Details
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="Connected to DM" className="dark:text-white dark:focus:bg-[#2d3142]">
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-[#10b981]" />
+                            Connected to DM
+                          </span>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </FormItem>
@@ -1598,11 +1709,11 @@ export default function CompanyDetail() {
                 name="note"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notes</FormLabel>
+                    <FormLabel className="dark:text-[#94a3b8]">Notes</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Add call notes..."
-                        className="min-h-[100px]"
+                        placeholder="Call notes and details..."
+                        className="min-h-[120px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
                         data-testid="input-call-note"
                         {...field}
                       />
@@ -1611,11 +1722,11 @@ export default function CompanyDetail() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowLogCallDialog(false)}>
+                <Button type="button" variant="outline" onClick={() => setShowLogCallDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={logCallMutation.isPending}>
-                  Log Call
+                <Button type="submit" className="bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={logCallMutation.isPending}>
+                  {logCallMutation.isPending ? "Saving..." : "Save Call Log"}
                 </Button>
               </DialogFooter>
             </form>
@@ -1838,6 +1949,72 @@ export default function CompanyDetail() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Company Confirmation Dialog */}
+      <AlertDialog open={showDeleteCompanyDialog} onOpenChange={(open) => {
+        setShowDeleteCompanyDialog(open);
+        if (!open) setDeleteCompanyConfirmName("");
+      }}>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">Delete {company.name}?</AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
+              This will permanently delete this company and all associated contacts, deals, tasks, and activity history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="py-2">
+            <label className="text-sm font-medium dark:text-[#94a3b8]">
+              Type the company name to confirm
+            </label>
+            <Input
+              value={deleteCompanyConfirmName}
+              onChange={(e) => setDeleteCompanyConfirmName(e.target.value)}
+              placeholder={company.name}
+              className="mt-2 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
+              autoFocus
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteCompanyConfirmName !== company.name || deleteCompanyMutation.isPending}
+              onClick={() => deleteCompanyMutation.mutate(company.id)}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed dark:bg-red-600 dark:hover:bg-red-700"
+            >
+              {deleteCompanyMutation.isPending ? "Deleting..." : "Delete Company"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Deal Confirmation Dialog */}
+      <AlertDialog open={showDeleteDealDialog} onOpenChange={(open) => {
+        setShowDeleteDealDialog(open);
+        if (!open) setDealToDelete(null);
+      }}>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="dark:text-white">Delete this deal?</AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
+              This will permanently remove this deal from the pipeline. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleteDealMutation.isPending}
+              onClick={() => dealToDelete && deleteDealMutation.mutate(dealToDelete.id)}
+              className="bg-red-600 hover:bg-red-700 text-white dark:bg-red-600 dark:hover:bg-red-700"
+            >
+              {deleteDealMutation.isPending ? "Deleting..." : "Delete Deal"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add/Edit Deal Dialog */}
       <Dialog open={showDealDialog} onOpenChange={(open) => {

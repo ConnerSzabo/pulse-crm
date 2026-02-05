@@ -7,7 +7,8 @@ import {
   Upload,
   Settings,
   HelpCircle,
-  ChevronDown
+  ChevronDown,
+  Phone
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,11 @@ const mainMenuItems = [
     title: "Tasks",
     url: "/tasks",
     icon: ListTodo,
+  },
+  {
+    title: "Call Analytics",
+    url: "/call-analytics",
+    icon: Phone,
   },
 ];
 

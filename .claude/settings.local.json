@@ -9,7 +9,9 @@
       "Bash(yes:*)",
       "Bash(timeout 10 npm run dev:*)",
       "Bash(npx tsc:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx vite build:*)",
+      "Bash(timeout 15 npm run dev:*)"
     ]
   }
 }

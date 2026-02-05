@@ -15,6 +15,7 @@ import CompanyDetail from "@/pages/company-detail";
 import Pipeline from "@/pages/pipeline";
 import TasksPage from "@/pages/tasks";
 import ImportCSV from "@/pages/import-csv";
+import CallAnalytics from "@/pages/call-analytics";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/company/:id" component={CompanyDetail} />
       <Route path="/pipeline" component={Pipeline} />
       <Route path="/tasks" component={TasksPage} />
+      <Route path="/call-analytics" component={CallAnalytics} />
       <Route path="/import" component={ImportCSV} />
       <Route component={NotFound} />
     </Switch>
