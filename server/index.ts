@@ -95,6 +95,11 @@ app.use((req, res, next) => {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
+      // PERFORMANCE WARNING: Flag slow API calls
+      if (duration > 500) {
+        console.warn(`⚠️  SLOW API CALL (${duration}ms): ${req.method} ${path}`);
+      }
+
       log(logLine);
     }
   });

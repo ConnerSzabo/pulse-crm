@@ -133,7 +133,7 @@ function CollapsibleSection({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b dark:border-[#3d4254]">
-      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 dark:hover:bg-[#2d3142] transition-colors">
+      <CollapsibleTrigger className="flex items-center justify-between w-full py-3 px-4 hover:bg-muted/50 dark:hover:bg-[#2d3142] transition-colors">
         <div className="flex items-center gap-2">
           {isOpen ? (
             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -860,7 +860,7 @@ export default function CompanyDetail() {
 
         {/* Company name and quick actions */}
         <div className="p-4 border-b dark:border-[#3d4254]">
-          <h1 className="text-2xl font-bold text-white mb-1" data-testid="text-company-detail-name">
+          <h1 className="text-xl font-bold text-white mb-1" data-testid="text-company-detail-name">
             {company.name}
           </h1>
           {company.website && (
@@ -875,7 +875,7 @@ export default function CompanyDetail() {
             </a>
           )}
           {totalExpectedGP > 0 && (
-            <p className="text-xs text-emerald-600 font-medium mb-3">
+            <p className="text-xs text-emerald-600 font-medium mb-2">
               Pipeline: £{totalExpectedGP.toLocaleString()}
             </p>
           )}
@@ -934,13 +934,13 @@ export default function CompanyDetail() {
         {/* Key Information */}
         <ScrollArea className="flex-1">
           <div className="p-4">
-            <div className="bg-[#252936] rounded-lg p-5 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-              <h3 className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] font-semibold mb-4">
+            <div className="bg-[#252936] rounded-lg p-4 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+              <h3 className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] font-semibold mb-3">
                 Key Information
               </h3>
 
               {/* Group 1: Contact */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <div>
                   <EditableField label="Phone" field="phone" value={company.phone} />
                   {company.phone && (
@@ -977,10 +977,10 @@ export default function CompanyDetail() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-[#3d4254] my-4" />
+              <div className="border-t border-[#3d4254] my-3" />
 
               {/* Group 2: Organization */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <EditableField label="Location" field="location" value={company.location} />
                 <EditableField label="Academy Trust" field="academyTrustName" value={company.academyTrustName} />
                 <EditableField label="Industry" field="industry" value={company.industry} type="select" />
@@ -988,10 +988,10 @@ export default function CompanyDetail() {
               </div>
 
               {/* Divider */}
-              <div className="border-t border-[#3d4254] my-4" />
+              <div className="border-t border-[#3d4254] my-3" />
 
               {/* Group 3: Sales */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <EditableField label="Lead Status" field="budgetStatus" value={company.budgetStatus} type="select" />
                 <EditableField label="Company Owner" field="decisionMakerName" value={company.decisionMakerName} />
                 <div className="space-y-1">

@@ -39,7 +39,7 @@ import {
   Building2, ExternalLink, FileText, Calendar, MessageSquare,
   Pencil, X, Save, StickyNote, Briefcase, ChevronDown,
   ChevronRight, MoreHorizontal, Video, Search, Users,
-  ArrowUpRight,
+  ArrowUpRight, CheckSquare, Paperclip, Upload, DollarSign,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
@@ -51,6 +51,18 @@ const logCallSchema = z.object({
 
 const addNoteSchema = z.object({
   note: z.string().min(1, "Note content is required"),
+});
+
+const addTaskSchema = z.object({
+  name: z.string().min(1, "Task name is required"),
+  description: z.string().optional(),
+  dueDate: z.string().optional(),
+  priority: z.string().default("medium"),
+});
+
+const addMeetingSchema = z.object({
+  note: z.string().min(1, "Meeting details are required"),
+  scheduledDate: z.string().optional(),
 });
 
 const leadStatusOptions = [
@@ -121,8 +133,13 @@ export default function ContactDetail() {
 
   const [showLogCallDialog, setShowLogCallDialog] = useState(false);
   const [showAddNoteDialog, setShowAddNoteDialog] = useState(false);
+  const [showAddTaskDialog, setShowAddTaskDialog] = useState(false);
+  const [showAddMeetingDialog, setShowAddMeetingDialog] = useState(false);
+  const [showAddDealDialog, setShowAddDealDialog] = useState(false);
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const [activitySearch, setActivitySearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"about" | "activities" | "revenue">("activities");
+  const [isEditingLeadStatus, setIsEditingLeadStatus] = useState(false);
 
   const { data: contact, isLoading, error } = useQuery<ContactWithCompany>({
     queryKey: ["/api/contacts", params.id],
@@ -162,6 +179,16 @@ export default function ContactDetail() {
   const addNoteForm = useForm<z.infer<typeof addNoteSchema>>({
     resolver: zodResolver(addNoteSchema),
     defaultValues: { note: "" },
+  });
+
+  const addTaskForm = useForm<z.infer<typeof addTaskSchema>>({
+    resolver: zodResolver(addTaskSchema),
+    defaultValues: { name: "", description: "", dueDate: "", priority: "medium" },
+  });
+
+  const addMeetingForm = useForm<z.infer<typeof addMeetingSchema>>({
+    resolver: zodResolver(addMeetingSchema),
+    defaultValues: { note: "", scheduledDate: "" },
   });
 
   const updateContactMutation = useMutation({
@@ -209,6 +236,57 @@ export default function ContactDetail() {
       addNoteForm.reset();
       setShowAddNoteDialog(false);
       toast({ title: "Note added" });
+    },
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addTaskSchema>) => {
+      if (!contact?.companyId) throw new Error("No company linked");
+      return apiRequest("POST", "/api/tasks", {
+        companyId: contact.companyId,
+        name: data.name,
+        description: data.description || null,
+        dueDate: data.dueDate || null,
+        priority: data.priority,
+        status: "pending",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      addTaskForm.reset();
+      setShowAddTaskDialog(false);
+      toast({ title: "Task created" });
+    },
+  });
+
+  const addMeetingMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addMeetingSchema>) => {
+      if (!contact?.companyId) throw new Error("No company linked");
+      return apiRequest("POST", `/api/companies/${contact.companyId}/activities`, {
+        companyId: contact.companyId,
+        type: "meeting",
+        note: data.note,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      addMeetingForm.reset();
+      setShowAddMeetingDialog(false);
+      toast({ title: "Meeting logged" });
+    },
+  });
+
+  const updateLeadStatusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      return apiRequest("PATCH", `/api/contacts/${params.id}`, {
+        leadStatus: newStatus,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setIsEditingLeadStatus(false);
+      toast({ title: "Lead status updated" });
     },
   });
 
@@ -345,12 +423,14 @@ export default function ContactDetail() {
           {/* Quick Actions */}
           <div className="flex items-center justify-center gap-1 mt-3">
             {[
-              { icon: StickyNote, label: "Note", onClick: () => setShowAddNoteDialog(true) },
-              { icon: Mail, label: "Email", onClick: () => contact.email && window.open(`mailto:${contact.email}`) },
-              { icon: Phone, label: "Call", onClick: () => setShowLogCallDialog(true) },
+              { icon: StickyNote, label: "Note", onClick: () => setShowAddNoteDialog(true), needsCompany: true },
+              { icon: Mail, label: "Email", onClick: () => contact.email && window.open(`mailto:${contact.email}`), needsCompany: false },
+              { icon: Phone, label: "Call", onClick: () => setShowLogCallDialog(true), needsCompany: true },
+              { icon: CheckSquare, label: "Task", onClick: () => setShowAddTaskDialog(true), needsCompany: true },
+              { icon: Video, label: "Meeting", onClick: () => setShowAddMeetingDialog(true), needsCompany: true },
             ].map((action) => (
               <Button key={action.label} variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#94a3b8] hover:text-white hover:bg-[#2d3142]"
-                onClick={action.onClick} disabled={!contact.companyId && (action.label === "Note" || action.label === "Call")}>
+                onClick={action.onClick} disabled={!contact.companyId && action.needsCompany}>
                 <action.icon className="h-3.5 w-3.5 mr-1" />{action.label}
               </Button>
             ))}
@@ -487,8 +567,36 @@ export default function ContactDetail() {
                       )}
                     </div>
                     <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Lead Status</p>
-                      {getLeadStatusBadge(contact.leadStatus)}
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Lead Status</p>
+                        <button
+                          onClick={() => setIsEditingLeadStatus(!isEditingLeadStatus)}
+                          className="text-[#0091AE] hover:text-[#007a94] text-xs"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {isEditingLeadStatus ? (
+                        <Select
+                          value={contact.leadStatus || "0-unqualified"}
+                          onValueChange={(value) => updateLeadStatusMutation.mutate(value)}
+                        >
+                          <SelectTrigger className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                            {leadStatusOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                                <span className="flex items-center gap-2">
+                                  <span className={`h-2 w-2 rounded-full ${opt.badgeColor}`} />{opt.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        getLeadStatusBadge(contact.leadStatus)
+                      )}
                     </div>
                   </div>
 
@@ -523,110 +631,254 @@ export default function ContactDetail() {
         {/* Tabs */}
         <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6">
           <div className="flex items-center gap-6 h-12">
-            {["About", "Activities", "Revenue"].map((tab) => (
-              <button key={tab} className={`text-sm font-medium border-b-2 h-full flex items-center transition-colors ${
-                tab === "Activities"
-                  ? "border-[#0091AE] text-[#0091AE]"
-                  : "border-transparent text-[#94a3b8] hover:text-white"
-              }`}>
+            {(["about", "activities", "revenue"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`text-sm font-medium border-b-2 h-full flex items-center transition-colors capitalize ${
+                  activeTab === tab
+                    ? "border-[#0091AE] text-[#0091AE]"
+                    : "border-transparent text-[#94a3b8] hover:text-white"
+                }`}
+              >
                 {tab}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Activity Toolbar */}
-        <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-3 flex items-center gap-3">
-          <Button size="sm" className="bg-[#0091AE] hover:bg-[#007a94] text-white" onClick={() => setShowLogCallDialog(true)} disabled={!contact.companyId}>
-            <Phone className="h-3.5 w-3.5 mr-1.5" />Log Call
-          </Button>
-          <Button size="sm" variant="outline" className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]" onClick={() => setShowAddNoteDialog(true)} disabled={!contact.companyId}>
-            <StickyNote className="h-3.5 w-3.5 mr-1.5" />Add Note
-          </Button>
-          <div className="flex-1" />
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#64748b]" />
-            <Input
-              type="search"
-              placeholder="Search activities..."
-              value={activitySearch}
-              onChange={(e) => setActivitySearch(e.target.value)}
-              className="pl-9 h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
-            />
-          </div>
-        </div>
-
-        {/* Activity Filters */}
-        <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-2 flex items-center gap-1">
-          {[
-            { key: "all", label: "All" },
-            { key: "calls", label: "Calls" },
-            { key: "emails", label: "Emails" },
-            { key: "notes", label: "Notes" },
-          ].map((f) => (
-            <Button key={f.key} variant="ghost" size="sm"
-              className={`h-7 px-3 text-xs ${activityFilter === f.key ? "bg-[#0091AE]/10 text-[#0091AE] font-medium" : "text-[#94a3b8] hover:text-white hover:bg-[#2d3142]"}`}
-              onClick={() => setActivityFilter(f.key)}>
-              {f.label}
-            </Button>
-          ))}
-        </div>
-
-        {/* Activity List */}
-        <ScrollArea className="flex-1 bg-gray-50 dark:bg-[#1a1d29]">
-          <div className="p-6">
-            {!contact.companyId ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
-                  <Building2 className="h-8 w-8 text-[#64748b]" />
+        {/* Tab Content */}
+        {activeTab === "about" && (
+          <ScrollArea className="flex-1 bg-gray-50 dark:bg-[#1a1d29]">
+            <div className="p-6 max-w-3xl">
+              <div className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-6 space-y-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Contact Information</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Full Name</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name || "--"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Email Address</p>
+                      <a href={`mailto:${contact.email}`} className="text-sm font-medium text-[#0091AE] hover:underline">{contact.email}</a>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Phone Number</p>
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="text-sm font-medium text-[#0091AE] hover:underline">{contact.phone}</a>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-[#64748b]">--</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Job Title</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.role || "--"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Company</p>
+                      {contact.companyId && contact.companyName ? (
+                        <Link href={`/company/${contact.companyId}`} className="text-sm font-medium text-[#0091AE] hover:underline">{contact.companyName}</Link>
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-[#64748b]">No company</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Lead Status</p>
+                      <div className="mt-1">{getLeadStatusBadge(contact.leadStatus)}</div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Last Contacted</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {contact.lastContactDate ? format(new Date(contact.lastContactDate), "MMM d, yyyy") : "Never"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#64748b] mb-1">Created</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{format(new Date(contact.createdAt), "MMM d, yyyy")}</p>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-[#94a3b8] mb-1">No company linked</p>
-                <p className="text-sm text-[#64748b]">Link this contact to a company to view and log activities.</p>
-                <Button size="sm" variant="outline" className="mt-4 dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white" onClick={startEditing}>
-                  <Building2 className="h-3.5 w-3.5 mr-1.5" />Link Company
+              </div>
+            </div>
+          </ScrollArea>
+        )}
+
+        {activeTab === "activities" && (
+          <>
+            {/* Activity Toolbar */}
+            <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-3 flex items-center gap-3">
+              <Button size="sm" className="bg-[#0091AE] hover:bg-[#007a94] text-white" onClick={() => setShowLogCallDialog(true)} disabled={!contact.companyId}>
+                <Phone className="h-3.5 w-3.5 mr-1.5" />Log Call
+              </Button>
+              <Button size="sm" variant="outline" className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]" onClick={() => setShowAddNoteDialog(true)} disabled={!contact.companyId}>
+                <StickyNote className="h-3.5 w-3.5 mr-1.5" />Add Note
+              </Button>
+              <div className="flex-1" />
+              <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#64748b]" />
+                <Input
+                  type="search"
+                  placeholder="Search activities..."
+                  value={activitySearch}
+                  onChange={(e) => setActivitySearch(e.target.value)}
+                  className="pl-9 h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
+                />
+              </div>
+            </div>
+
+            {/* Activity Filters */}
+            <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-2 flex items-center gap-1">
+              {[
+                { key: "all", label: "All" },
+                { key: "calls", label: "Calls" },
+                { key: "emails", label: "Emails" },
+                { key: "notes", label: "Notes" },
+                { key: "tasks", label: "Tasks" },
+              ].map((f) => (
+                <Button key={f.key} variant="ghost" size="sm"
+                  className={`h-7 px-3 text-xs ${activityFilter === f.key ? "bg-[#0091AE]/10 text-[#0091AE] font-medium" : "text-[#94a3b8] hover:text-white hover:bg-[#2d3142]"}`}
+                  onClick={() => setActivityFilter(f.key)}>
+                  {f.label}
                 </Button>
-              </div>
-            ) : filteredActivities.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
-                  <Clock className="h-8 w-8 text-[#64748b]" />
-                </div>
-                <p className="text-[#94a3b8] mb-1">No activities yet</p>
-                <p className="text-sm text-[#64748b]">Log a call or add a note to get started.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredActivities.map((activity) => (
-                  <div key={activity.id} className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#2d3142] dark:bg-[#3d4254] flex items-center justify-center flex-shrink-0 mt-0.5">
-                        {getActivityIcon(activity.type)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {getActivityLabel(activity.type)}
-                          </span>
-                          {activity.outcome && (
-                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 dark:border-[#3d4254] dark:text-[#94a3b8]">
-                              {activity.outcome}
-                            </Badge>
-                          )}
-                          <span className="text-xs text-gray-500 dark:text-[#64748b] ml-auto flex-shrink-0">
-                            {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
-                          </span>
+              ))}
+            </div>
+
+            {/* Activity List */}
+            <ScrollArea className="flex-1 bg-gray-50 dark:bg-[#1a1d29]">
+              <div className="p-6">
+                {!contact.companyId ? (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                      <Building2 className="h-8 w-8 text-[#64748b]" />
+                    </div>
+                    <p className="text-[#94a3b8] mb-1">No company linked</p>
+                    <p className="text-sm text-[#64748b]">Link this contact to a company to view and log activities.</p>
+                    <Button size="sm" variant="outline" className="mt-4 dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white" onClick={startEditing}>
+                      <Building2 className="h-3.5 w-3.5 mr-1.5" />Link Company
+                    </Button>
+                  </div>
+                ) : filteredActivities.length === 0 && activityFilter === "all" ? (
+                  <div className="text-center py-12">
+                    <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                      <Clock className="h-8 w-8 text-[#64748b]" />
+                    </div>
+                    <p className="text-[#94a3b8] mb-1">No activities yet</p>
+                    <p className="text-sm text-[#64748b]">Log a call or add a note to get started.</p>
+                  </div>
+                ) : filteredActivities.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-[#94a3b8]">No matching activities</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredActivities.map((activity) => (
+                      <div key={activity.id} className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[#2d3142] dark:bg-[#3d4254] flex items-center justify-center flex-shrink-0 mt-0.5">
+                            {getActivityIcon(activity.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                {getActivityLabel(activity.type)}
+                              </span>
+                              {activity.outcome && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1.5 dark:border-[#3d4254] dark:text-[#94a3b8]">
+                                  {activity.outcome}
+                                </Badge>
+                              )}
+                              <span className="text-xs text-gray-500 dark:text-[#64748b] ml-auto flex-shrink-0">
+                                {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                              </span>
+                            </div>
+                            {activity.note && (
+                              <p className="text-sm text-gray-600 dark:text-[#94a3b8] whitespace-pre-wrap">{activity.note}</p>
+                            )}
+                          </div>
                         </div>
-                        {activity.note && (
-                          <p className="text-sm text-gray-600 dark:text-[#94a3b8] whitespace-pre-wrap">{activity.note}</p>
-                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </>
+        )}
+
+        {activeTab === "revenue" && (
+          <ScrollArea className="flex-1 bg-gray-50 dark:bg-[#1a1d29]">
+            <div className="p-6">
+              {!contact.companyId ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                    <Building2 className="h-8 w-8 text-[#64748b]" />
+                  </div>
+                  <p className="text-[#94a3b8] mb-1">No company linked</p>
+                  <p className="text-sm text-[#64748b]">Link this contact to a company to view revenue information.</p>
+                </div>
+              ) : deals.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                    <DollarSign className="h-8 w-8 text-[#64748b]" />
+                  </div>
+                  <p className="text-[#94a3b8] mb-1">No deals yet</p>
+                  <p className="text-sm text-[#64748b]">No revenue data available for this contact.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Revenue Summary</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-[#64748b] mb-1">Total Deals</p>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{deals.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#64748b] mb-1">Expected GP</p>
+                        <p className="text-2xl font-bold text-[#10b981]">
+                          £{deals.reduce((sum, d) => sum + (d.expectedGP ? parseFloat(d.expectedGP) : 0), 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#64748b] mb-1">Active Deals</p>
+                        <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                          {deals.filter(d => d.stage?.name !== 'Closed Won' && d.stage?.name !== 'Closed Lost').length}
+                        </p>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
+
+                  <div className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Deals</h3>
+                    <div className="space-y-3">
+                      {deals.map((deal) => (
+                        <div key={deal.id} className="p-4 bg-gray-50 dark:bg-[#1a1d29] border dark:border-[#3d4254] rounded-lg">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 dark:text-white">{deal.title}</h4>
+                              {deal.stage && (
+                                <Badge className="mt-1 text-xs bg-blue-600/20 text-blue-400 border border-blue-600/30">
+                                  {deal.stage.name}
+                                </Badge>
+                              )}
+                            </div>
+                            {deal.expectedGP && (
+                              <p className="text-lg font-bold text-[#10b981]">£{parseFloat(deal.expectedGP).toLocaleString()}</p>
+                            )}
+                          </div>
+                          {deal.decisionTimeline && (
+                            <p className="text-xs text-[#64748b]">Expected close: {format(new Date(deal.decisionTimeline), "MMM d, yyyy")}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        )}
       </div>
 
       {/* RIGHT SIDEBAR */}
@@ -650,7 +902,7 @@ export default function ContactDetail() {
           )}
         </CollapsibleSection>
 
-        <CollapsibleSection title="Deals" count={deals.length} icon={Briefcase}>
+        <CollapsibleSection title="Deals" count={deals.length} icon={Briefcase} onAdd={() => setShowAddDealDialog(true)}>
           {deals.length === 0 ? (
             <p className="text-sm text-[#94a3b8] text-center py-4">No deals</p>
           ) : (
@@ -670,8 +922,8 @@ export default function ContactDetail() {
           )}
         </CollapsibleSection>
 
-        <CollapsibleSection title="Tasks" count={tasks.length} icon={FileText}>
-          {tasks.length === 0 ? (
+        <CollapsibleSection title="Tasks" count={tasks.filter(t => t.status !== "completed").length} icon={FileText} onAdd={() => setShowAddTaskDialog(true)}>
+          {tasks.filter((t) => t.status !== "completed").length === 0 ? (
             <p className="text-sm text-[#94a3b8] text-center py-4">No tasks</p>
           ) : (
             <div className="space-y-2">
@@ -685,6 +937,19 @@ export default function ContactDetail() {
               ))}
             </div>
           )}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Attachments" count={0} icon={Paperclip}>
+          <div className="text-center py-8">
+            <div className="w-12 h-12 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-3">
+              <Paperclip className="h-6 w-6 text-[#64748b]" />
+            </div>
+            <p className="text-sm text-[#94a3b8] mb-3">No attachments</p>
+            <Button size="sm" variant="outline" className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Upload File
+            </Button>
+          </div>
         </CollapsibleSection>
       </div>
 
@@ -751,6 +1016,115 @@ export default function ContactDetail() {
               </Button>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Task Dialog */}
+      <Dialog open={showAddTaskDialog} onOpenChange={setShowAddTaskDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Add a Task</DialogTitle>
+          </DialogHeader>
+          <Form {...addTaskForm}>
+            <form onSubmit={addTaskForm.handleSubmit((data) => addTaskMutation.mutate(data))} className="space-y-4">
+              <FormField control={addTaskForm.control} name="name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Task Name *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Follow up on quote" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={addTaskForm.control} name="description" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Description</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Task details..." className="min-h-[80px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField control={addTaskForm.control} name="dueDate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Due Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )} />
+                <FormField control={addTaskForm.control} name="priority" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Priority</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        <SelectItem value="low" className="dark:text-white dark:focus:bg-[#2d3142]">Low</SelectItem>
+                        <SelectItem value="medium" className="dark:text-white dark:focus:bg-[#2d3142]">Medium</SelectItem>
+                        <SelectItem value="high" className="dark:text-white dark:focus:bg-[#2d3142]">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )} />
+              </div>
+              <Button type="submit" className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={addTaskMutation.isPending || !contact.companyId}>
+                {addTaskMutation.isPending ? "Creating..." : "Create Task"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Meeting Dialog */}
+      <Dialog open={showAddMeetingDialog} onOpenChange={setShowAddMeetingDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Log a Meeting</DialogTitle>
+          </DialogHeader>
+          <Form {...addMeetingForm}>
+            <form onSubmit={addMeetingForm.handleSubmit((data) => addMeetingMutation.mutate(data))} className="space-y-4">
+              <FormField control={addMeetingForm.control} name="note" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Meeting Details *</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="What was discussed..." className="min-h-[120px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={addMeetingForm.control} name="scheduledDate" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Meeting Date</FormLabel>
+                  <FormControl>
+                    <Input type="datetime-local" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={addMeetingMutation.isPending}>
+                {addMeetingMutation.isPending ? "Logging..." : "Log Meeting"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Deal Dialog - Placeholder */}
+      <Dialog open={showAddDealDialog} onOpenChange={setShowAddDealDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Add Deal</DialogTitle>
+          </DialogHeader>
+          <div className="py-8 text-center">
+            <p className="text-[#94a3b8] mb-4">Deal creation from contacts is coming soon.</p>
+            <p className="text-sm text-[#64748b] mb-4">For now, please create deals from the Pipeline page or Company detail page.</p>
+            <Button onClick={() => navigate("/pipeline")} className="bg-[#0091AE] hover:bg-[#007a94] text-white">
+              Go to Pipeline
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

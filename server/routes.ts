@@ -618,6 +618,18 @@ export async function registerRoutes(
   });
 
   // Activities routes
+  // PERFORMANCE: Get paginated activities for faster loading
+  app.get("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const activities = await storage.getActivitiesByCompanyPaginated(req.params.id as string, limit, offset);
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
   app.post("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
     try {
       const { createdAt: customDate, ...rest } = req.body;
