@@ -11,7 +11,12 @@
       "Bash(npx tsc:*)",
       "Bash(curl:*)",
       "Bash(npx vite build:*)",
-      "Bash(timeout 15 npm run dev:*)"
+      "Bash(timeout 15 npm run dev:*)",
+      "Bash(xargs kill -9)",
+      "Bash(netstat:*)",
+      "Bash(ss:*)",
+      "Bash(psql:*)",
+      "Bash(python3:*)"
     ]
   }
 }

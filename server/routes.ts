@@ -100,6 +100,7 @@ export async function registerRoutes(
       }
       res.json(company);
     } catch (error) {
+      console.error("Failed to fetch company:", error);
       res.status(500).json({ error: "Failed to fetch company" });
     }
   });

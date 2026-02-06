@@ -195,9 +195,23 @@ export default function CompanyDetail() {
   const [activitySearch, setActivitySearch] = useState("");
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
 
-  const { data: company, isLoading } = useQuery<CompanyWithRelations>({
+  const { data: company, isLoading, error } = useQuery<CompanyWithRelations>({
     queryKey: ["/api/companies", params.id],
+    enabled: !!params.id, // Only run query if ID exists
   });
+
+  // Handle missing ID
+  if (!params.id) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Invalid Company ID</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">No company ID was provided in the URL.</p>
+          <Button onClick={() => navigate("/companies")}>Back to Companies</Button>
+        </div>
+      </div>
+    );
+  }
 
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
@@ -587,6 +601,10 @@ export default function CompanyDetail() {
     return (
       <div className="p-6 text-center">
         <p className="text-muted-foreground">Company not found</p>
+        <p className="text-sm text-gray-500 mt-2">ID: {params.id}</p>
+        {error && (
+          <p className="text-sm text-red-500 mt-2">Error: {error instanceof Error ? error.message : String(error)}</p>
+        )}
         <Button onClick={() => navigate("/companies")} className="mt-4">
           Back to Companies
         </Button>
