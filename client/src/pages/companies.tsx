@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
-import type { Company, PipelineStage } from "@shared/schema";
+import type { Company, PipelineStage, Trust } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,18 +60,28 @@ const addCompanySchema = z.object({
   phone: z.string().optional(),
   location: z.string().optional(),
   academyTrustName: z.string().optional(),
+  industry: z.string().default("Secondary School"),
   ext: z.string().optional(),
   notes: z.string().optional(),
   itManagerName: z.string().optional(),
   itManagerEmail: z.string().optional(),
   stageId: z.string().optional(),
+  budgetStatus: z.string().default("0-unqualified"),
 });
+
+const industryOptions = [
+  "Secondary School",
+  "Primary School",
+  "Primary/Secondary Education",
+  "Further Education",
+  "Special Educational Needs",
+];
 
 type AddCompanyForm = z.infer<typeof addCompanySchema>;
 
-type CompanyWithStage = Company & { stage?: PipelineStage };
+type CompanyWithStage = Company & { stage?: PipelineStage; trust?: Trust };
 
-type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry";
+type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry" | "trust";
 type SortDirection = "asc" | "desc";
 
 // Lead Status options with colors - dark mode uses solid colored backgrounds with white text
@@ -116,11 +126,13 @@ export default function Companies() {
       phone: "",
       location: "",
       academyTrustName: "",
+      industry: "Secondary School",
       ext: "",
       notes: "",
       itManagerName: "",
       itManagerEmail: "",
       stageId: "",
+      budgetStatus: "0-unqualified",
     },
   });
 
@@ -140,6 +152,7 @@ export default function Companies() {
         phone: data.phone || null,
         location: data.location || null,
         academyTrustName: data.academyTrustName || null,
+        industry: data.industry || "Secondary School",
         ext: data.ext || null,
         notes: data.notes || null,
         itManagerName: data.itManagerName || null,
@@ -273,7 +286,10 @@ export default function Companies() {
           comparison = 0;
           break;
         case "industry":
-          comparison = (a.academyTrustName || "").localeCompare(b.academyTrustName || "");
+          comparison = (a.industry || "").localeCompare(b.industry || "");
+          break;
+        case "trust":
+          comparison = (a.trust?.name || a.academyTrustName || "").localeCompare(b.trust?.name || b.academyTrustName || "");
           break;
       }
       return sortDirection === "asc" ? comparison : -comparison;
@@ -456,10 +472,34 @@ export default function Companies() {
                         name="academyTrustName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Academy Trust / Industry</FormLabel>
+                            <FormLabel>Academy Trust</FormLabel>
                             <FormControl>
-                              <Input placeholder="Trust name or industry" {...field} />
+                              <Input placeholder="Trust name" {...field} />
                             </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="industry"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Industry</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || "Secondary School"}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select industry" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {industryOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -480,6 +520,30 @@ export default function Companies() {
                                 {stages?.map((stage) => (
                                   <SelectItem key={stage.id} value={stage.id}>
                                     {stage.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="budgetStatus"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Lead Status</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || "0-unqualified"}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select lead status" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {leadStatusOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -720,6 +784,9 @@ export default function Companies() {
                   <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
                     <SortableHeader field="industry">Industry</SortableHeader>
                   </th>
+                  <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
+                    <SortableHeader field="trust">Academy Trust</SortableHeader>
+                  </th>
                   <th className="w-12 px-4 py-3"></th>
                 </tr>
               </thead>
@@ -806,7 +873,12 @@ export default function Companies() {
                     </td>
                     <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                        {company.academyTrustName || "--"}
+                        {company.industry || "--"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                        {company.trust?.name || company.academyTrustName || "--"}
                       </span>
                     </td>
                     <td className="px-4 py-3.5">

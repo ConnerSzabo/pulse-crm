@@ -44,10 +44,12 @@ type ParsedRow = {
   phone: string;
   location: string;
   academyTrustName: string;
+  industry: string;
   ext: string;
   notes: string;
   itManagerName: string;
   itManagerEmail: string;
+  budgetStatus: string;
 };
 
 type ImportResult = {
@@ -176,6 +178,12 @@ export default function ImportCSV() {
       const itManagerEmailIndex = header.findIndex((h) =>
         h.includes("it manager email") || h.includes("itmanageremail") || h === "it manager email"
       );
+      const industryIndex = header.findIndex((h) =>
+        h === "industry" || h.includes("school type") || h.includes("schooltype")
+      );
+      const leadStatusIndex = header.findIndex((h) =>
+        h.includes("lead status") || h.includes("leadstatus") || h.includes("budget status") || h.includes("budgetstatus") || h === "lead_status" || h === "budget_status"
+      );
 
       if (nameIndex === -1) {
         toast({ title: "CSV must have a column with company/school name (e.g., 'EstablishmentName', 'Company Name')", variant: "destructive" });
@@ -194,10 +202,12 @@ export default function ImportCSV() {
             phone: phoneIndex !== -1 ? normalizePhone(values[phoneIndex] || "") : "",
             location: locationIndex !== -1 ? values[locationIndex]?.trim() || "" : "",
             academyTrustName: trustIndex !== -1 ? values[trustIndex]?.trim() || "" : "",
+            industry: industryIndex !== -1 ? values[industryIndex]?.trim() || "Secondary School" : "Secondary School",
             ext: extIndex !== -1 ? values[extIndex]?.trim() || "" : "",
             notes: notesIndex !== -1 ? values[notesIndex]?.trim() || "" : "",
             itManagerName: itManagerNameIndex !== -1 ? values[itManagerNameIndex]?.trim() || "" : "",
             itManagerEmail: itManagerEmailIndex !== -1 ? values[itManagerEmailIndex]?.trim() || "" : "",
+            budgetStatus: leadStatusIndex !== -1 ? values[leadStatusIndex]?.trim() || "0-unqualified" : "0-unqualified",
           });
         }
       }
@@ -445,6 +455,11 @@ export default function ImportCSV() {
                       </div>
                     )}
                   </div>
+                  {importResult.imported > 0 && (
+                    <p className="text-sm text-muted-foreground dark:text-[#94a3b8]">
+                      {importResult.imported} companies imported with Lead Status: 0 - Unqualified (default)
+                    </p>
+                  )}
                   {(importResult.imported > 0 || importResult.updated > 0) && (
                     <Button
                       variant="outline"
@@ -541,6 +556,7 @@ export default function ImportCSV() {
             <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Notes</div>
             <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Name</div>
             <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Email</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Lead Status (optional, defaults to 0-unqualified)</div>
           </div>
         </CardContent>
       </Card>

@@ -1,0 +1,758 @@
+import { useState, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useParams, useLocation, Link } from "wouter";
+import type { ContactWithCompany, Company, Activity, Task, DealWithStage } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useForm } from "react-hook-form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  ArrowLeft, Phone, Mail, User, Plus, Trash2, Clock,
+  Building2, ExternalLink, FileText, Calendar, MessageSquare,
+  Pencil, X, Save, StickyNote, Briefcase, ChevronDown,
+  ChevronRight, MoreHorizontal, Video, Search, Users,
+  ArrowUpRight,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format, formatDistanceToNow } from "date-fns";
+
+const logCallSchema = z.object({
+  note: z.string().optional(),
+  outcome: z.string().optional(),
+});
+
+const addNoteSchema = z.object({
+  note: z.string().min(1, "Note content is required"),
+});
+
+const leadStatusOptions = [
+  { value: "0-unqualified", label: "0 - Unqualified", color: "bg-gray-200 text-gray-700 border-gray-300 dark:bg-gray-600 dark:text-white dark:border-gray-500", dotColor: "bg-gray-500 dark:bg-gray-300", badgeColor: "bg-gray-500" },
+  { value: "1-qualified", label: "1 - Qualified", color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-[#0091AE] dark:text-white dark:border-[#0091AE]", dotColor: "bg-blue-500 dark:bg-white", badgeColor: "bg-blue-500" },
+  { value: "2-intent", label: "2 - Intent", color: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-[#f59e0b] dark:text-white dark:border-[#f59e0b]", dotColor: "bg-orange-500 dark:bg-white", badgeColor: "bg-orange-500" },
+  { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-green-100 text-green-800 border-green-200 dark:bg-[#10b981] dark:text-white dark:border-[#10b981]", dotColor: "bg-green-500 dark:bg-white", badgeColor: "bg-green-500" },
+  { value: "3b-quoted-lost", label: "3b - Quoted Lost", color: "bg-red-100 text-red-800 border-red-200 dark:bg-[#ef4444] dark:text-white dark:border-[#ef4444]", dotColor: "bg-red-500 dark:bg-white", badgeColor: "bg-red-500" },
+  { value: "4-account-active", label: "4 - Account Active", color: "bg-emerald-200 text-emerald-900 border-emerald-300 dark:bg-emerald-700 dark:text-white dark:border-emerald-600", dotColor: "bg-emerald-600 dark:bg-white", badgeColor: "bg-emerald-600" },
+];
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  return name.split(" ").map((n) => n[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+function CollapsibleSection({
+  title,
+  count,
+  icon: Icon,
+  children,
+  onAdd,
+  defaultOpen = true,
+}: {
+  title: string;
+  count: number;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+  onAdd?: () => void;
+  defaultOpen?: boolean;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b dark:border-[#3d4254]">
+      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-muted/50 dark:hover:bg-[#2d3142] transition-colors">
+        <div className="flex items-center gap-2">
+          {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+          <Icon className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium text-sm dark:text-white">{title}</span>
+          <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{count}</Badge>
+        </div>
+        {onAdd && (
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-[#0091AE] hover:text-[#007a94] hover:bg-blue-50 dark:hover:bg-[#2d3142]"
+            onClick={(e) => { e.stopPropagation(); onAdd(); }}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Add
+          </Button>
+        )}
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-4 pb-4">{children}</div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export default function ContactDetail() {
+  const params = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editRole, setEditRole] = useState("");
+  const [editCompanyId, setEditCompanyId] = useState("");
+  const [editLeadStatus, setEditLeadStatus] = useState("");
+
+  const [showLogCallDialog, setShowLogCallDialog] = useState(false);
+  const [showAddNoteDialog, setShowAddNoteDialog] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<string>("all");
+  const [activitySearch, setActivitySearch] = useState("");
+
+  const { data: contact, isLoading, error } = useQuery<ContactWithCompany>({
+    queryKey: ["/api/contacts", params.id],
+    enabled: !!params.id,
+  });
+
+  const { data: companies } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
+  });
+
+  // Get activities from the contact's company
+  const { data: companyData } = useQuery<{ activities: Activity[]; tasks: Task[]; deals: DealWithStage[] }>({
+    queryKey: ["/api/companies", contact?.companyId],
+    enabled: !!contact?.companyId,
+  });
+
+  const activities = companyData?.activities || [];
+  const tasks = companyData?.tasks || [];
+  const deals = companyData?.deals || [];
+
+  if (!params.id) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Invalid Contact ID</h2>
+          <Button onClick={() => navigate("/contacts")}>Back to Contacts</Button>
+        </div>
+      </div>
+    );
+  }
+
+  const logCallForm = useForm<z.infer<typeof logCallSchema>>({
+    resolver: zodResolver(logCallSchema),
+    defaultValues: { note: "", outcome: "" },
+  });
+
+  const addNoteForm = useForm<z.infer<typeof addNoteSchema>>({
+    resolver: zodResolver(addNoteSchema),
+    defaultValues: { note: "" },
+  });
+
+  const updateContactMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      return apiRequest("PATCH", `/api/contacts/${params.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      setIsEditing(false);
+      toast({ title: "Contact updated" });
+    },
+  });
+
+  const logCallMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof logCallSchema>) => {
+      if (!contact?.companyId) throw new Error("No company linked");
+      return apiRequest("POST", `/api/companies/${contact.companyId}/activities`, {
+        companyId: contact.companyId,
+        type: "call",
+        note: data.note || null,
+        outcome: data.outcome || null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      logCallForm.reset();
+      setShowLogCallDialog(false);
+      toast({ title: "Call logged" });
+    },
+  });
+
+  const addNoteMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof addNoteSchema>) => {
+      if (!contact?.companyId) throw new Error("No company linked");
+      return apiRequest("POST", `/api/companies/${contact.companyId}/activities`, {
+        companyId: contact.companyId,
+        type: "follow_up",
+        note: data.note,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      addNoteForm.reset();
+      setShowAddNoteDialog(false);
+      toast({ title: "Note added" });
+    },
+  });
+
+  const startEditing = () => {
+    if (!contact) return;
+    setEditName(contact.name || "");
+    setEditEmail(contact.email);
+    setEditPhone(contact.phone || "");
+    setEditRole(contact.role || "");
+    setEditCompanyId(contact.companyId || "");
+    setEditLeadStatus(contact.leadStatus || "0-unqualified");
+    setIsEditing(true);
+  };
+
+  const saveEditing = () => {
+    updateContactMutation.mutate({
+      name: editName || null,
+      email: editEmail,
+      phone: editPhone || null,
+      role: editRole || null,
+      companyId: editCompanyId === "none" ? null : editCompanyId || null,
+      leadStatus: editLeadStatus,
+    });
+  };
+
+  const getLeadStatusBadge = (status: string | null | undefined) => {
+    const effectiveStatus = status || "0-unqualified";
+    const option = leadStatusOptions.find((opt) => opt.value === effectiveStatus);
+    if (option) {
+      return (
+        <Badge className={`${option.color} border text-xs font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap shadow-sm`}>
+          <span className={`inline-block w-2 h-2 rounded-full ${option.dotColor} mr-1.5`} />
+          {option.label}
+        </Badge>
+      );
+    }
+    return <Badge variant="outline" className="text-xs">{status}</Badge>;
+  };
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case "call": return <Phone className="h-4 w-4 text-blue-400" />;
+      case "email": return <Mail className="h-4 w-4 text-purple-400" />;
+      case "follow_up": return <StickyNote className="h-4 w-4 text-yellow-400" />;
+      case "quote": return <FileText className="h-4 w-4 text-green-400" />;
+      case "meeting": return <Video className="h-4 w-4 text-cyan-400" />;
+      case "deal_won": return <Briefcase className="h-4 w-4 text-emerald-400" />;
+      case "deal_lost": return <Briefcase className="h-4 w-4 text-red-400" />;
+      default: return <MessageSquare className="h-4 w-4 text-gray-400" />;
+    }
+  };
+
+  const getActivityLabel = (type: string) => {
+    switch (type) {
+      case "call": return "Call";
+      case "email": return "Email";
+      case "follow_up": return "Note";
+      case "quote": return "Quote";
+      case "meeting": return "Meeting";
+      case "deal_won": return "Deal Won";
+      case "deal_lost": return "Deal Lost";
+      default: return type;
+    }
+  };
+
+  const filteredActivities = useMemo(() => {
+    let filtered = activities;
+    if (activityFilter !== "all") {
+      const typeMap: Record<string, string[]> = {
+        calls: ["call"],
+        emails: ["email"],
+        notes: ["follow_up"],
+        tasks: [],
+      };
+      const types = typeMap[activityFilter];
+      if (types && types.length > 0) {
+        filtered = filtered.filter((a) => types.includes(a.type));
+      }
+    }
+    if (activitySearch) {
+      const s = activitySearch.toLowerCase();
+      filtered = filtered.filter((a) => a.note?.toLowerCase().includes(s) || a.outcome?.toLowerCase().includes(s));
+    }
+    return filtered;
+  }, [activities, activityFilter, activitySearch]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
+        <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] p-6 space-y-4">
+          <Skeleton className="h-8 w-32 dark:bg-[#3d4254]" />
+          <Skeleton className="h-16 w-16 rounded-full dark:bg-[#3d4254]" />
+          <Skeleton className="h-6 w-48 dark:bg-[#3d4254]" />
+          <Skeleton className="h-4 w-36 dark:bg-[#3d4254]" />
+        </div>
+        <div className="flex-1 p-6"><Skeleton className="h-64 dark:bg-[#3d4254]" /></div>
+      </div>
+    );
+  }
+
+  if (error || !contact) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Contact not found</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">This contact may have been deleted.</p>
+          <Button onClick={() => navigate("/contacts")}>Back to Contacts</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
+      {/* LEFT SIDEBAR */}
+      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col">
+        {/* Back button */}
+        <div className="p-4 border-b dark:border-[#3d4254]">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/contacts")}
+            className="text-[#0091AE] hover:text-[#007a94] hover:bg-blue-50 dark:hover:bg-[#2d3142] -ml-2">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Contacts
+          </Button>
+        </div>
+
+        {/* Contact Header */}
+        <div className="p-4 border-b dark:border-[#3d4254] text-center">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <span className="text-xl font-bold text-white">{getInitials(contact.name)}</span>
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{contact.name || "Unnamed Contact"}</h2>
+          {contact.role && <p className="text-sm text-gray-500 dark:text-[#94a3b8] mt-0.5">{contact.role}</p>}
+
+          {/* Quick Actions */}
+          <div className="flex items-center justify-center gap-1 mt-3">
+            {[
+              { icon: StickyNote, label: "Note", onClick: () => setShowAddNoteDialog(true) },
+              { icon: Mail, label: "Email", onClick: () => contact.email && window.open(`mailto:${contact.email}`) },
+              { icon: Phone, label: "Call", onClick: () => setShowLogCallDialog(true) },
+            ].map((action) => (
+              <Button key={action.label} variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#94a3b8] hover:text-white hover:bg-[#2d3142]"
+                onClick={action.onClick} disabled={!contact.companyId && (action.label === "Note" || action.label === "Call")}>
+                <action.icon className="h-3.5 w-3.5 mr-1" />{action.label}
+              </Button>
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-[#94a3b8] hover:text-white hover:bg-[#2d3142]">
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="dark:bg-[#252936] dark:border-[#3d4254]">
+                <DropdownMenuItem className="dark:text-white dark:focus:bg-[#2d3142]" onClick={startEditing}>
+                  <Pencil className="h-4 w-4 mr-2" />Edit Details
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="dark:bg-[#3d4254]" />
+                <DropdownMenuItem className="text-red-600 focus:text-red-600" onClick={() => {
+                  if (confirm("Delete this contact?")) {
+                    apiRequest("DELETE", `/api/contacts/${params.id}`).then(() => {
+                      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+                      navigate("/contacts");
+                      toast({ title: "Contact deleted" });
+                    });
+                  }
+                }}>
+                  <Trash2 className="h-4 w-4 mr-2" />Delete Contact
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Key Information */}
+        <ScrollArea className="flex-1">
+          <div className="p-4">
+            <div className="bg-[#252936] rounded-lg p-5 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
+              <h3 className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] font-semibold mb-4">Key Information</h3>
+
+              {isEditing ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Name</label>
+                    <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Email</label>
+                    <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Phone</label>
+                    <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Job Title</label>
+                    <Input value={editRole} onChange={(e) => setEditRole(e.target.value)} className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Company</label>
+                    <Select value={editCompanyId || "none"} onValueChange={(v) => setEditCompanyId(v === "none" ? "" : v)}>
+                      <SelectTrigger className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                        <SelectValue placeholder="Select company" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60 dark:bg-[#252936] dark:border-[#3d4254]">
+                        <SelectItem value="none" className="dark:text-[#94a3b8]">No company</SelectItem>
+                        {companies?.map((c) => (
+                          <SelectItem key={c.id} value={c.id} className="dark:text-white dark:focus:bg-[#2d3142]">{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Lead Status</label>
+                    <Select value={editLeadStatus} onValueChange={setEditLeadStatus}>
+                      <SelectTrigger className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        {leadStatusOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                            <span className="flex items-center gap-2">
+                              <span className={`h-2 w-2 rounded-full ${opt.badgeColor}`} />{opt.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <Button size="sm" className="flex-1 bg-[#0091AE] hover:bg-[#007a94] text-white" onClick={saveEditing} disabled={updateContactMutation.isPending}>
+                      <Save className="h-3.5 w-3.5 mr-1" />{updateContactMutation.isPending ? "Saving..." : "Save"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white" onClick={() => setIsEditing(false)}>
+                      <X className="h-3.5 w-3.5 mr-1" />Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Contact Info */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Email</p>
+                      <a href={`mailto:${contact.email}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1">
+                        <Mail className="h-3.5 w-3.5" />{contact.email}
+                      </a>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Phone</p>
+                      {contact.phone ? (
+                        <a href={`tel:${contact.phone}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1">
+                          <Phone className="h-3.5 w-3.5" />{contact.phone}
+                        </a>
+                      ) : (
+                        <p className="text-[14px] text-muted-foreground">--</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Job Title</p>
+                      <p className="text-[14px] font-medium text-white">{contact.role || <span className="text-muted-foreground font-normal">--</span>}</p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[#3d4254] my-4" />
+
+                  {/* Organization */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Company</p>
+                      {contact.companyId && contact.companyName ? (
+                        <Link href={`/company/${contact.companyId}`}
+                          className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1.5">
+                          <Building2 className="h-3.5 w-3.5" />{contact.companyName}<ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      ) : (
+                        <p className="text-[14px] text-muted-foreground">No company</p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Lead Status</p>
+                      {getLeadStatusBadge(contact.leadStatus)}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-[#3d4254] my-4" />
+
+                  {/* Dates */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Last Contacted</p>
+                      <p className="text-[14px] font-medium text-white">
+                        {contact.lastContactDate ? formatDistanceToNow(new Date(contact.lastContactDate), { addSuffix: true }) : <span className="text-muted-foreground font-normal">Never</span>}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Create Date</p>
+                      <p className="text-[14px] font-medium text-white">{format(new Date(contact.createdAt), "MMM d, yyyy")}</p>
+                    </div>
+                  </div>
+
+                  <Button variant="outline" size="sm" className="w-full mt-4 dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]" onClick={startEditing}>
+                    <Pencil className="h-3.5 w-3.5 mr-2" />Edit Details
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* CENTER - Activity Timeline */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Tabs */}
+        <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6">
+          <div className="flex items-center gap-6 h-12">
+            {["About", "Activities", "Revenue"].map((tab) => (
+              <button key={tab} className={`text-sm font-medium border-b-2 h-full flex items-center transition-colors ${
+                tab === "Activities"
+                  ? "border-[#0091AE] text-[#0091AE]"
+                  : "border-transparent text-[#94a3b8] hover:text-white"
+              }`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Activity Toolbar */}
+        <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-3 flex items-center gap-3">
+          <Button size="sm" className="bg-[#0091AE] hover:bg-[#007a94] text-white" onClick={() => setShowLogCallDialog(true)} disabled={!contact.companyId}>
+            <Phone className="h-3.5 w-3.5 mr-1.5" />Log Call
+          </Button>
+          <Button size="sm" variant="outline" className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]" onClick={() => setShowAddNoteDialog(true)} disabled={!contact.companyId}>
+            <StickyNote className="h-3.5 w-3.5 mr-1.5" />Add Note
+          </Button>
+          <div className="flex-1" />
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#64748b]" />
+            <Input
+              type="search"
+              placeholder="Search activities..."
+              value={activitySearch}
+              onChange={(e) => setActivitySearch(e.target.value)}
+              className="pl-9 h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
+            />
+          </div>
+        </div>
+
+        {/* Activity Filters */}
+        <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-2 flex items-center gap-1">
+          {[
+            { key: "all", label: "All" },
+            { key: "calls", label: "Calls" },
+            { key: "emails", label: "Emails" },
+            { key: "notes", label: "Notes" },
+          ].map((f) => (
+            <Button key={f.key} variant="ghost" size="sm"
+              className={`h-7 px-3 text-xs ${activityFilter === f.key ? "bg-[#0091AE]/10 text-[#0091AE] font-medium" : "text-[#94a3b8] hover:text-white hover:bg-[#2d3142]"}`}
+              onClick={() => setActivityFilter(f.key)}>
+              {f.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Activity List */}
+        <ScrollArea className="flex-1 bg-gray-50 dark:bg-[#1a1d29]">
+          <div className="p-6">
+            {!contact.companyId ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                  <Building2 className="h-8 w-8 text-[#64748b]" />
+                </div>
+                <p className="text-[#94a3b8] mb-1">No company linked</p>
+                <p className="text-sm text-[#64748b]">Link this contact to a company to view and log activities.</p>
+                <Button size="sm" variant="outline" className="mt-4 dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white" onClick={startEditing}>
+                  <Building2 className="h-3.5 w-3.5 mr-1.5" />Link Company
+                </Button>
+              </div>
+            ) : filteredActivities.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-full bg-[#3d4254] flex items-center justify-center mx-auto mb-4">
+                  <Clock className="h-8 w-8 text-[#64748b]" />
+                </div>
+                <p className="text-[#94a3b8] mb-1">No activities yet</p>
+                <p className="text-sm text-[#64748b]">Log a call or add a note to get started.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredActivities.map((activity) => (
+                  <div key={activity.id} className="bg-white dark:bg-[#252936] border dark:border-[#3d4254] rounded-lg p-4 hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#2d3142] dark:bg-[#3d4254] flex items-center justify-center flex-shrink-0 mt-0.5">
+                        {getActivityIcon(activity.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {getActivityLabel(activity.type)}
+                          </span>
+                          {activity.outcome && (
+                            <Badge variant="outline" className="text-[10px] h-4 px-1.5 dark:border-[#3d4254] dark:text-[#94a3b8]">
+                              {activity.outcome}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-gray-500 dark:text-[#64748b] ml-auto flex-shrink-0">
+                            {formatDistanceToNow(new Date(activity.createdAt), { addSuffix: true })}
+                          </span>
+                        </div>
+                        {activity.note && (
+                          <p className="text-sm text-gray-600 dark:text-[#94a3b8] whitespace-pre-wrap">{activity.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* RIGHT SIDEBAR */}
+      <div className="w-[350px] bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] overflow-auto">
+        <CollapsibleSection title="Companies" count={contact.companyId ? 1 : 0} icon={Building2}>
+          {contact.companyId && contact.companyName ? (
+            <Link href={`/company/${contact.companyId}`}
+              className="block p-3 bg-[#2d3142] border border-[#3d4254] rounded-md hover:bg-[#353849] transition-colors">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#0091AE]/20 to-[#06b6d4]/20 flex items-center justify-center flex-shrink-0">
+                  <Building2 className="h-4 w-4 text-[#0091AE]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm text-[#0091AE] truncate">{contact.companyName}</p>
+                </div>
+                <ArrowUpRight className="h-4 w-4 text-[#64748b]" />
+              </div>
+            </Link>
+          ) : (
+            <p className="text-sm text-[#94a3b8] text-center py-4">No company linked</p>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Deals" count={deals.length} icon={Briefcase}>
+          {deals.length === 0 ? (
+            <p className="text-sm text-[#94a3b8] text-center py-4">No deals</p>
+          ) : (
+            <div className="space-y-2">
+              {deals.map((deal) => (
+                <div key={deal.id} className="p-3 bg-[#2d3142] border border-[#3d4254] rounded-md">
+                  <p className="font-medium text-sm text-white truncate">{deal.title}</p>
+                  {deal.expectedGP && (
+                    <p className="text-sm font-bold text-[#10b981] mt-0.5">£{parseFloat(deal.expectedGP).toLocaleString()}</p>
+                  )}
+                  {deal.stage && (
+                    <Badge className="text-[10px] h-4 px-1.5 mt-1.5 bg-blue-600/20 text-blue-400 border border-blue-600/30">{deal.stage.name}</Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Tasks" count={tasks.length} icon={FileText}>
+          {tasks.length === 0 ? (
+            <p className="text-sm text-[#94a3b8] text-center py-4">No tasks</p>
+          ) : (
+            <div className="space-y-2">
+              {tasks.filter((t) => t.status !== "completed").slice(0, 5).map((task) => (
+                <div key={task.id} className="p-3 bg-[#2d3142] border border-[#3d4254] rounded-md">
+                  <p className="text-sm text-white">{task.name}</p>
+                  {task.dueDate && (
+                    <p className="text-xs text-[#64748b] mt-1">Due {format(new Date(task.dueDate), "MMM d")}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CollapsibleSection>
+      </div>
+
+      {/* Log Call Dialog */}
+      <Dialog open={showLogCallDialog} onOpenChange={setShowLogCallDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Log a Call</DialogTitle>
+          </DialogHeader>
+          <Form {...logCallForm}>
+            <form onSubmit={logCallForm.handleSubmit((data) => logCallMutation.mutate(data))} className="space-y-4">
+              <FormField control={logCallForm.control} name="outcome" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Outcome</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                        <SelectValue placeholder="Select outcome" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                      <SelectItem value="Reception / Voicemail" className="dark:text-white dark:focus:bg-[#2d3142]">Reception / Voicemail</SelectItem>
+                      <SelectItem value="Decision Maker Details" className="dark:text-white dark:focus:bg-[#2d3142]">Decision Maker Details</SelectItem>
+                      <SelectItem value="Connected to DM" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )} />
+              <FormField control={logCallForm.control} name="note" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Notes</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Call notes..." className="min-h-[100px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={logCallMutation.isPending}>
+                {logCallMutation.isPending ? "Logging..." : "Log Call"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Note Dialog */}
+      <Dialog open={showAddNoteDialog} onOpenChange={setShowAddNoteDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Add a Note</DialogTitle>
+          </DialogHeader>
+          <Form {...addNoteForm}>
+            <form onSubmit={addNoteForm.handleSubmit((data) => addNoteMutation.mutate(data))} className="space-y-4">
+              <FormField control={addNoteForm.control} name="note" render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="dark:text-[#94a3b8]">Note</FormLabel>
+                  <FormControl>
+                    <Textarea placeholder="Write your note..." className="min-h-[120px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <Button type="submit" className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={addNoteMutation.isPending}>
+                {addNoteMutation.isPending ? "Saving..." : "Save Note"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

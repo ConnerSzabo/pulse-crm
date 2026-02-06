@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { testConnection } from "./db";
+import { storage } from "./storage";
 
 // Validate required environment variables
 if (!process.env.DATABASE_URL) {
@@ -103,14 +104,6 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    // Test database connection first
-    log("Testing database connection...");
-    const dbConnected = await testConnection();
-    if (!dbConnected) {
-      console.error("FATAL: Could not connect to database. Please check DATABASE_URL.");
-      process.exit(1);
-    }
-
     await registerRoutes(httpServer, app);
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -126,9 +119,6 @@ app.use((req, res, next) => {
       return res.status(status).json({ message });
     });
 
-    // importantly only setup vite in development and after
-    // setting up all the other routes so the catch-all route
-    // doesn't interfere with the other routes
     if (process.env.NODE_ENV === "production") {
       serveStatic(app);
     } else {
@@ -136,10 +126,6 @@ app.use((req, res, next) => {
       await setupVite(httpServer, app);
     }
 
-    // ALWAYS serve the app on the port specified in the environment variable PORT
-    // Other ports are firewalled. Default to 5000 if not specified.
-    // this serves both the API and the client.
-    // It is the only port that is not firewalled.
     const port = parseInt(process.env.PORT || "5000", 10);
     httpServer.listen(
       {
@@ -149,6 +135,8 @@ app.use((req, res, next) => {
       },
       () => {
         log(`serving on port ${port}`);
+
+        runPostStartupTasks();
       },
     );
   } catch (error) {
@@ -156,3 +144,35 @@ app.use((req, res, next) => {
     process.exit(1);
   }
 })();
+
+async function runPostStartupTasks() {
+  try {
+    log("Testing database connection...");
+    const dbConnected = await testConnection();
+    if (!dbConnected) {
+      console.error("WARNING: Database connection test failed.");
+    }
+  } catch (err) {
+    console.error("WARNING: Database connection test error:", err);
+  }
+
+  try {
+    const backfilled = await storage.backfillLeadStatus();
+    if (backfilled > 0) {
+      console.log(`Updated ${backfilled} companies to default Lead Status: 0 - Unqualified`);
+    }
+  } catch (err) {
+    console.error("Failed to backfill lead status:", err);
+  }
+
+  try {
+    const { migratedCount, trustsCreated } = await storage.migrateAcademyTrusts();
+    if (migratedCount > 0 || trustsCreated > 0) {
+      console.log(`Trust migration: ${migratedCount} companies migrated, ${trustsCreated} trusts created`);
+    }
+  } catch (err) {
+    console.error("Failed to migrate academy trusts:", err);
+  }
+
+  log("Post-startup tasks completed.");
+}

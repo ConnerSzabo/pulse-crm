@@ -25,6 +25,11 @@ const mainMenuItems = [
     icon: Building2,
   },
   {
+    title: "Contacts",
+    url: "/contacts",
+    icon: Users,
+  },
+  {
     title: "Deals",
     url: "/pipeline",
     icon: Briefcase,
@@ -55,6 +60,7 @@ export function AppSidebar() {
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
     if (url === "/companies") return location === "/companies" || location.startsWith("/company/");
+    if (url === "/contacts") return location === "/contacts" || location.startsWith("/contact/");
     return location.startsWith(url);
   };
 

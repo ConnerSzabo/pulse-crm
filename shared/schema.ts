@@ -32,6 +32,23 @@ export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit
 export type InsertPipelineStage = z.infer<typeof insertPipelineStageSchema>;
 export type PipelineStage = typeof pipelineStages.$inferSelect;
 
+// Academy Trusts
+export const trusts = pgTable("trusts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertTrustSchema = createInsertSchema(trusts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertTrust = z.infer<typeof insertTrustSchema>;
+export type Trust = typeof trusts.$inferSelect;
+
 // Companies/Schools
 export const companies = pgTable("companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -40,6 +57,8 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   location: text("location"),
   academyTrustName: text("academy_trust_name"),
+  industry: text("industry").default("Secondary School"),
+  trustId: varchar("trust_id").references(() => trusts.id),
   ext: text("ext"),
   notes: text("notes"),
   itManagerName: text("it_manager_name"),
@@ -73,19 +92,28 @@ export type Company = typeof companies.$inferSelect;
 // Contacts for companies
 export const contacts = pgTable("contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  companyId: varchar("company_id").references(() => companies.id),
   email: text("email").notNull(),
   name: text("name"),
   phone: text("phone"),
   role: text("role"),
+  leadStatus: text("lead_status").default("0-unqualified"),
+  lastContactDate: timestamp("last_contact_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertContactSchema = createInsertSchema(contacts).omit({
   id: true,
+  createdAt: true,
 });
 
 export type InsertContact = z.infer<typeof insertContactSchema>;
 export type Contact = typeof contacts.$inferSelect;
+
+export type ContactWithCompany = Contact & {
+  companyName?: string;
+  companyBudgetStatus?: string;
+};
 
 // Activity log (calls, emails, quotes, follow-ups, deals)
 export const activities = pgTable("activities", {
@@ -223,4 +251,5 @@ export type CompanyWithRelations = Company & {
   tasks: Task[];
   deals: DealWithStage[];
   stage?: PipelineStage;
+  trust?: Trust;
 };

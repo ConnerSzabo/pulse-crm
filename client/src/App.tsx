@@ -6,12 +6,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { GlobalSearch } from "@/components/global-search";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LogOut, Search, Bell, User, ChevronDown } from "lucide-react";
+import { LogOut, Bell, User, ChevronDown } from "lucide-react";
 import Dashboard from "@/pages/dashboard";
 import Companies from "@/pages/companies";
 import CompanyDetail from "@/pages/company-detail";
+import Contacts from "@/pages/contacts";
+import ContactDetail from "@/pages/contact-detail";
 import Pipeline from "@/pages/pipeline";
 import TasksPage from "@/pages/tasks";
 import ImportCSV from "@/pages/import-csv";
@@ -26,6 +29,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/companies" component={Companies} />
       <Route path="/company/:id" component={CompanyDetail} />
+      <Route path="/contacts" component={Contacts} />
+      <Route path="/contact/:id" component={ContactDetail} />
       <Route path="/pipeline" component={Pipeline} />
       <Route path="/tasks" component={TasksPage} />
       <Route path="/call-analytics" component={CallAnalytics} />
@@ -38,17 +43,8 @@ function Router() {
 function TopNavBar({ onLogout, isLoggingOut }: { onLogout: () => void; isLoggingOut: boolean }) {
   return (
     <header className="h-14 flex items-center justify-between px-6 flex-shrink-0 bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254]">
-      {/* Search */}
-      <div className="flex-1 max-w-xl">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#64748b]" />
-          <input
-            type="search"
-            placeholder="Search companies, contacts, deals..."
-            className="w-full h-9 pl-10 pr-4 text-sm rounded-md transition-colors bg-white dark:bg-[#1a1d29] border border-gray-300 dark:border-[#3d4254] text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#64748b] focus:outline-none focus:ring-2 focus:ring-[#0091AE]/20 focus:border-[#0091AE]"
-          />
-        </div>
-      </div>
+      {/* Global Search */}
+      <GlobalSearch />
 
       {/* Right side actions */}
       <div className="flex items-center gap-3">

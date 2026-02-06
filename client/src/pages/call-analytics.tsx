@@ -6,6 +6,7 @@ import type { Activity } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -49,7 +50,7 @@ import {
 
 type CallActivity = Activity & { companyName?: string };
 
-type DateRange = "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "lastMonth";
+type DateRange = "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "lastMonth" | "custom";
 
 const OUTCOME_COLORS: Record<string, string> = {
   "Reception / Voicemail": "#f59e0b",
@@ -63,7 +64,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   "Connected to DM": "Connected to DM",
 };
 
-function getDateRange(range: DateRange): { start: Date; end: Date; label: string } {
+function getDateRange(range: DateRange, customStart?: string, customEnd?: string): { start: Date; end: Date; label: string } {
   const now = new Date();
   switch (range) {
     case "today":
@@ -82,6 +83,11 @@ function getDateRange(range: DateRange): { start: Date; end: Date; label: string
       const lastMonth = subMonths(now, 1);
       return { start: startOfMonth(lastMonth), end: endOfMonth(lastMonth), label: "Last Month" };
     }
+    case "custom": {
+      const s = customStart ? startOfDay(new Date(customStart)) : startOfDay(subDays(now, 6));
+      const e = customEnd ? endOfDay(new Date(customEnd)) : endOfDay(now);
+      return { start: s, end: e, label: "Custom Range" };
+    }
   }
 }
 
@@ -90,17 +96,24 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 export default function CallAnalytics() {
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState<DateRange>("last7");
+  const [customStartDate, setCustomStartDate] = useState<string>(format(subDays(new Date(), 6), "yyyy-MM-dd"));
+  const [customEndDate, setCustomEndDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [dailyTarget, setDailyTarget] = useState<number>(() => {
+    const saved = localStorage.getItem("callDailyTarget");
+    return saved ? parseInt(saved, 10) : 20;
+  });
+  const [editingTarget, setEditingTarget] = useState(false);
   const [outcomeFilter, setOutcomeFilter] = useState<string>("all");
   const [tableSortBy, setTableSortBy] = useState<"date" | "total" | "reception" | "details" | "connected" | "rate">("date");
   const [tableSortOrder, setTableSortOrder] = useState<"asc" | "desc">("desc");
   const [feedPage, setFeedPage] = useState(0);
-  const FEED_PAGE_SIZE = 15;
+  const [feedPageSize, setFeedPageSize] = useState(25);
 
-  const { start, end, label: rangeLabel } = getDateRange(dateRange);
+  const { start, end, label: rangeLabel } = getDateRange(dateRange, customStartDate, customEndDate);
 
   // Fetch call data for selected range
   const { data: calls, isLoading } = useQuery<CallActivity[]>({
-    queryKey: ["/api/call-analytics", dateRange],
+    queryKey: ["/api/call-analytics", dateRange, dateRange === "custom" ? `${customStartDate}_${customEndDate}` : ""],
     queryFn: async () => {
       const res = await fetch(`/api/call-analytics?startDate=${start.toISOString()}&endDate=${end.toISOString()}`);
       if (!res.ok) throw new Error("Failed to fetch");
@@ -210,12 +223,30 @@ export default function CallAnalytics() {
       d.daysCount = dowDays.get(d.dayIndex)?.size || 0;
     });
 
+    // Time of day analysis
+    const timeSlots = [
+      { label: "Morning (9–12)", minHour: 9, maxHour: 12, total: 0, connected: 0 },
+      { label: "Afternoon (12–3)", minHour: 12, maxHour: 15, total: 0, connected: 0 },
+      { label: "Late Afternoon (3–6)", minHour: 15, maxHour: 18, total: 0, connected: 0 },
+    ];
+    calls.forEach(c => {
+      const hour = new Date(c.createdAt).getHours();
+      for (const slot of timeSlots) {
+        if (hour >= slot.minHour && hour < slot.maxHour) {
+          slot.total++;
+          if ((c.outcome || "") === "Connected to DM") slot.connected++;
+          break;
+        }
+      }
+    });
+
     return {
       total,
       byOutcome,
       dailyData,
       dowData: dowData.filter(d => d.dayIndex >= 1 && d.dayIndex <= 5), // Mon-Fri only
       connectRate: total > 0 ? (byOutcome["Connected to DM"] / total) * 100 : 0,
+      timeSlots,
     };
   }, [calls, start, end]);
 
@@ -278,6 +309,42 @@ export default function CallAnalytics() {
     };
   }, [allTimeCalls]);
 
+  // Weekly summary comparison
+  const weeklySummary = useMemo(() => {
+    if (!allTimeCalls) return null;
+    const now = new Date();
+    const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const thisWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    const lastWeekStart = subDays(thisWeekStart, 7);
+    const lastWeekEnd = subDays(thisWeekStart, 1);
+
+    const thisWeekCalls = allTimeCalls.filter(c => {
+      const d = new Date(c.createdAt);
+      return d >= thisWeekStart && d <= thisWeekEnd;
+    });
+    const lastWeekCalls = allTimeCalls.filter(c => {
+      const d = new Date(c.createdAt);
+      return d >= lastWeekStart && d <= endOfDay(lastWeekEnd);
+    });
+
+    const thisTotal = thisWeekCalls.length;
+    const lastTotal = lastWeekCalls.length;
+    const thisConnected = thisWeekCalls.filter(c => c.outcome === "Connected to DM").length;
+    const lastConnected = lastWeekCalls.filter(c => c.outcome === "Connected to DM").length;
+    const thisRate = thisTotal > 0 ? (thisConnected / thisTotal) * 100 : 0;
+    const lastRate = lastTotal > 0 ? (lastConnected / lastTotal) * 100 : 0;
+    const rateDiff = thisRate - lastRate;
+
+    return {
+      thisWeekTotal: thisTotal,
+      lastWeekTotal: lastTotal,
+      thisWeekRate: thisRate,
+      lastWeekRate: lastRate,
+      rateDiff,
+      callsDiff: thisTotal - lastTotal,
+    };
+  }, [allTimeCalls]);
+
   // Yesterday comparison
   const yesterdayComparison = useMemo(() => {
     if (!yesterdayCalls || !calls) return null;
@@ -318,7 +385,7 @@ export default function CallAnalytics() {
     return calls.filter(c => c.outcome === outcomeFilter);
   }, [calls, outcomeFilter]);
 
-  const pagedFeed = filteredCalls.slice(feedPage * FEED_PAGE_SIZE, (feedPage + 1) * FEED_PAGE_SIZE);
+  const pagedFeed = filteredCalls.slice(feedPage * feedPageSize, (feedPage + 1) * feedPageSize);
 
   const toggleSort = (col: typeof tableSortBy) => {
     if (tableSortBy === col) {
@@ -335,28 +402,58 @@ export default function CallAnalytics() {
     return "text-[#ef4444]";
   };
 
-  // Export to CSV
+  // Export to Excel-compatible CSV
   const handleExport = () => {
     if (!analytics || !calls) return;
 
-    // Build CSV
-    let csv = "Date,Total Calls,Reception/Voicemail,Decision Maker Details,Connected to DM,Connect Rate %\n";
+    const escapeField = (val: string) => {
+      if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    // Summary Statistics
+    let csv = "CALL ANALYTICS REPORT\n";
+    csv += `Date Range,${rangeLabel}\n`;
+    csv += `Total Calls,${analytics.total}\n`;
+    csv += `Connected to DM,${analytics.byOutcome["Connected to DM"]}\n`;
+    csv += `Decision Maker Details,${analytics.byOutcome["Decision Maker Details"]}\n`;
+    csv += `Reception / Voicemail,${analytics.byOutcome["Reception / Voicemail"]}\n`;
+    csv += `Connect Rate,${analytics.connectRate.toFixed(1)}%\n`;
+    csv += "\n";
+
+    // Daily Breakdown
+    csv += "DAILY BREAKDOWN\n";
+    csv += "Date,Day,Total Calls,Reception/Voicemail,Decision Maker Details,Connected to DM,Connect Rate %\n";
     analytics.dailyData.forEach(d => {
       const rate = d.total > 0 ? ((d.connected / d.total) * 100).toFixed(1) : "0.0";
-      csv += `${d.date},${d.total},${d.reception},${d.details},${d.connected},${rate}%\n`;
+      const dayOfWeek = format(new Date(d.date), "EEEE");
+      csv += `${d.date},${dayOfWeek},${d.total},${d.reception},${d.details},${d.connected},${rate}%\n`;
     });
+    csv += "\n";
 
-    csv += "\n\nIndividual Call Logs\n";
+    // Time of Day
+    csv += "TIME OF DAY ANALYSIS\n";
+    csv += "Time Slot,Total Calls,Connected to DM,Connect Rate %\n";
+    analytics.timeSlots.forEach(slot => {
+      const rate = slot.total > 0 ? ((slot.connected / slot.total) * 100).toFixed(1) : "0.0";
+      csv += `${escapeField(slot.label)},${slot.total},${slot.connected},${rate}%\n`;
+    });
+    csv += "\n";
+
+    // Individual Call Logs
+    csv += "INDIVIDUAL CALL LOGS\n";
     csv += "Date,Time,Company,Outcome,Notes\n";
     calls.forEach(c => {
       const date = format(new Date(c.createdAt), "yyyy-MM-dd");
       const time = format(new Date(c.createdAt), "HH:mm");
-      const company = (c.companyName || "").replace(/,/g, " ");
-      const notes = (c.note || "").replace(/,/g, " ").replace(/\n/g, " ");
-      csv += `${date},${time},${company},${c.outcome || ""},${notes}\n`;
+      const company = escapeField(c.companyName || "");
+      const notes = escapeField((c.note || "").replace(/\n/g, " "));
+      csv += `${date},${time},${company},${escapeField(c.outcome || "")},${notes}\n`;
     });
 
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -436,15 +533,33 @@ export default function CallAnalytics() {
               <SelectItem value="last30" className="dark:text-white dark:focus:bg-[#2d3142]">Last 30 Days</SelectItem>
               <SelectItem value="thisMonth" className="dark:text-white dark:focus:bg-[#2d3142]">This Month</SelectItem>
               <SelectItem value="lastMonth" className="dark:text-white dark:focus:bg-[#2d3142]">Last Month</SelectItem>
+              <SelectItem value="custom" className="dark:text-white dark:focus:bg-[#2d3142]">Custom Range</SelectItem>
             </SelectContent>
           </Select>
+          {dateRange === "custom" && (
+            <div className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => { setCustomStartDate(e.target.value); setFeedPage(0); }}
+                className="h-9 w-[140px] text-xs dark:bg-[#252936] dark:border-[#3d4254] dark:text-white"
+              />
+              <span className="text-xs dark:text-[#64748b]">to</span>
+              <Input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => { setCustomEndDate(e.target.value); setFeedPage(0); }}
+                className="h-9 w-[140px] text-xs dark:bg-[#252936] dark:border-[#3d4254] dark:text-white"
+              />
+            </div>
+          )}
           <Button
             size="sm"
             onClick={handleExport}
             className="bg-[#0091AE] hover:bg-[#007a94] text-white"
           >
             <Download className="h-4 w-4 mr-2" />
-            Export CSV
+            Export to Excel
           </Button>
         </div>
       </div>
@@ -482,6 +597,24 @@ export default function CallAnalytics() {
               </CardContent>
             </Card>
           )}
+          {weeklySummary && weeklySummary.thisWeekTotal > 0 && (
+            <Card className="flex-1 dark:bg-[#252936] dark:border-[#3d4254]">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-[#0091AE]/20 flex items-center justify-center">
+                  <BarChart3 className="h-5 w-5 text-[#0091AE]" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium dark:text-white">
+                    This week: {weeklySummary.thisWeekTotal} calls, {weeklySummary.thisWeekRate.toFixed(0)}% connect
+                  </p>
+                  <p className="text-xs dark:text-[#94a3b8]">
+                    {weeklySummary.rateDiff >= 0 ? "↑" : "↓"}{Math.abs(weeklySummary.rateDiff).toFixed(0)}% vs last week
+                    {weeklySummary.lastWeekTotal > 0 && ` (${weeklySummary.lastWeekTotal} calls)`}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           {yesterdayComparison && dateRange === "today" && (
             <Card className="flex-1 dark:bg-[#252936] dark:border-[#3d4254]">
               <CardContent className="p-4 flex items-center gap-3">
@@ -504,6 +637,79 @@ export default function CallAnalytics() {
           )}
         </div>
       )}
+
+      {/* Daily Goal Progress */}
+      {(() => {
+        const todayCallCount = (calls || []).filter(c => isToday(new Date(c.createdAt))).length;
+        const progress = Math.min((todayCallCount / dailyTarget) * 100, 100);
+        const isComplete = todayCallCount >= dailyTarget;
+        return (
+          <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-[#0091AE]" />
+                  <span className="text-sm font-medium dark:text-white">
+                    Daily Goal: {todayCallCount} / {dailyTarget} calls
+                  </span>
+                  {isComplete && (
+                    <Badge className="bg-[#10b981] text-white text-xs">Goal reached!</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {editingTarget ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={200}
+                        value={dailyTarget}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (val > 0) {
+                            setDailyTarget(val);
+                            localStorage.setItem("callDailyTarget", String(val));
+                          }
+                        }}
+                        className="h-7 w-16 text-xs dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white"
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingTarget(false)}
+                        className="h-7 text-xs dark:text-[#94a3b8]"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setEditingTarget(true)}
+                      className="h-7 text-xs dark:text-[#64748b] dark:hover:text-white"
+                    >
+                      Set target
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="h-2 bg-[#1a1d29] rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${isComplete ? "bg-[#10b981]" : "bg-[#0091AE]"}`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs dark:text-[#64748b] mt-1">
+                {isComplete
+                  ? `You've exceeded your target by ${todayCallCount - dailyTarget} calls!`
+                  : `${dailyTarget - todayCallCount} more calls to reach your daily target`
+                }
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -818,6 +1024,50 @@ export default function CallAnalytics() {
         </Card>
       </div>
 
+      {/* Time of Day Analysis */}
+      <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#0091AE]" />
+            <CardTitle className="text-sm font-medium dark:text-white">Time of Day Analysis</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {analytics?.timeSlots.map(slot => {
+              const rate = slot.total > 0 ? (slot.connected / slot.total) * 100 : 0;
+              return (
+                <div key={slot.label} className="p-4 rounded-lg bg-[#1a1d29] border border-[#3d4254]">
+                  <p className="text-sm font-medium dark:text-white mb-2">{slot.label}</p>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <p className="text-2xl font-bold dark:text-white">{slot.total}</p>
+                      <p className="text-xs dark:text-[#64748b]">total calls</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-lg font-bold ${getConnectRateColor(rate)}`}>
+                        {slot.total > 0 ? `${rate.toFixed(0)}%` : "—"}
+                      </p>
+                      <p className="text-xs dark:text-[#64748b]">connect rate</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-xs dark:text-[#94a3b8]">
+                    <span className="text-[#10b981]">{slot.connected} connected</span>
+                    <span>·</span>
+                    <span className="text-[#f59e0b]">{slot.total - slot.connected} other</span>
+                  </div>
+                </div>
+              );
+            })}
+            {(!analytics?.timeSlots || analytics.timeSlots.every(s => s.total === 0)) && (
+              <div className="col-span-3 text-center py-4 dark:text-[#64748b] text-sm">
+                No call data for this period
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Activity Feed */}
       <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader className="pb-2">
@@ -888,30 +1138,73 @@ export default function CallAnalytics() {
                 ))}
               </div>
               {/* Pagination */}
-              {filteredCalls.length > FEED_PAGE_SIZE && (
+              {filteredCalls.length > feedPageSize && (
                 <div className="flex items-center justify-between mt-4 pt-3 border-t dark:border-[#3d4254]">
                   <span className="text-xs dark:text-[#64748b]">
-                    Showing {feedPage * FEED_PAGE_SIZE + 1}–{Math.min((feedPage + 1) * FEED_PAGE_SIZE, filteredCalls.length)} of {filteredCalls.length}
+                    Showing {feedPage * feedPageSize + 1}–{Math.min((feedPage + 1) * feedPageSize, filteredCalls.length)} of {filteredCalls.length} calls
                   </span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={feedPage === 0}
-                      onClick={() => setFeedPage(p => p - 1)}
-                      className="h-7 text-xs dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+                  <div className="flex items-center gap-3">
+                    <Select
+                      value={String(feedPageSize)}
+                      onValueChange={(v) => { setFeedPageSize(Number(v)); setFeedPage(0); }}
                     >
-                      Previous
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={(feedPage + 1) * FEED_PAGE_SIZE >= filteredCalls.length}
-                      onClick={() => setFeedPage(p => p + 1)}
-                      className="h-7 text-xs dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
-                    >
-                      Next
-                    </Button>
+                      <SelectTrigger className="h-7 w-[100px] text-xs dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        <SelectItem value="25" className="dark:text-white dark:focus:bg-[#2d3142]">25 / page</SelectItem>
+                        <SelectItem value="50" className="dark:text-white dark:focus:bg-[#2d3142]">50 / page</SelectItem>
+                        <SelectItem value="100" className="dark:text-white dark:focus:bg-[#2d3142]">100 / page</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={feedPage === 0}
+                        onClick={() => setFeedPage(p => p - 1)}
+                        className="h-7 text-xs dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+                      >
+                        Prev
+                      </Button>
+                      {Array.from({ length: Math.min(5, Math.ceil(filteredCalls.length / feedPageSize)) }, (_, i) => {
+                        const totalPages = Math.ceil(filteredCalls.length / feedPageSize);
+                        let pageNum: number;
+                        if (totalPages <= 5) {
+                          pageNum = i;
+                        } else if (feedPage < 3) {
+                          pageNum = i;
+                        } else if (feedPage > totalPages - 4) {
+                          pageNum = totalPages - 5 + i;
+                        } else {
+                          pageNum = feedPage - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            size="sm"
+                            variant={feedPage === pageNum ? "default" : "outline"}
+                            onClick={() => setFeedPage(pageNum)}
+                            className={`h-7 w-7 text-xs p-0 ${
+                              feedPage === pageNum
+                                ? "bg-[#0091AE] text-white hover:bg-[#007a94]"
+                                : "dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+                            }`}
+                          >
+                            {pageNum + 1}
+                          </Button>
+                        );
+                      })}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={(feedPage + 1) * feedPageSize >= filteredCalls.length}
+                        onClick={() => setFeedPage(p => p + 1)}
+                        className="h-7 text-xs dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]"
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

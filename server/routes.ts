@@ -9,6 +9,11 @@ import bcrypt from "bcrypt";
 const ADMIN_USERNAME = "connerszabo";
 const ADMIN_PASSWORD_HASH = "$2b$10$v27rzXh.RCKA8o9kUWm/IOwYpskP0uqk3VJsUgFbOuZIorPEAsvhy";
 
+// Helper to safely get string param
+const getParam = (param: string | string[] | undefined): string => {
+  return Array.isArray(param) ? param[0] : (param || "");
+};
+
 // Authentication middleware
 const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   if (req.session.userId) {
@@ -82,6 +87,21 @@ export async function registerRoutes(
     }
   });
 
+  // Global Search
+  app.get("/api/search/:query", isAuthenticated, async (req, res) => {
+    try {
+      const query = req.params.query as string;
+      if (!query || query.length < 2) {
+        return res.json({ companies: [], contacts: [], deals: [] });
+      }
+      const results = await storage.globalSearch(query);
+      res.json(results);
+    } catch (error) {
+      console.error("Search failed:", error);
+      res.status(500).json({ error: "Search failed" });
+    }
+  });
+
   // Companies (protected)
   app.get("/api/companies", isAuthenticated, async (req, res) => {
     try {
@@ -94,7 +114,7 @@ export async function registerRoutes(
 
   app.get("/api/companies/:id", isAuthenticated, async (req, res) => {
     try {
-      const company = await storage.getCompany(req.params.id);
+      const company = await storage.getCompany(req.params.id as string);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -121,7 +141,7 @@ export async function registerRoutes(
   app.patch("/api/companies/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertCompanySchema.partial().parse(req.body);
-      const company = await storage.updateCompany(req.params.id, data);
+      const company = await storage.updateCompany(req.params.id as string, data);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
       }
@@ -136,7 +156,7 @@ export async function registerRoutes(
 
   app.delete("/api/companies/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteCompany(req.params.id);
+      await storage.deleteCompany(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete company" });
@@ -144,11 +164,62 @@ export async function registerRoutes(
   });
 
   // Contacts (protected)
+  app.get("/api/contacts", isAuthenticated, async (req, res) => {
+    try {
+      const contacts = await storage.getAllContacts();
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch contacts" });
+    }
+  });
+
+  app.get("/api/contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const contact = await storage.getContact(req.params.id as string);
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      res.json(contact);
+    } catch (error) {
+      console.error("Failed to fetch contact:", error);
+      res.status(500).json({ error: "Failed to fetch contact" });
+    }
+  });
+
+  app.post("/api/contacts", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertContactSchema.parse(req.body);
+      const contact = await storage.createContact(data);
+      res.status(201).json(contact);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create contact" });
+    }
+  });
+
+  app.patch("/api/contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertContactSchema.partial().parse(req.body);
+      const contact = await storage.updateContact(req.params.id as string, data);
+      if (!contact) {
+        return res.status(404).json({ error: "Contact not found" });
+      }
+      res.json(contact);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update contact" });
+    }
+  });
+
   app.post("/api/companies/:id/contacts", isAuthenticated, async (req, res) => {
     try {
       const data = insertContactSchema.parse({
         ...req.body,
-        companyId: req.params.id,
+        companyId: req.params.id as string,
       });
       const contact = await storage.createContact(data);
       res.status(201).json(contact);
@@ -162,7 +233,7 @@ export async function registerRoutes(
 
   app.delete("/api/contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteContact(req.params.id);
+      await storage.deleteContact(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete contact" });
@@ -174,12 +245,12 @@ export async function registerRoutes(
     try {
       const data = insertCallNoteSchema.parse({
         ...req.body,
-        companyId: req.params.id,
+        companyId: req.params.id as string,
       });
       const note = await storage.createCallNote(data);
       
       // Update lastContactDate on the company
-      await storage.updateCompany(req.params.id, {
+      await storage.updateCompany(req.params.id as string, {
         lastContactDate: new Date(),
       });
       
@@ -194,7 +265,7 @@ export async function registerRoutes(
 
   app.delete("/api/notes/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteCallNote(req.params.id);
+      await storage.deleteCallNote(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete call note" });
@@ -253,8 +324,10 @@ export async function registerRoutes(
               phone: companyData.phone || null,
               location: companyData.location || null,
               academyTrustName: companyData.academyTrustName || null,
+              industry: companyData.industry || "Secondary School",
               ext: companyData.ext || null,
               notes: companyData.notes || null,
+              budgetStatus: companyData.budgetStatus || "0-unqualified",
             };
 
             await storage.updateCompany(existing.id, updateData);
@@ -270,6 +343,7 @@ export async function registerRoutes(
             if (!existing.academyTrustName && companyData.academyTrustName) updateData.academyTrustName = companyData.academyTrustName;
             if (!existing.ext && companyData.ext) updateData.ext = companyData.ext;
             if (!existing.notes && companyData.notes) updateData.notes = companyData.notes;
+            if (!existing.budgetStatus && companyData.budgetStatus) updateData.budgetStatus = companyData.budgetStatus;
 
             await storage.updateCompany(existing.id, updateData);
             results.updated++;
@@ -304,12 +378,14 @@ export async function registerRoutes(
             phone: companyData.phone || null,
             location: companyData.location || null,
             academyTrustName: companyData.academyTrustName || null,
+            industry: companyData.industry || "Secondary School",
             ext: companyData.ext || null,
             notes: companyData.notes || null,
             itManagerName: companyData.itManagerName || null,
             itManagerEmail: companyData.itManagerEmail || null,
             stageId: stageId || null,
             importBatchId: importBatch.id,
+            budgetStatus: companyData.budgetStatus || "0-unqualified",
           });
 
           results.imported++;
@@ -358,9 +434,9 @@ export async function registerRoutes(
   app.delete("/api/csv-imports/:id", isAuthenticated, async (req, res) => {
     try {
       // First delete all companies from this import batch
-      const deletedCount = await storage.deleteCompaniesByImportBatch(req.params.id);
+      const deletedCount = await storage.deleteCompaniesByImportBatch(req.params.id as string);
       // Then delete the import record
-      await storage.deleteCsvImport(req.params.id);
+      await storage.deleteCsvImport(req.params.id as string);
       res.json({ deletedCompanies: deletedCount });
     } catch (error) {
       console.error("Failed to delete CSV import:", error);
@@ -368,10 +444,21 @@ export async function registerRoutes(
     }
   });
 
+  // Backfill null lead statuses to default
+  app.post("/api/companies/backfill-lead-status", isAuthenticated, async (req, res) => {
+    try {
+      const updatedCount = await storage.backfillLeadStatus();
+      res.json({ updated: updatedCount, message: `Updated ${updatedCount} companies to default Lead Status` });
+    } catch (error) {
+      console.error("Backfill lead status error:", error);
+      res.status(500).json({ error: "Failed to backfill lead status" });
+    }
+  });
+
   // Check for duplicate company name
   app.get("/api/companies/check-duplicate", isAuthenticated, async (req, res) => {
     try {
-      const name = req.query.name as string;
+      const name = req.query.name as string as string;
       if (!name) {
         return res.status(400).json({ error: "Name is required" });
       }
@@ -413,7 +500,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const task = await storage.getTask(req.params.id);
+      const task = await storage.getTask(req.params.id as string);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -448,7 +535,7 @@ export async function registerRoutes(
         ...rest,
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
       };
-      const task = await storage.updateTask(req.params.id, updateData);
+      const task = await storage.updateTask(req.params.id as string, updateData);
       if (!task) {
         return res.status(404).json({ error: "Task not found" });
       }
@@ -460,7 +547,7 @@ export async function registerRoutes(
 
   app.delete("/api/tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteTask(req.params.id);
+      await storage.deleteTask(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete task" });
@@ -479,7 +566,7 @@ export async function registerRoutes(
 
   app.get("/api/companies/:companyId/deals", isAuthenticated, async (req, res) => {
     try {
-      const deals = await storage.getDealsByCompany(req.params.companyId);
+      const deals = await storage.getDealsByCompany(req.params.companyId as string);
       res.json(deals);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch deals" });
@@ -511,7 +598,7 @@ export async function registerRoutes(
         ...rest,
         ...(decisionTimeline !== undefined && { decisionTimeline: decisionTimeline ? new Date(decisionTimeline) : null }),
       };
-      const deal = await storage.updateDeal(req.params.id, updateData);
+      const deal = await storage.updateDeal(req.params.id as string, updateData);
       if (!deal) {
         return res.status(404).json({ error: "Deal not found" });
       }
@@ -523,7 +610,7 @@ export async function registerRoutes(
 
   app.delete("/api/deals/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteDeal(req.params.id);
+      await storage.deleteDeal(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete deal" });
@@ -533,15 +620,16 @@ export async function registerRoutes(
   // Activities routes
   app.post("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
     try {
+      const { createdAt: customDate, ...rest } = req.body;
       const data = insertActivitySchema.parse({
-        ...req.body,
-        companyId: req.params.id,
+        ...rest,
+        companyId: req.params.id as string,
       });
-      const activity = await storage.createActivity(data);
+      const activity = await storage.createActivity(data, customDate ? new Date(customDate) : undefined);
       
       // Update lastContactDate on the company for calls/emails
       if (data.type === 'call' || data.type === 'email') {
-        await storage.updateCompany(req.params.id, {
+        await storage.updateCompany(req.params.id as string, {
           lastContactDate: new Date(),
         });
         
@@ -553,7 +641,7 @@ export async function registerRoutes(
       
       // Update lastQuoteDate and lastQuoteValue for quotes
       if (data.type === 'quote' && data.quoteValue) {
-        await storage.updateCompany(req.params.id, {
+        await storage.updateCompany(req.params.id as string, {
           lastQuoteDate: new Date(),
           lastQuoteValue: data.quoteValue,
         });
@@ -561,7 +649,7 @@ export async function registerRoutes(
       
       // Update grossProfit for deal_won
       if (data.type === 'deal_won' && data.grossProfit) {
-        await storage.updateCompany(req.params.id, {
+        await storage.updateCompany(req.params.id as string, {
           grossProfit: data.grossProfit,
         });
       }
@@ -583,7 +671,7 @@ export async function registerRoutes(
       if (outcome !== undefined) updateData.outcome = outcome;
       if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
 
-      const activity = await storage.updateActivity(req.params.id, updateData);
+      const activity = await storage.updateActivity(req.params.id as string, updateData);
       if (!activity) {
         return res.status(404).json({ error: "Activity not found" });
       }
@@ -596,7 +684,7 @@ export async function registerRoutes(
 
   app.delete("/api/activities/:id", isAuthenticated, async (req, res) => {
     try {
-      await storage.deleteActivity(req.params.id);
+      await storage.deleteActivity(req.params.id as string);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete activity" });
@@ -651,6 +739,43 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Migration error:", error);
       res.status(500).json({ error: "Failed to migrate outcomes" });
+    }
+  });
+
+  // Global Search
+  app.get("/api/search", isAuthenticated, async (req, res) => {
+    try {
+      const query = (req.query.q as string || "").trim();
+
+      if (!query || query.length < 2) {
+        return res.json({ companies: [], contacts: [], deals: [] });
+      }
+
+      const searchResults = await storage.globalSearch(query);
+      res.json(searchResults);
+    } catch (error) {
+      console.error("Search error:", error);
+      res.status(500).json({ error: "Search failed" });
+    }
+  });
+
+  // Trusts
+  app.get("/api/trusts", isAuthenticated, async (req, res) => {
+    try {
+      const trusts = await storage.getTrusts();
+      res.json(trusts);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trusts" });
+    }
+  });
+
+  app.post("/api/trusts/migrate", isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.migrateAcademyTrusts();
+      res.json(result);
+    } catch (error) {
+      console.error("Trust migration error:", error);
+      res.status(500).json({ error: "Failed to migrate trusts" });
     }
   });
 
