@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
@@ -36,7 +36,17 @@ export default function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(() => {
+    // Load preference from localStorage, default to false (hide completed)
+    const saved = localStorage.getItem("tasks_show_completed");
+    return saved === "true";
+  });
   const { toast } = useToast();
+
+  // Save preference to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem("tasks_show_completed", showCompleted.toString());
+  }, [showCompleted]);
 
   const { data: tasks, isLoading } = useQuery<TaskWithCompany[]>({
     queryKey: ["/api/tasks"],
@@ -77,6 +87,10 @@ export default function TasksPage() {
       return false;
     }
     if (showOverdueOnly && (!task.dueDate || !isOverdue(task.dueDate) || task.status === "completed")) {
+      return false;
+    }
+    // HIDE COMPLETED TASKS BY DEFAULT (unless toggle is on or status filter is "completed")
+    if (!showCompleted && statusFilter !== "completed" && task.status === "completed") {
       return false;
     }
     return true;
@@ -145,11 +159,23 @@ export default function TasksPage() {
     }
   };
 
+  // Calculate task counts
+  const activeTasks = tasks?.filter(t => t.status !== "completed").length || 0;
+  const completedTasks = tasks?.filter(t => t.status === "completed").length || 0;
+  const visibleTasks = filteredTasks?.length || 0;
+
   return (
     <div className="p-6 space-y-6 dark:bg-[#1a1d29] min-h-screen">
       <div>
-        <h1 className="text-2xl font-semibold dark:text-white">Tasks</h1>
-        <p className="text-muted-foreground dark:text-[#94a3b8]">Manage tasks across all schools</p>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold dark:text-white">Tasks</h1>
+          <Badge variant="secondary" className="dark:bg-[#3d4254] dark:text-[#94a3b8]">
+            {showCompleted ? `${activeTasks} active, ${completedTasks} completed` : `${activeTasks} active`}
+          </Badge>
+        </div>
+        <p className="text-muted-foreground dark:text-[#94a3b8] mt-1">
+          Manage tasks across all schools {visibleTasks < (tasks?.length || 0) ? `(${visibleTasks} shown)` : ''}
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
@@ -208,6 +234,18 @@ export default function TasksPage() {
           />
           <label htmlFor="overdue-only" className="text-sm cursor-pointer dark:text-[#94a3b8]">
             Overdue only
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="show-completed"
+            checked={showCompleted}
+            onCheckedChange={(checked) => setShowCompleted(checked === true)}
+            data-testid="checkbox-show-completed"
+            className="dark:border-[#3d4254] dark:data-[state=checked]:bg-[#0091AE] dark:data-[state=checked]:border-[#0091AE]"
+          />
+          <label htmlFor="show-completed" className="text-sm cursor-pointer dark:text-[#94a3b8]">
+            Show completed tasks
           </label>
         </div>
       </div>

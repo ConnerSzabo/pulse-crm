@@ -842,10 +842,10 @@ export default function CompanyDetail() {
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
-      {/* LEFT SIDEBAR - ~250px */}
-      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col">
-        {/* Back button */}
-        <div className="p-4 border-b dark:border-[#3d4254]">
+      {/* LEFT SIDEBAR - Full height with scrolling */}
+      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
+        {/* Back button - Compact spacing */}
+        <div className="px-4 py-2 border-b dark:border-[#3d4254] flex-shrink-0">
           <Button
             variant="ghost"
             size="sm"
@@ -858,9 +858,9 @@ export default function CompanyDetail() {
           </Button>
         </div>
 
-        {/* Company name and quick actions */}
-        <div className="p-4 border-b dark:border-[#3d4254]">
-          <h1 className="text-xl font-bold text-white mb-1" data-testid="text-company-detail-name">
+        {/* Company name and quick actions - Optimized spacing */}
+        <div className="px-4 pt-3 pb-4 border-b dark:border-[#3d4254] flex-shrink-0">
+          <h1 className="text-xl font-bold text-white mb-2" data-testid="text-company-detail-name">
             {company.name}
           </h1>
           {company.website && (
@@ -868,20 +868,20 @@ export default function CompanyDetail() {
               href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-[#0091AE] hover:underline flex items-center gap-1 mb-2 transition-all duration-200 ease-in-out"
+              className="text-sm text-[#0091AE] hover:underline flex items-center gap-1 mb-3 transition-all duration-200 ease-in-out"
             >
               {company.website.replace(/^https?:\/\//, "").slice(0, 30)}
               <ExternalLink className="h-3 w-3" />
             </a>
           )}
           {totalExpectedGP > 0 && (
-            <p className="text-xs text-emerald-600 font-medium mb-2">
+            <p className="text-xs text-emerald-600 font-medium mb-4">
               Pipeline: £{totalExpectedGP.toLocaleString()}
             </p>
           )}
 
-          {/* Quick Action Orbs */}
-          <div className="flex items-center justify-center gap-2">
+          {/* Quick Action Orbs - Proper spacing and visibility */}
+          <div className="flex items-center justify-center gap-2 pt-2 pb-2">
             {[
               { icon: StickyNote, label: "Note", onClick: () => setShowAddNoteDialog(true), testId: "button-add-note" },
               { icon: Mail, label: "Email", onClick: () => setShowAddEmailDialog(true) },
@@ -931,8 +931,8 @@ export default function CompanyDetail() {
           </div>
         </div>
 
-        {/* Key Information */}
-        <ScrollArea className="flex-1">
+        {/* Key Information - Scrollable area */}
+        <ScrollArea className="flex-1 overflow-y-auto">
           <div className="p-4">
             <div className="bg-[#252936] rounded-lg p-4 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
               <h3 className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] font-semibold mb-3">
