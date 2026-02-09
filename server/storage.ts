@@ -38,6 +38,32 @@ import {
   type ContactWithCompany,
 } from "@shared/schema";
 
+/**
+ * Normalize a company name for duplicate detection.
+ * Trims whitespace, lowercases, removes common prefixes,
+ * standardizes "St." / "St " to "Saint ", and collapses multiple spaces.
+ */
+export function normalizeCompanyName(name: string): string {
+  let normalized = name.trim().toLowerCase();
+  // Remove common prefixes
+  normalized = normalized.replace(/^(the|a|an)\s+/i, "");
+  // Standardize "St." and "St " to "Saint "
+  normalized = normalized.replace(/\bst\.\s*/g, "saint ");
+  normalized = normalized.replace(/\bst\s+/g, "saint ");
+  // Collapse multiple spaces to single space
+  normalized = normalized.replace(/\s+/g, " ").trim();
+  return normalized;
+}
+
+/**
+ * Normalize a location for duplicate detection.
+ * Trims whitespace, lowercases, and collapses multiple spaces.
+ */
+export function normalizeLocation(location: string | null | undefined): string {
+  if (!location) return "";
+  return location.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 export interface IStorage {
   // Pipeline Stages
   getPipelineStages(): Promise<PipelineStage[]>;
@@ -46,7 +72,7 @@ export interface IStorage {
   // Companies
   getCompanies(): Promise<(Company & { stage?: PipelineStage; trust?: Trust })[]>;
   getCompany(id: string): Promise<CompanyWithRelations | undefined>;
-  findCompanyByName(name: string): Promise<Company | undefined>;
+  findCompanyByNameAndLocation(name: string, location: string | null | undefined): Promise<Company | undefined>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
@@ -190,8 +216,19 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async findCompanyByName(name: string): Promise<Company | undefined> {
-    const [company] = await db.select().from(companies).where(ilike(companies.name, name));
+  async findCompanyByNameAndLocation(name: string, location: string | null | undefined): Promise<Company | undefined> {
+    const normalizedName = normalizeCompanyName(name);
+    const normalizedLoc = normalizeLocation(location);
+    // Apply the same normalization in SQL for a reliable match.
+    // Name: trim, lowercase, strip prefixes, standardize "st."/"st " → "saint ", collapse spaces
+    // Location: trim, lowercase, coalesce null to ''
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(
+        sql`TRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(LOWER(TRIM(${companies.name})), '^(the|a|an)\\s+', '', 'i'), '\\mst\\.\\s*', 'saint ', 'gi'), '\\mst\\s+', 'saint ', 'gi'), '\\s+', ' ', 'g')) = ${normalizedName}
+        AND LOWER(TRIM(COALESCE(${companies.location}, ''))) = ${normalizedLoc}`
+      );
     return company;
   }
 

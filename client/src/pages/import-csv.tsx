@@ -33,10 +33,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { Upload, FileText, CheckCircle2, AlertCircle, ArrowRight, X, RefreshCw, Trash2, History } from "lucide-react";
+import { Upload, Download, FileText, CheckCircle2, AlertCircle, ArrowRight, X, RefreshCw, Trash2, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import type { PipelineStage, CsvImport } from "@shared/schema";
+import type { PipelineStage, CsvImport, Company } from "@shared/schema";
 
 type ParsedRow = {
   name: string;
@@ -56,7 +56,7 @@ type ImportResult = {
   imported: number;
   skipped: number;
   updated: number;
-  duplicates: { name: string; existingId: string; hasNewInfo: boolean }[];
+  duplicates: { name: string; location?: string; existingId: string; hasNewInfo: boolean; reason?: string }[];
   importBatchId?: string;
 };
 
@@ -101,6 +101,68 @@ export default function ImportCSV() {
       toast({ title: "Delete failed", variant: "destructive" });
     },
   });
+
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const response = await apiRequest("GET", "/api/companies");
+      const companies: Company[] = await response.json();
+
+      const headers = [
+        "EstablishmentName",
+        "Website",
+        "Phone",
+        "Location",
+        "AcademyTrustName",
+        "EXT",
+        "Notes",
+        "IT Manager Name",
+        "IT Manager Email",
+      ];
+
+      const escapeCSV = (value: string | null | undefined): string => {
+        if (!value) return "";
+        const str = String(value);
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      };
+
+      const rows = companies.map((c) => [
+        escapeCSV(c.name),
+        escapeCSV(c.website),
+        escapeCSV(c.phone),
+        escapeCSV(c.location),
+        escapeCSV(c.academyTrustName),
+        escapeCSV(c.ext),
+        escapeCSV(c.notes),
+        escapeCSV(c.itManagerName),
+        escapeCSV(c.itManagerEmail),
+      ]);
+
+      const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const today = format(new Date(), "yyyy-MM-dd");
+      link.href = url;
+      link.download = `wave_crm_export_${today}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Complete",
+        description: `Exported ${companies.length} companies to CSV`,
+      });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const normalizePhone = (phone: string): string => {
     if (!phone) return "";
@@ -334,11 +396,32 @@ export default function ImportCSV() {
 
   return (
     <div className="p-6 space-y-6 dark:bg-[#1a1d29] min-h-screen">
-      <div>
-        <h1 className="text-2xl font-semibold dark:text-white">Import CSV</h1>
-        <p className="text-muted-foreground dark:text-[#94a3b8]">
-          Import schools and companies from a CSV file
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold dark:text-white">Import Data</h1>
+          <p className="text-muted-foreground dark:text-[#94a3b8]">
+            Import schools and companies from a CSV file, or export your current data
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleExport}
+          disabled={exporting}
+          data-testid="button-export-csv"
+          className="dark:border-[#3d4254] dark:text-white dark:hover:bg-[#2d3142]"
+        >
+          {exporting ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Exporting...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" />
+              Export Companies
+            </>
+          )}
+        </Button>
       </div>
 
       <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
@@ -433,28 +516,56 @@ export default function ImportCSV() {
               </div>
 
               {importResult && (
-                <div className="p-4 rounded-lg bg-muted dark:bg-[#2d3142] space-y-2">
+                <div className="p-4 rounded-lg bg-muted dark:bg-[#2d3142] space-y-3">
                   <h4 className="font-medium dark:text-white">Import Summary</h4>
-                  <div className="flex flex-wrap items-center gap-4">
-                    {importResult.imported > 0 && (
-                      <div className="flex items-center gap-2 text-green-600 dark:text-[#10b981]">
-                        <CheckCircle2 className="h-4 w-4" />
-                        <span>{importResult.imported} new schools imported</span>
-                      </div>
-                    )}
-                    {importResult.updated > 0 && (
-                      <div className="flex items-center gap-2 text-blue-600 dark:text-[#0091AE]">
-                        <RefreshCw className="h-4 w-4" />
-                        <span>{importResult.updated} records updated</span>
-                      </div>
-                    )}
-                    {importResult.skipped > 0 && (
-                      <div className="flex items-center gap-2 text-amber-600 dark:text-[#f59e0b]">
-                        <AlertCircle className="h-4 w-4" />
-                        <span>{importResult.skipped} duplicates skipped</span>
-                      </div>
-                    )}
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-muted-foreground dark:text-[#94a3b8]">Total rows in CSV</p>
+                      <p className="text-lg font-semibold dark:text-white">{parsedData.length}</p>
+                    </div>
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-green-600 dark:text-[#10b981]">Successfully imported</p>
+                      <p className="text-lg font-semibold text-green-600 dark:text-[#10b981]">{importResult.imported}</p>
+                    </div>
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-amber-600 dark:text-[#f59e0b]">Skipped (duplicates)</p>
+                      <p className="text-lg font-semibold text-amber-600 dark:text-[#f59e0b]">{importResult.skipped}</p>
+                    </div>
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-blue-600 dark:text-[#0091AE]">Updated (merged)</p>
+                      <p className="text-lg font-semibold text-blue-600 dark:text-[#0091AE]">{importResult.updated}</p>
+                    </div>
                   </div>
+
+                  {importResult.duplicates.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium text-amber-600 dark:text-[#f59e0b]">
+                        Duplicates skipped ({importResult.duplicates.length} total):
+                      </p>
+                      <ul className="text-sm text-muted-foreground dark:text-[#94a3b8] space-y-0.5 pl-1">
+                        {importResult.duplicates.slice(0, 10).map((dup, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500 dark:text-[#f59e0b]" />
+                            <span>
+                              {dup.name}
+                              {dup.location ? ` (${dup.location})` : ""}
+                              {" "}&mdash;{" "}
+                              {dup.reason === "duplicate_in_csv"
+                                ? "duplicate within CSV"
+                                : "already exists in database"}
+                            </span>
+                          </li>
+                        ))}
+                        {importResult.duplicates.length > 10 && (
+                          <li className="text-xs italic dark:text-[#64748b]">
+                            ... and {importResult.duplicates.length - 10} more
+                          </li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+
                   {importResult.imported > 0 && (
                     <p className="text-sm text-muted-foreground dark:text-[#94a3b8]">
                       {importResult.imported} companies imported with Lead Status: 0 - Unqualified (default)

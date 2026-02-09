@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, normalizeCompanyName, normalizeLocation } from "./storage";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
@@ -128,6 +128,19 @@ export async function registerRoutes(
   app.post("/api/companies", isAuthenticated, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
+
+      // Check for duplicate using normalized name + location matching
+      if (data.name) {
+        const existing = await storage.findCompanyByNameAndLocation(data.name, data.location);
+        if (existing) {
+          return res.status(409).json({
+            error: "A company with this name and location already exists",
+            existingId: existing.id,
+            existingName: existing.name,
+          });
+        }
+      }
+
       const company = await storage.createCompany(data);
       res.status(201).json(company);
     } catch (error) {
@@ -295,25 +308,47 @@ export async function registerRoutes(
         imported: 0,
         skipped: 0,
         updated: 0,
-        duplicates: [] as { name: string; existingId: string; hasNewInfo: boolean }[],
+        duplicates: [] as { name: string; location: string; existingId: string; hasNewInfo: boolean; reason: string }[],
         importBatchId: importBatch.id,
       };
+
+      // Track normalized name+location seen within this batch to detect intra-CSV duplicates
+      const seenInBatch = new Set<string>();
 
       for (const companyData of companiesData) {
         if (!companyData.name || !companyData.name.trim()) continue;
 
-        // Check for existing company (case-insensitive)
-        const existing = await storage.findCompanyByName(companyData.name.trim());
+        const trimmedName = companyData.name.trim();
+        const trimmedLocation = companyData.location?.trim() || "";
+        const batchKey = normalizeCompanyName(trimmedName) + "||" + normalizeLocation(trimmedLocation);
+
+        // 1. Check for intra-batch duplicate (same CSV has this name+location twice)
+        if (seenInBatch.has(batchKey)) {
+          results.skipped++;
+          results.duplicates.push({
+            name: trimmedName,
+            location: trimmedLocation,
+            existingId: "",
+            hasNewInfo: false,
+            reason: "duplicate_in_csv",
+          });
+          continue;
+        }
+        seenInBatch.add(batchKey);
+
+        // 2. Check for existing company in database (normalized name + location)
+        const existing = await storage.findCompanyByNameAndLocation(trimmedName, trimmedLocation);
 
         if (existing) {
           // Check if the new data has additional info
-          const hasNewInfo =
+          const hasNewInfo = !!(
             (!existing.itManagerName && companyData.itManagerName) ||
             (!existing.itManagerEmail && companyData.itManagerEmail) ||
             (!existing.website && companyData.website) ||
             (!existing.phone && companyData.phone) ||
             (!existing.location && companyData.location) ||
-            (!existing.academyTrustName && companyData.academyTrustName);
+            (!existing.academyTrustName && companyData.academyTrustName)
+          );
 
           if (mode === "overwrite") {
             // Overwrite all fields with CSV data
@@ -365,15 +400,17 @@ export async function registerRoutes(
           } else {
             results.skipped++;
             results.duplicates.push({
-              name: companyData.name,
+              name: trimmedName,
+              location: trimmedLocation,
               existingId: existing.id,
               hasNewInfo,
+              reason: "duplicate_in_database",
             });
           }
         } else {
           // Create new company with import batch ID
           const company = await storage.createCompany({
-            name: companyData.name.trim(),
+            name: trimmedName,
             website: companyData.website || null,
             phone: companyData.phone || null,
             location: companyData.location || null,
@@ -455,16 +492,21 @@ export async function registerRoutes(
     }
   });
 
-  // Check for duplicate company name
+  // Check for duplicate company name + location (uses normalized matching)
   app.get("/api/companies/check-duplicate", isAuthenticated, async (req, res) => {
     try {
-      const name = req.query.name as string as string;
+      const name = req.query.name as string;
+      const location = (req.query.location as string) || null;
       if (!name) {
         return res.status(400).json({ error: "Name is required" });
       }
 
-      const existing = await storage.findCompanyByName(name.trim());
-      res.json({ exists: !!existing, existingId: existing?.id || null });
+      const existing = await storage.findCompanyByNameAndLocation(name, location);
+      res.json({
+        exists: !!existing,
+        existingId: existing?.id || null,
+        existingName: existing?.name || null,
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to check for duplicate" });
     }

@@ -53,7 +53,8 @@ import {
   FileText, DollarSign, Calendar, TrendingUp, MessageSquare,
   ThumbsUp, ThumbsDown, Pencil, X, Save, StickyNote, Briefcase,
   ChevronDown, ChevronRight, MoreHorizontal, Video, Search,
-  Users, Ticket, Paperclip, Building, CheckCircle2
+  Users, Ticket, Paperclip, Building, CheckCircle2,
+  MapPin, Globe, Hash, Landmark, Tag
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -133,16 +134,16 @@ function CollapsibleSection({
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b dark:border-[#3d4254]">
-      <CollapsibleTrigger className="flex items-center justify-between w-full py-3 px-4 hover:bg-muted/50 dark:hover:bg-[#2d3142] transition-colors">
-        <div className="flex items-center gap-2">
+      <CollapsibleTrigger className="flex items-center justify-between w-full py-3.5 px-5 hover:bg-muted/50 dark:hover:bg-[#2d3142]/60 transition-all duration-200 cursor-pointer">
+        <div className="flex items-center gap-2.5">
           {isOpen ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform duration-200" />
           )}
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium text-sm dark:text-white">{title}</span>
-          <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">
+          <Icon className="h-4 w-4 text-[#0091AE]" />
+          <span className="font-semibold text-sm dark:text-white">{title}</span>
+          <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs dark:bg-[#3d4254] dark:text-[#94a3b8]">
             {count}
           </Badge>
         </div>
@@ -150,7 +151,7 @@ function CollapsibleSection({
           <Button
             size="sm"
             variant="ghost"
-            className="h-7 px-2 text-[#0091AE] hover:text-[#007a94] hover:bg-blue-50 dark:hover:bg-[#2d3142]"
+            className="h-7 px-2.5 text-[#0091AE] hover:text-[#007a94] hover:bg-[#0091AE]/10 dark:hover:bg-[#0091AE]/10 rounded-md transition-all duration-200"
             onClick={(e) => {
               e.stopPropagation();
               onAdd();
@@ -162,7 +163,7 @@ function CollapsibleSection({
         )}
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="px-4 pb-4">
+        <div className="px-5 pb-5">
           {children}
         </div>
       </CollapsibleContent>
@@ -622,7 +623,7 @@ export default function CompanyDetail() {
   if (isLoading) {
     return (
       <div className="flex h-screen">
-        <div className="w-64 p-6 border-r">
+        <div className="w-72 p-6 border-r">
           <Skeleton className="h-8 w-32 mb-4" />
           <Skeleton className="h-10 w-full mb-4" />
           <Skeleton className="h-32 w-full" />
@@ -843,7 +844,7 @@ export default function CompanyDetail() {
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
       {/* LEFT SIDEBAR - Full height with scrolling */}
-      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
+      <div className="w-72 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
         {/* Back button - Compact spacing */}
         <div className="px-4 py-2 border-b dark:border-[#3d4254] flex-shrink-0">
           <Button
@@ -880,8 +881,8 @@ export default function CompanyDetail() {
             </p>
           )}
 
-          {/* Quick Action Orbs - Proper spacing and visibility */}
-          <div className="flex items-center justify-center gap-2 pt-2 pb-2">
+          {/* Quick Action Orbs */}
+          <div className="flex items-center justify-center gap-3 pt-2 pb-2">
             {[
               { icon: StickyNote, label: "Note", onClick: () => setShowAddNoteDialog(true), testId: "button-add-note" },
               { icon: Mail, label: "Email", onClick: () => setShowAddEmailDialog(true) },
@@ -893,18 +894,18 @@ export default function CompanyDetail() {
                 <button
                   onClick={action.onClick}
                   data-testid={action.testId}
-                  className="w-12 h-12 rounded-full bg-[#2d3142] border border-[#3d4254] flex items-center justify-center text-[#0091AE] hover:bg-[#353849] hover:scale-105 hover:shadow-[0_0_12px_rgba(0,145,174,0.15)] transition-all duration-200 ease-in-out cursor-pointer"
+                  className="w-9 h-9 rounded-full bg-[#2d3142] border border-[#3d4254] flex items-center justify-center text-[#0091AE] hover:bg-[#353849] hover:scale-110 hover:border-[#0091AE]/40 hover:shadow-[0_0_12px_rgba(0,145,174,0.2)] transition-all duration-200 ease-in-out cursor-pointer"
                 >
-                  <action.icon className="h-5 w-5" />
+                  <action.icon className="h-4 w-4" />
                 </button>
-                <span className="text-[10px] text-gray-400">{action.label}</span>
+                <span className="text-[9px] text-[#64748b]">{action.label}</span>
               </div>
             ))}
             <div className="flex flex-col items-center gap-1">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="w-12 h-12 rounded-full bg-[#2d3142] border border-[#3d4254] flex items-center justify-center text-[#0091AE] hover:bg-[#353849] hover:scale-105 hover:shadow-[0_0_12px_rgba(0,145,174,0.15)] transition-all duration-200 ease-in-out cursor-pointer">
-                    <MoreHorizontal className="h-5 w-5" />
+                  <button className="w-9 h-9 rounded-full bg-[#2d3142] border border-[#3d4254] flex items-center justify-center text-[#0091AE] hover:bg-[#353849] hover:scale-110 hover:border-[#0091AE]/40 hover:shadow-[0_0_12px_rgba(0,145,174,0.2)] transition-all duration-200 ease-in-out cursor-pointer">
+                    <MoreHorizontal className="h-4 w-4" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="dark:bg-[#252936] dark:border-[#3d4254]">
@@ -926,7 +927,7 @@ export default function CompanyDetail() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <span className="text-[10px] text-gray-400">More</span>
+              <span className="text-[9px] text-[#64748b]">More</span>
             </div>
           </div>
         </div>
@@ -934,75 +935,119 @@ export default function CompanyDetail() {
         {/* Key Information - Scrollable area */}
         <ScrollArea className="flex-1 overflow-y-auto">
           <div className="p-4">
-            <div className="bg-[#252936] rounded-lg p-4 shadow-[0_2px_8px_rgba(0,0,0,0.1)]">
-              <h3 className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] font-semibold mb-3">
+            <div className="bg-[#252936] rounded-xl p-4 shadow-[0_2px_12px_rgba(0,0,0,0.15)] border border-[#3d4254]/50">
+              <h3 className="text-[10px] uppercase tracking-[1px] text-[#64748b] font-semibold mb-3 flex items-center gap-1.5">
+                <Building2 className="h-3 w-3" />
                 Key Information
               </h3>
 
               {/* Group 1: Contact */}
-              <div className="space-y-3">
-                <div>
-                  <EditableField label="Phone" field="phone" value={company.phone} />
-                  {company.phone && (
-                    <a
-                      href={`tel:${company.phone}`}
-                      className="text-xs text-[#0091AE] hover:underline flex items-center gap-1 mt-1 transition-all duration-200 ease-in-out"
-                    >
-                      <Phone className="h-3 w-3" />
-                      Click to call
-                    </a>
-                  )}
+              <div className="space-y-0.5">
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Phone className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Phone" field="phone" value={company.phone} />
+                    {company.phone && (
+                      <a
+                        href={`tel:${company.phone}`}
+                        className="text-[11px] text-[#0091AE] hover:underline flex items-center gap-1 mt-0.5 transition-all duration-200"
+                      >
+                        Click to call
+                      </a>
+                    )}
+                  </div>
                 </div>
-                <EditableField label="Extension" field="ext" value={company.ext} />
-                <div className="space-y-1">
-                  <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Website</p>
-                  {company.website ? (
-                    <a
-                      href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 transition-all duration-200 ease-in-out"
-                      data-testid="link-company-website"
-                    >
-                      {company.website.replace(/^https?:\/\//, "").slice(0, 25)}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <p className="text-[14px] text-muted-foreground cursor-pointer hover:bg-muted/50 rounded p-1 -mx-1 transition-all duration-200 ease-in-out"
-                      onClick={() => startEditing("website", "")}>
-                      --
-                    </p>
-                  )}
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Hash className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Extension" field="ext" value={company.ext} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Globe className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Website</p>
+                    {company.website ? (
+                      <a
+                        href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[13px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 transition-all duration-200"
+                        data-testid="link-company-website"
+                      >
+                        {company.website.replace(/^https?:\/\//, "").slice(0, 25)}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <p className="text-[13px] text-muted-foreground cursor-pointer hover:bg-[#2d3142] rounded p-1 -mx-1 transition-all duration-200"
+                        onClick={() => startEditing("website", "")}>
+                        --
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
               {/* Divider */}
-              <div className="border-t border-[#3d4254] my-3" />
+              <div className="border-t border-[#3d4254] my-2" />
 
               {/* Group 2: Organization */}
-              <div className="space-y-3">
-                <EditableField label="Location" field="location" value={company.location} />
-                <EditableField label="Academy Trust" field="academyTrustName" value={company.academyTrustName} />
-                <EditableField label="Industry" field="industry" value={company.industry} type="select" />
-                <EditableField label="Decision Timeline" field="decisionTimeline" value={company.decisionTimeline} />
+              <div className="space-y-0.5">
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <MapPin className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Location" field="location" value={company.location} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Landmark className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Academy Trust" field="academyTrustName" value={company.academyTrustName} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Tag className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Industry" field="industry" value={company.industry} type="select" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Calendar className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Decision Timeline" field="decisionTimeline" value={company.decisionTimeline} />
+                  </div>
+                </div>
               </div>
 
               {/* Divider */}
-              <div className="border-t border-[#3d4254] my-3" />
+              <div className="border-t border-[#3d4254] my-2" />
 
               {/* Group 3: Sales */}
-              <div className="space-y-3">
-                <EditableField label="Lead Status" field="budgetStatus" value={company.budgetStatus} type="select" />
-                <EditableField label="Company Owner" field="decisionMakerName" value={company.decisionMakerName} />
-                <div className="space-y-1">
-                  <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Last Contacted</p>
-                  <p className="text-[14px] font-medium text-white">
-                    {company.lastContactDate ? (
-                      formatDistanceToNow(new Date(company.lastContactDate), { addSuffix: true })
-                    ) : (
-                      <span className="text-muted-foreground font-normal">Never</span>
-                    )}
-                  </p>
+              <div className="space-y-0.5">
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <TrendingUp className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Lead Status" field="budgetStatus" value={company.budgetStatus} type="select" />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <User className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Company Owner" field="decisionMakerName" value={company.decisionMakerName} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2">
+                  <Clock className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Last Contacted</p>
+                    <p className="text-[13px] font-medium text-white">
+                      {company.lastContactDate ? (
+                        formatDistanceToNow(new Date(company.lastContactDate), { addSuffix: true })
+                      ) : (
+                        <span className="text-muted-foreground font-normal">Never</span>
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1201,35 +1246,38 @@ export default function CompanyDetail() {
                   </div>
                 ) : (
                   <div className="relative">
-                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-gray-200 dark:bg-[#3d4254]" />
-                    <div className="space-y-4">
+                    <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-gradient-to-b from-[#3d4254] via-[#3d4254] to-transparent" />
+                    <div className="space-y-3">
                       {filteredActivities.map((activity) => (
                         <div
                           key={activity.id}
-                          className="relative pl-10"
+                          className="relative pl-11"
                           data-testid={`card-activity-${activity.id}`}
                         >
-                          <div className={`absolute left-2 top-4 h-5 w-5 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center ring-4 ring-white dark:ring-[#1a1d29]`}>
+                          <div className={`absolute left-2 top-5 h-5 w-5 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center ring-4 ring-white dark:ring-[#1a1d29] shadow-sm`}>
                             <span className="text-white scale-75">{getActivityIcon(activity.type)}</span>
                           </div>
-                          <Card className="group/activity hover:shadow-md hover:bg-[#2d3142]/50 transition-all duration-200 ease-in-out dark:bg-[#252936] dark:border-[#3d4254]">
-                            <CardContent className="p-4">
+                          <Card className="group/activity hover:shadow-lg hover:shadow-black/10 hover:border-[#4d5264] transition-all duration-200 ease-in-out dark:bg-[#252936] dark:border-[#3d4254] rounded-xl">
+                            <CardContent className="p-4 px-5">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-1">
                                     {activity.type === "call" ? (
-                                      <>
-                                        <Badge variant="secondary" className="font-medium bg-blue-100 text-blue-700 dark:bg-[#0091AE]/20 dark:text-[#06b6d4]">
-                                          Call: {activity.outcome || "No Outcome"}
-                                        </Badge>
-                                      </>
+                                      <Badge className="font-semibold text-[11px] bg-blue-500/15 text-blue-400 border border-blue-500/25 hover:bg-blue-500/15 px-2.5 py-0.5">
+                                        Call: {activity.outcome || "No Outcome"}
+                                      </Badge>
                                     ) : (
                                       <>
-                                        <Badge variant="secondary" className="font-medium">
+                                        <Badge className={`font-semibold text-[11px] px-2.5 py-0.5 border ${
+                                          activity.type === "email" ? "bg-purple-500/15 text-purple-400 border-purple-500/25 hover:bg-purple-500/15" :
+                                          activity.type === "meeting" ? "bg-green-500/15 text-green-400 border-green-500/25 hover:bg-green-500/15" :
+                                          activity.type === "follow_up" ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/25 hover:bg-cyan-500/15" :
+                                          "bg-gray-500/15 text-gray-400 border-gray-500/25 hover:bg-gray-500/15"
+                                        }`}>
                                           {getActivityLabel(activity.type)}
                                         </Badge>
                                         {activity.outcome && (
-                                          <Badge variant="outline">{activity.outcome}</Badge>
+                                          <Badge variant="outline" className="text-[11px] dark:border-[#3d4254] dark:text-[#94a3b8]">{activity.outcome}</Badge>
                                         )}
                                       </>
                                     )}
@@ -1278,9 +1326,9 @@ export default function CompanyDetail() {
                                       </div>
                                     );
                                   })()}
-                                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="h-3 w-3" />
+                                  <div className="flex items-center gap-3 mt-2.5 text-[11px] text-[#64748b]">
+                                    <span className="flex items-center gap-1.5">
+                                      <Clock className="h-3 w-3 text-[#4d5264]" />
                                       {(() => {
                                         const activityDate = new Date(activity.createdAt);
                                         const now = new Date();
@@ -1293,7 +1341,7 @@ export default function CompanyDetail() {
                                     </span>
                                     {activity.loggedBy && (
                                       <span className="flex items-center gap-1">
-                                        <User className="h-3 w-3" />
+                                        <User className="h-3 w-3 text-[#4d5264]" />
                                         {activity.loggedBy}
                                       </span>
                                     )}
@@ -1471,8 +1519,8 @@ export default function CompanyDetail() {
         </Tabs>
       </div>
 
-      {/* RIGHT SIDEBAR - ~350px */}
-      <div className="w-80 bg-white dark:bg-card border-l flex flex-col overflow-hidden">
+      {/* RIGHT SIDEBAR */}
+      <div className="w-80 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] flex flex-col overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.05)]">
         <ScrollArea className="flex-1">
           {/* Contacts Section */}
           <CollapsibleSection
@@ -1488,13 +1536,13 @@ export default function CompanyDetail() {
                 {company.contacts?.map((contact) => (
                   <div
                     key={contact.id}
-                    className="p-3 border rounded-lg hover:bg-muted/50 group"
+                    className="p-3 border dark:border-[#3d4254] rounded-xl hover:bg-[#2d3142]/60 hover:border-[#4d5264] group transition-all duration-200 cursor-default"
                     data-testid={`card-contact-${contact.id}`}
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                          <User className="h-4 w-4 text-blue-600" />
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-8 w-8 rounded-full bg-[#0091AE]/15 flex items-center justify-center">
+                          <User className="h-4 w-4 text-[#0091AE]" />
                         </div>
                         <div>
                           <p className="font-medium text-sm">{contact.name || contact.email}</p>
@@ -1620,7 +1668,7 @@ export default function CompanyDetail() {
                 })}
                 <Button
                   size="sm"
-                  className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white font-medium shadow-sm mt-1"
+                  className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white font-medium shadow-sm mt-2 rounded-lg transition-all duration-200 hover:shadow-md hover:shadow-[#0091AE]/10"
                   onClick={openAddDeal}
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -1644,8 +1692,8 @@ export default function CompanyDetail() {
                 {activeTasks.slice(0, 5).map((task) => (
                   <div
                     key={task.id}
-                    className={`p-2 border rounded-lg text-sm ${
-                      isTaskOverdue(task) ? "border-red-200 bg-red-50/50" : ""
+                    className={`p-2.5 border rounded-xl text-sm transition-all duration-200 hover:bg-[#2d3142]/60 ${
+                      isTaskOverdue(task) ? "border-red-500/30 bg-red-950/20 dark:border-red-500/30 dark:bg-red-950/20" : "dark:border-[#3d4254] hover:border-[#4d5264]"
                     }`}
                   >
                     <div className="flex items-center gap-2">
