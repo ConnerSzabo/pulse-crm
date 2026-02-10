@@ -216,17 +216,32 @@ export class DatabaseStorage implements IStorage {
     const [company] = await db.select().from(companies).where(eq(companies.id, id));
     if (!company) return undefined;
 
-    // PERFORMANCE OPTIMIZATION: Load all related data in PARALLEL instead of sequential
-    // This reduces load time from ~1000ms to ~200ms
-    const [contactsList, notesList, activitiesList, tasksList, dealsList, stages, trust] = await Promise.all([
+    const results = await Promise.allSettled([
       this.getContactsByCompany(id),
       this.getCallNotesByCompany(id),
-      this.getActivitiesByCompanyPaginated(id, 20, 0), // Load only first 20 activities
+      this.getActivitiesByCompanyPaginated(id, 20, 0),
       this.getTasksByCompany(id),
       this.getDealsByCompany(id),
       this.getPipelineStages(),
       company.trustId ? db.select().from(trusts).where(eq(trusts.id, company.trustId)).then(r => r[0]) : Promise.resolve(undefined)
     ]);
+
+    const queryNames = ["contacts", "callNotes", "activities", "tasks", "deals", "stages", "trust"];
+    const getValue = <T>(result: PromiseSettledResult<T>, fallback: T, name: string): T => {
+      if (result.status === "rejected") {
+        console.error(`getCompany(${id}): ${name} query failed:`, result.reason);
+        return fallback;
+      }
+      return result.value;
+    };
+
+    const contactsList = getValue(results[0], [], queryNames[0]);
+    const notesList = getValue(results[1], [], queryNames[1]);
+    const activitiesList = getValue(results[2], [], queryNames[2]);
+    const tasksList = getValue(results[3], [], queryNames[3]);
+    const dealsList = getValue(results[4], [] as DealWithStage[], queryNames[4]);
+    const stages = getValue(results[5], [] as PipelineStage[], queryNames[5]);
+    const trust = getValue(results[6], undefined, queryNames[6]);
 
     const stage = company.stageId ? stages.find((s) => s.id === company.stageId) : undefined;
 
@@ -860,8 +875,7 @@ export class DatabaseStorage implements IStorage {
       )
       .limit(5);
 
-    // Get company names for contacts
-    const contactCompanyIds = Array.from(new Set(contactsResults.map(c => c.companyId)));
+    const contactCompanyIds = Array.from(new Set(contactsResults.map(c => c.companyId).filter((id): id is string => !!id)));
     const contactCompanies = contactCompanyIds.length > 0
       ? await db.select().from(companies).where(inArray(companies.id, contactCompanyIds))
       : [];
@@ -869,7 +883,7 @@ export class DatabaseStorage implements IStorage {
 
     const contactsWithCompany = contactsResults.map(c => ({
       ...c,
-      companyName: contactCompanyMap.get(c.companyId),
+      companyName: c.companyId ? contactCompanyMap.get(c.companyId) : undefined,
     }));
 
     // Search deals

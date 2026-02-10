@@ -108,6 +108,7 @@ export async function registerRoutes(
       const companies = await storage.getCompanies();
       res.json(companies);
     } catch (error) {
+      console.error("Failed to fetch companies:", error);
       res.status(500).json({ error: "Failed to fetch companies" });
     }
   });
