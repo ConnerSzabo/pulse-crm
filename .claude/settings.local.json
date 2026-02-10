@@ -19,7 +19,8 @@
       "Bash(python3:*)",
       "Bash(node -e:*)",
       "Bash(npx drizzle-kit push:*)",
-      "Bash(printf:*)"
+      "Bash(printf:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

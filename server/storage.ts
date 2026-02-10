@@ -156,12 +156,29 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // In-memory cache for pipeline stages (rarely change, queried frequently)
+  private pipelineStagesCache: PipelineStage[] | null = null;
+  private pipelineStagesCacheTime = 0;
+  private static STAGES_CACHE_TTL = 60_000; // 1 minute
+
   // Pipeline Stages
   async getPipelineStages(): Promise<PipelineStage[]> {
-    return db.select().from(pipelineStages).orderBy(pipelineStages.order);
+    const now = Date.now();
+    if (this.pipelineStagesCache && (now - this.pipelineStagesCacheTime) < DatabaseStorage.STAGES_CACHE_TTL) {
+      return this.pipelineStagesCache;
+    }
+    const stages = await db.select().from(pipelineStages).orderBy(pipelineStages.order);
+    this.pipelineStagesCache = stages;
+    this.pipelineStagesCacheTime = now;
+    return stages;
+  }
+
+  private invalidateStagesCache() {
+    this.pipelineStagesCache = null;
   }
 
   async createPipelineStage(stage: InsertPipelineStage): Promise<PipelineStage> {
+    this.invalidateStagesCache();
     const [result] = await db.insert(pipelineStages).values(stage).returning();
     return result;
   }

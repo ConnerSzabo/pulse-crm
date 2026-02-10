@@ -319,7 +319,24 @@ export default function CompanyDetail() {
     mutationFn: async ({ id, ...data }: { id: string; status?: string }) => {
       return apiRequest("PATCH", `/api/tasks/${id}`, data);
     },
-    onSuccess: () => {
+    onMutate: async ({ id, status }) => {
+      // Optimistic update for task status changes
+      await queryClient.cancelQueries({ queryKey: ["/api/companies", params.id] });
+      const previous = queryClient.getQueryData<CompanyWithRelations>(["/api/companies", params.id]);
+      if (previous && status) {
+        queryClient.setQueryData<CompanyWithRelations>(["/api/companies", params.id], {
+          ...previous,
+          tasks: previous.tasks.map(t => t.id === id ? { ...t, status } : t),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/companies", params.id], context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
       toast({ title: "Task updated" });
@@ -436,7 +453,23 @@ export default function CompanyDetail() {
     mutationFn: async (activityId: string) => {
       return apiRequest("DELETE", `/api/activities/${activityId}`);
     },
-    onSuccess: () => {
+    onMutate: async (activityId) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/companies", params.id] });
+      const previous = queryClient.getQueryData<CompanyWithRelations>(["/api/companies", params.id]);
+      if (previous) {
+        queryClient.setQueryData<CompanyWithRelations>(["/api/companies", params.id], {
+          ...previous,
+          activities: previous.activities.filter(a => a.id !== activityId),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/companies", params.id], context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/call-analytics"] });
       setShowDeleteActivityDialog(false);

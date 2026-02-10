@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { registerRoutes } from "./routes";
@@ -20,6 +21,9 @@ if (!process.env.SESSION_SECRET) {
 
 const app = express();
 const httpServer = createServer(app);
+
+// Enable gzip compression for all responses
+app.use(compression());
 
 declare module "http" {
   interface IncomingMessage {

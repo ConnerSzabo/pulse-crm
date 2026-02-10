@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -10,33 +10,49 @@ import { GlobalSearch } from "@/components/global-search";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LogOut, Bell, User, ChevronDown } from "lucide-react";
-import Dashboard from "@/pages/dashboard";
-import Companies from "@/pages/companies";
-import CompanyDetail from "@/pages/company-detail";
-import Contacts from "@/pages/contacts";
-import ContactDetail from "@/pages/contact-detail";
-import Pipeline from "@/pages/pipeline";
-import TasksPage from "@/pages/tasks";
-import ImportCSV from "@/pages/import-csv";
-import CallAnalytics from "@/pages/call-analytics";
 import Login from "@/pages/login";
-import NotFound from "@/pages/not-found";
 import { useToast } from "@/hooks/use-toast";
+
+// Lazy load route components for code splitting
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Companies = lazy(() => import("@/pages/companies"));
+const CompanyDetail = lazy(() => import("@/pages/company-detail"));
+const Contacts = lazy(() => import("@/pages/contacts"));
+const ContactDetail = lazy(() => import("@/pages/contact-detail"));
+const Pipeline = lazy(() => import("@/pages/pipeline"));
+const TasksPage = lazy(() => import("@/pages/tasks"));
+const ImportCSV = lazy(() => import("@/pages/import-csv"));
+const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
+const NotFound = lazy(() => import("@/pages/not-found"));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-full min-h-[200px]">
+      <div className="space-y-4 w-64">
+        <Skeleton className="h-8 w-full" />
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+    </div>
+  );
+}
 
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/companies" component={Companies} />
-      <Route path="/company/:id" component={CompanyDetail} />
-      <Route path="/contacts" component={Contacts} />
-      <Route path="/contact/:id" component={ContactDetail} />
-      <Route path="/pipeline" component={Pipeline} />
-      <Route path="/tasks" component={TasksPage} />
-      <Route path="/call-analytics" component={CallAnalytics} />
-      <Route path="/import" component={ImportCSV} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/companies" component={Companies} />
+        <Route path="/company/:id" component={CompanyDetail} />
+        <Route path="/contacts" component={Contacts} />
+        <Route path="/contact/:id" component={ContactDetail} />
+        <Route path="/pipeline" component={Pipeline} />
+        <Route path="/tasks" component={TasksPage} />
+        <Route path="/call-analytics" component={CallAnalytics} />
+        <Route path="/import" component={ImportCSV} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
