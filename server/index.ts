@@ -97,12 +97,16 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const isLargeArray = Array.isArray(capturedJsonResponse) && capturedJsonResponse.length > 20;
+        if (isLargeArray) {
+          logLine += ` :: [${capturedJsonResponse.length} items]`;
+        } else {
+          logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        }
       }
 
-      // PERFORMANCE WARNING: Flag slow API calls
       if (duration > 500) {
-        console.warn(`⚠️  SLOW API CALL (${duration}ms): ${req.method} ${path}`);
+        console.warn(`SLOW API CALL (${duration}ms): ${req.method} ${path}`);
       }
 
       log(logLine);
