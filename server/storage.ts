@@ -35,6 +35,7 @@ import {
   type DealWithCompanyAndStage,
   type Trust,
   type InsertTrust,
+  type TrustWithStats,
   type ContactWithCompany,
 } from "@shared/schema";
 
@@ -143,12 +144,20 @@ export interface IStorage {
     companies: (Company & { stage?: PipelineStage })[];
     contacts: (Contact & { companyName?: string })[];
     deals: (Deal & { companyName?: string; stage?: PipelineStage })[];
+    trusts: Trust[];
   }>;
 
   // Trusts
   getTrusts(): Promise<Trust[]>;
+  getTrust(id: string): Promise<Trust | undefined>;
   getTrustByName(name: string): Promise<Trust | undefined>;
   createTrust(trust: InsertTrust): Promise<Trust>;
+  updateTrust(id: string, data: Partial<InsertTrust>): Promise<Trust | undefined>;
+  deleteTrust(id: string): Promise<void>;
+  getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[] })[]>;
+  getTrustPipelineSummary(trustId: string): Promise<{ stageId: string; stageName: string; stageColor: string; dealCount: number; totalValue: number }[]>;
+  getTrustActivities(trustId: string, limit: number, offset: number): Promise<(Activity & { companyName?: string })[]>;
+  getTrustsWithStats(): Promise<TrustWithStats[]>;
   migrateAcademyTrusts(): Promise<{ migratedCount: number; trustsCreated: number }>;
 
   // Seed
@@ -819,6 +828,7 @@ export class DatabaseStorage implements IStorage {
     companies: (Company & { stage?: PipelineStage })[];
     contacts: (Contact & { companyName?: string })[];
     deals: (Deal & { companyName?: string; stage?: PipelineStage })[];
+    trusts: Trust[];
   }> {
     const searchPattern = `%${query}%`;
     const stages = await this.getPipelineStages();
@@ -882,16 +892,29 @@ export class DatabaseStorage implements IStorage {
       stage: d.stageId ? stageMap.get(d.stageId) : undefined,
     }));
 
+    // Search trusts
+    const trustsResults = await db
+      .select()
+      .from(trusts)
+      .where(sql`LOWER(${trusts.name}) LIKE LOWER(${searchPattern})`)
+      .limit(5);
+
     return {
       companies: companiesWithStages,
       contacts: contactsWithCompany,
       deals: dealsWithCompanyAndStage,
+      trusts: trustsResults,
     };
   }
 
   // Trusts
   async getTrusts(): Promise<Trust[]> {
     return db.select().from(trusts).orderBy(trusts.name);
+  }
+
+  async getTrust(id: string): Promise<Trust | undefined> {
+    const [trust] = await db.select().from(trusts).where(eq(trusts.id, id));
+    return trust;
   }
 
   async getTrustByName(name: string): Promise<Trust | undefined> {
@@ -902,6 +925,161 @@ export class DatabaseStorage implements IStorage {
   async createTrust(trust: InsertTrust): Promise<Trust> {
     const [result] = await db.insert(trusts).values(trust).returning();
     return result;
+  }
+
+  async updateTrust(id: string, data: Partial<InsertTrust>): Promise<Trust | undefined> {
+    const [result] = await db
+      .update(trusts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(trusts.id, id))
+      .returning();
+    return result;
+  }
+
+  async deleteTrust(id: string): Promise<void> {
+    // Unlink companies first
+    await db.update(companies).set({ trustId: null }).where(eq(companies.trustId, id));
+    await db.delete(trusts).where(eq(trusts.id, id));
+  }
+
+  async getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[] })[]> {
+    const companiesList = await db.select().from(companies).where(eq(companies.trustId, trustId)).orderBy(companies.name);
+    if (companiesList.length === 0) return [];
+
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    // Batch load deals for all companies
+    const companyIds = companiesList.map(c => c.id);
+    const allDeals = await db.select().from(deals).where(inArray(deals.companyId, companyIds));
+
+    const dealsByCompany = new Map<string, DealWithStage[]>();
+    for (const deal of allDeals) {
+      const list = dealsByCompany.get(deal.companyId) || [];
+      list.push({ ...deal, stage: deal.stageId ? stageMap.get(deal.stageId) : undefined });
+      dealsByCompany.set(deal.companyId, list);
+    }
+
+    return companiesList.map(c => ({
+      ...c,
+      stage: c.stageId ? stageMap.get(c.stageId) : undefined,
+      deals: dealsByCompany.get(c.id) || [],
+    }));
+  }
+
+  async getTrustPipelineSummary(trustId: string): Promise<{ stageId: string; stageName: string; stageColor: string; dealCount: number; totalValue: number }[]> {
+    const companiesList = await db.select({ id: companies.id }).from(companies).where(eq(companies.trustId, trustId));
+    if (companiesList.length === 0) return [];
+
+    const companyIds = companiesList.map(c => c.id);
+    const allDeals = await db.select().from(deals).where(inArray(deals.companyId, companyIds));
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    const summary = new Map<string, { dealCount: number; totalValue: number }>();
+    for (const deal of allDeals) {
+      if (!deal.stageId) continue;
+      const existing = summary.get(deal.stageId) || { dealCount: 0, totalValue: 0 };
+      existing.dealCount++;
+      existing.totalValue += deal.expectedGP ? parseFloat(deal.expectedGP) : 0;
+      summary.set(deal.stageId, existing);
+    }
+
+    return stages
+      .filter(s => summary.has(s.id))
+      .map(s => ({
+        stageId: s.id,
+        stageName: s.name,
+        stageColor: s.color,
+        dealCount: summary.get(s.id)!.dealCount,
+        totalValue: summary.get(s.id)!.totalValue,
+      }));
+  }
+
+  async getTrustActivities(trustId: string, limit: number, offset: number): Promise<(Activity & { companyName?: string })[]> {
+    const companiesList = await db.select({ id: companies.id, name: companies.name }).from(companies).where(eq(companies.trustId, trustId));
+    if (companiesList.length === 0) return [];
+
+    const companyIds = companiesList.map(c => c.id);
+    const companyNameMap = new Map(companiesList.map(c => [c.id, c.name]));
+
+    const activitiesList = await db
+      .select()
+      .from(activities)
+      .where(inArray(activities.companyId, companyIds))
+      .orderBy(desc(activities.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return activitiesList.map(a => ({
+      ...a,
+      companyName: companyNameMap.get(a.companyId),
+    }));
+  }
+
+  async getTrustsWithStats(): Promise<TrustWithStats[]> {
+    const trustsList = await db.select().from(trusts).orderBy(trusts.name);
+    if (trustsList.length === 0) return [];
+
+    // Get all companies with trustId
+    const allCompanies = await db
+      .select({ id: companies.id, trustId: companies.trustId })
+      .from(companies)
+      .where(isNotNull(companies.trustId));
+
+    // Count schools per trust
+    const schoolCountMap = new Map<string, number>();
+    const companyIdsByTrust = new Map<string, string[]>();
+    for (const c of allCompanies) {
+      if (!c.trustId) continue;
+      schoolCountMap.set(c.trustId, (schoolCountMap.get(c.trustId) || 0) + 1);
+      const ids = companyIdsByTrust.get(c.trustId) || [];
+      ids.push(c.id);
+      companyIdsByTrust.set(c.trustId, ids);
+    }
+
+    // Get all deals for companies in trusts
+    const allCompanyIds = allCompanies.map(c => c.id);
+    const allDeals = allCompanyIds.length > 0
+      ? await db.select().from(deals).where(inArray(deals.companyId, allCompanyIds))
+      : [];
+
+    // Pipeline value per trust
+    const pipelineMap = new Map<string, number>();
+    const companyToTrust = new Map<string, string>();
+    for (const c of allCompanies) {
+      if (c.trustId) companyToTrust.set(c.id, c.trustId);
+    }
+    for (const deal of allDeals) {
+      const tId = companyToTrust.get(deal.companyId);
+      if (tId && deal.expectedGP) {
+        pipelineMap.set(tId, (pipelineMap.get(tId) || 0) + parseFloat(deal.expectedGP));
+      }
+    }
+
+    // Last activity per trust
+    const allActivities = allCompanyIds.length > 0
+      ? await db
+          .select({ companyId: activities.companyId, createdAt: activities.createdAt })
+          .from(activities)
+          .where(inArray(activities.companyId, allCompanyIds))
+          .orderBy(desc(activities.createdAt))
+      : [];
+
+    const lastActivityMap = new Map<string, Date>();
+    for (const a of allActivities) {
+      const tId = companyToTrust.get(a.companyId);
+      if (tId && !lastActivityMap.has(tId)) {
+        lastActivityMap.set(tId, a.createdAt);
+      }
+    }
+
+    return trustsList.map(t => ({
+      ...t,
+      schoolCount: schoolCountMap.get(t.id) || 0,
+      totalPipelineValue: pipelineMap.get(t.id) || 0,
+      lastActivityDate: lastActivityMap.get(t.id) || null,
+    }));
   }
 
   async migrateAcademyTrusts(): Promise<{ migratedCount: number; trustsCreated: number }> {

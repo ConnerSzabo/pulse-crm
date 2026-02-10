@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation } from "./storage";
-import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 
@@ -92,7 +92,7 @@ export async function registerRoutes(
     try {
       const query = req.params.query as string;
       if (!query || query.length < 2) {
-        return res.json({ companies: [], contacts: [], deals: [] });
+        return res.json({ companies: [], contacts: [], deals: [], trusts: [] });
       }
       const results = await storage.globalSearch(query);
       res.json(results);
@@ -408,6 +408,17 @@ export async function registerRoutes(
             });
           }
         } else {
+          // Auto-link trust from academyTrustName
+          let trustId: string | null = null;
+          if (companyData.academyTrustName?.trim()) {
+            const trustName = companyData.academyTrustName.trim();
+            let trust = await storage.getTrustByName(trustName);
+            if (!trust) {
+              trust = await storage.createTrust({ name: trustName });
+            }
+            trustId = trust.id;
+          }
+
           // Create new company with import batch ID
           const company = await storage.createCompany({
             name: trimmedName,
@@ -423,6 +434,7 @@ export async function registerRoutes(
             stageId: stageId || null,
             importBatchId: importBatch.id,
             budgetStatus: companyData.budgetStatus || "0-unqualified",
+            trustId,
           });
 
           results.imported++;
@@ -452,9 +464,13 @@ export async function registerRoutes(
       });
 
       res.json(results);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Bulk import error:", error);
-      res.status(500).json({ error: "Failed to import companies" });
+      const message = error?.message || "Unknown error";
+      res.status(500).json({
+        error: `Import failed: ${message}`,
+        detail: error?.code || undefined,
+      });
     }
   });
 
@@ -802,7 +818,7 @@ export async function registerRoutes(
       const query = (req.query.q as string || "").trim();
 
       if (!query || query.length < 2) {
-        return res.json({ companies: [], contacts: [], deals: [] });
+        return res.json({ companies: [], contacts: [], deals: [], trusts: [] });
       }
 
       const searchResults = await storage.globalSearch(query);
@@ -820,6 +836,95 @@ export async function registerRoutes(
       res.json(trusts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch trusts" });
+    }
+  });
+
+  app.get("/api/trusts-with-stats", isAuthenticated, async (req, res) => {
+    try {
+      const trusts = await storage.getTrustsWithStats();
+      res.json(trusts);
+    } catch (error) {
+      console.error("Failed to fetch trusts with stats:", error);
+      res.status(500).json({ error: "Failed to fetch trusts with stats" });
+    }
+  });
+
+  app.get("/api/trusts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const trust = await storage.getTrust(req.params.id as string);
+      if (!trust) {
+        return res.status(404).json({ error: "Trust not found" });
+      }
+      res.json(trust);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trust" });
+    }
+  });
+
+  app.post("/api/trusts", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTrustSchema.parse(req.body);
+      const trust = await storage.createTrust(data);
+      res.status(201).json(trust);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create trust" });
+    }
+  });
+
+  app.patch("/api/trusts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTrustSchema.partial().parse(req.body);
+      const trust = await storage.updateTrust(req.params.id as string, data);
+      if (!trust) {
+        return res.status(404).json({ error: "Trust not found" });
+      }
+      res.json(trust);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to update trust" });
+    }
+  });
+
+  app.delete("/api/trusts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTrust(req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete trust" });
+    }
+  });
+
+  app.get("/api/trusts/:id/companies", isAuthenticated, async (req, res) => {
+    try {
+      const companies = await storage.getCompaniesByTrust(req.params.id as string);
+      res.json(companies);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trust companies" });
+    }
+  });
+
+  app.get("/api/trusts/:id/pipeline-summary", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await storage.getTrustPipelineSummary(req.params.id as string);
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch pipeline summary" });
+    }
+  });
+
+  app.get("/api/trusts/:id/activities", isAuthenticated, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const activities = await storage.getTrustActivities(req.params.id as string, limit, offset);
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trust activities" });
     }
   });
 

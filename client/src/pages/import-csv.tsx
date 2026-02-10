@@ -68,6 +68,7 @@ export default function ImportCSV() {
   const [parsedData, setParsedData] = useState<ParsedRow[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>("");
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
   const [pendingImport, setPendingImport] = useState<ParsedRow[]>([]);
@@ -281,45 +282,92 @@ export default function ImportCSV() {
     reader.readAsText(selectedFile);
   };
 
+  const BATCH_SIZE = 200;
+
   const performImport = async (mode: UpdateMode) => {
     const dataToImport = pendingImport.length > 0 ? pendingImport : parsedData;
     if (dataToImport.length === 0) return;
 
     setImporting(true);
     setShowUpdateDialog(false);
+    setImportProgress({ current: 0, total: dataToImport.length });
+
+    const combinedResult: ImportResult = {
+      imported: 0,
+      skipped: 0,
+      updated: 0,
+      duplicates: [],
+    };
 
     try {
-      const response = await fetch("/api/companies/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companies: dataToImport,
-          stageId: selectedStage || null,
-          updateMode: mode,
-          fileName: file?.name || "import.csv",
-        }),
-      });
+      // Process in batches to avoid timeouts and body size limits
+      for (let i = 0; i < dataToImport.length; i += BATCH_SIZE) {
+        const batch = dataToImport.slice(i, i + BATCH_SIZE);
+        setImportProgress({ current: i, total: dataToImport.length });
 
-      if (response.ok) {
-        const result: ImportResult = await response.json();
-        setImportResult(result);
-        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
-
-        const messages: string[] = [];
-        if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
-        if (result.updated > 0) messages.push(`Updated ${result.updated} existing records`);
-        if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
-
-        toast({
-          title: "Import Complete",
-          description: messages.join(", ") || "No changes made"
+        const response = await fetch("/api/companies/bulk-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companies: batch,
+            stageId: selectedStage || null,
+            updateMode: mode,
+            fileName: file?.name || "import.csv",
+          }),
         });
-      } else {
-        toast({ title: "Import failed", variant: "destructive" });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMsg = errorData.error || `Server error (${response.status})`;
+          console.error("Import batch error:", errorData);
+          toast({
+            title: `Import failed at rows ${i + 1}-${i + batch.length}`,
+            description: errorMsg,
+            variant: "destructive",
+          });
+          // Keep partial results visible
+          if (combinedResult.imported > 0 || combinedResult.updated > 0) {
+            setImportResult({ ...combinedResult });
+          }
+          return;
+        }
+
+        const batchResult: ImportResult = await response.json();
+        combinedResult.imported += batchResult.imported;
+        combinedResult.skipped += batchResult.skipped;
+        combinedResult.updated += batchResult.updated;
+        if (batchResult.duplicates) {
+          combinedResult.duplicates.push(...batchResult.duplicates);
+        }
+        if (batchResult.importBatchId) {
+          combinedResult.importBatchId = batchResult.importBatchId;
+        }
       }
-    } catch (error) {
-      toast({ title: "Import failed", description: "An error occurred", variant: "destructive" });
+
+      setImportProgress({ current: dataToImport.length, total: dataToImport.length });
+      setImportResult(combinedResult);
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
+
+      const messages: string[] = [];
+      if (combinedResult.imported > 0) messages.push(`Imported ${combinedResult.imported} new schools`);
+      if (combinedResult.updated > 0) messages.push(`Updated ${combinedResult.updated} existing records`);
+      if (combinedResult.skipped > 0) messages.push(`Skipped ${combinedResult.skipped} duplicates`);
+
+      toast({
+        title: "Import Complete",
+        description: messages.join(", ") || "No changes made"
+      });
+    } catch (error: any) {
+      console.error("Import error:", error);
+      toast({
+        title: "Import failed",
+        description: error?.message || "Network error - check your connection",
+        variant: "destructive",
+      });
+      if (combinedResult.imported > 0 || combinedResult.updated > 0) {
+        setImportResult({ ...combinedResult });
+      }
     } finally {
       setImporting(false);
       setPendingImport([]);
@@ -335,50 +383,94 @@ export default function ImportCSV() {
     }
 
     setImporting(true);
+    setImportProgress({ current: 0, total: parsedData.length });
+
+    const combinedResult: ImportResult = {
+      imported: 0,
+      skipped: 0,
+      updated: 0,
+      duplicates: [],
+    };
 
     try {
-      const response = await fetch("/api/companies/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companies: parsedData,
-          stageId: selectedStage || null,
-          updateMode: "skip",
-          fileName: file?.name || "import.csv",
-        }),
-      });
+      // Process in batches
+      for (let i = 0; i < parsedData.length; i += BATCH_SIZE) {
+        const batch = parsedData.slice(i, i + BATCH_SIZE);
+        setImportProgress({ current: i, total: parsedData.length });
 
-      if (response.ok) {
-        const result: ImportResult = await response.json();
+        const response = await fetch("/api/companies/bulk-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companies: batch,
+            stageId: selectedStage || null,
+            updateMode: "skip",
+            fileName: file?.name || "import.csv",
+          }),
+        });
 
-        const dupsWithNewInfo = result.duplicates.filter(d => d.hasNewInfo).length;
-
-        if (dupsWithNewInfo > 0) {
-          setPendingImport(parsedData);
-          setDuplicatesWithNewInfo(dupsWithNewInfo);
-          setImportResult(result);
-          setShowUpdateDialog(true);
-          setImporting(false);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const errorMsg = errorData.error || `Server error (${response.status})`;
+          console.error("Import batch error:", errorData);
+          toast({
+            title: `Import failed at rows ${i + 1}-${i + batch.length}`,
+            description: errorMsg,
+            variant: "destructive",
+          });
+          if (combinedResult.imported > 0) {
+            setImportResult({ ...combinedResult });
+          }
           return;
         }
 
-        setImportResult(result);
-        queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
-
-        const messages: string[] = [];
-        if (result.imported > 0) messages.push(`Imported ${result.imported} new schools`);
-        if (result.skipped > 0) messages.push(`Skipped ${result.skipped} duplicates`);
-
-        toast({
-          title: "Import Complete",
-          description: messages.join(", ") || "No changes made"
-        });
-      } else {
-        toast({ title: "Import failed", variant: "destructive" });
+        const batchResult: ImportResult = await response.json();
+        combinedResult.imported += batchResult.imported;
+        combinedResult.skipped += batchResult.skipped;
+        combinedResult.updated += batchResult.updated;
+        if (batchResult.duplicates) {
+          combinedResult.duplicates.push(...batchResult.duplicates);
+        }
+        if (batchResult.importBatchId) {
+          combinedResult.importBatchId = batchResult.importBatchId;
+        }
       }
-    } catch (error) {
-      toast({ title: "Import failed", description: "An error occurred", variant: "destructive" });
+
+      setImportProgress({ current: parsedData.length, total: parsedData.length });
+
+      const dupsWithNewInfo = combinedResult.duplicates.filter(d => d.hasNewInfo).length;
+
+      if (dupsWithNewInfo > 0) {
+        setPendingImport(parsedData);
+        setDuplicatesWithNewInfo(dupsWithNewInfo);
+        setImportResult(combinedResult);
+        setShowUpdateDialog(true);
+        setImporting(false);
+        return;
+      }
+
+      setImportResult(combinedResult);
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/csv-imports"] });
+
+      const messages: string[] = [];
+      if (combinedResult.imported > 0) messages.push(`Imported ${combinedResult.imported} new schools`);
+      if (combinedResult.skipped > 0) messages.push(`Skipped ${combinedResult.skipped} duplicates`);
+
+      toast({
+        title: "Import Complete",
+        description: messages.join(", ") || "No changes made"
+      });
+    } catch (error: any) {
+      console.error("Import error:", error);
+      toast({
+        title: "Import failed",
+        description: error?.message || "Network error - check your connection",
+        variant: "destructive",
+      });
+      if (combinedResult.imported > 0) {
+        setImportResult({ ...combinedResult });
+      }
     } finally {
       setImporting(false);
     }
@@ -504,7 +596,7 @@ export default function ImportCSV() {
                   {importing ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Importing...
+                      Importing... {importProgress.total > 0 ? `${Math.min(importProgress.current + BATCH_SIZE, importProgress.total)}/${importProgress.total}` : ""}
                     </>
                   ) : (
                     <>

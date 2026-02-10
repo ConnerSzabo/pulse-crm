@@ -36,6 +36,13 @@ export type PipelineStage = typeof pipelineStages.$inferSelect;
 export const trusts = pgTable("trusts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
+  website: text("website"),
+  phone: text("phone"),
+  email: text("email"),
+  decisionMakerName: text("decision_maker_name"),
+  decisionMakerEmail: text("decision_maker_email"),
+  decisionMakerPhone: text("decision_maker_phone"),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -48,6 +55,12 @@ export const insertTrustSchema = createInsertSchema(trusts).omit({
 
 export type InsertTrust = z.infer<typeof insertTrustSchema>;
 export type Trust = typeof trusts.$inferSelect;
+
+export type TrustWithStats = Trust & {
+  schoolCount: number;
+  totalPipelineValue: number;
+  lastActivityDate: Date | null;
+};
 
 // Companies/Schools
 export const companies = pgTable("companies", {
