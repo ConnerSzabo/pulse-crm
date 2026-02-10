@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useParams, useLocation } from "wouter";
-import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact } from "@shared/schema";
+import { useParams, useLocation, Link } from "wouter";
+import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact, Trust } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -103,6 +103,7 @@ const editCompanySchema = z.object({
   industry: z.string().optional(),
   decisionTimeline: z.string().optional(),
   budgetStatus: z.string().optional(),
+  trustId: z.string().nullable().optional(),
 });
 
 const dealSchema = z.object({
@@ -228,6 +229,10 @@ export default function CompanyDetail() {
 
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
+  });
+
+  const { data: allTrusts } = useQuery<Trust[]>({
+    queryKey: ["/api/trusts"],
   });
 
   const taskForm = useForm<z.infer<typeof addTaskSchema>>({
@@ -1035,7 +1040,49 @@ export default function CompanyDetail() {
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
                   <Landmark className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <EditableField label="Academy Trust" field="academyTrustName" value={company.academyTrustName} />
+                    <p className="text-[10px] font-medium text-[#64748b] uppercase tracking-wider mb-1">Academy Trust</p>
+                    {company.trust ? (
+                      <div className="flex items-center gap-2">
+                        <Link href={`/trusts/${company.trust.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
+                          {company.trust.name}
+                        </Link>
+                        <button
+                          onClick={() => updateCompanyMutation.mutate({ trustId: null })}
+                          className="text-[#64748b] hover:text-red-400 transition-colors p-0.5"
+                          title="Remove from trust"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <Select
+                        value=""
+                        onValueChange={(val) => {
+                          if (val === "__new__") {
+                            const name = prompt("Enter new trust name:");
+                            if (name?.trim()) {
+                              apiRequest("POST", "/api/trusts", { name: name.trim() }).then(async (res) => {
+                                const trust = await res.json();
+                                updateCompanyMutation.mutate({ trustId: trust.id });
+                                queryClient.invalidateQueries({ queryKey: ["/api/trusts"] });
+                              }).catch(() => toast({ title: "Failed to create trust", variant: "destructive" }));
+                            }
+                          } else {
+                            updateCompanyMutation.mutate({ trustId: val });
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-7 text-xs bg-transparent border-[#3d4254] text-white">
+                          <SelectValue placeholder="Select trust..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allTrusts?.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                          <SelectItem value="__new__">+ Create new trust</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">

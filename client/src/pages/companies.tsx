@@ -50,6 +50,8 @@ import {
   X,
   User,
   Calendar,
+  Landmark,
+  ChevronDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -107,6 +109,7 @@ export default function Companies() {
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
+  const [groupByTrust, setGroupByTrust] = useState(false);
 
   const { toast } = useToast();
 
@@ -305,6 +308,40 @@ export default function Companies() {
     (currentPage - 1) * perPage,
     currentPage * perPage
   );
+
+  // Group by trust
+  const groupedByTrust = useMemo(() => {
+    if (!groupByTrust) return null;
+    const groups = new Map<string, { trustName: string; trustId: string | null; companies: CompanyWithStage[] }>();
+    for (const c of filteredCompanies) {
+      const key = c.trust?.name || c.academyTrustName || "__independent__";
+      if (!groups.has(key)) {
+        groups.set(key, {
+          trustName: key === "__independent__" ? "Independent Schools" : key,
+          trustId: c.trust?.id || null,
+          companies: [],
+        });
+      }
+      groups.get(key)!.companies.push(c);
+    }
+    // Sort: trusts alphabetically, independent last
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.trustName === "Independent Schools") return 1;
+      if (b.trustName === "Independent Schools") return -1;
+      return a.trustName.localeCompare(b.trustName);
+    });
+  }, [filteredCompanies, groupByTrust]);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (name: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -677,6 +714,18 @@ export default function Companies() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Group by Trust Toggle */}
+            <button
+              onClick={() => setGroupByTrust(!groupByTrust)}
+              className={`h-10 px-3 rounded-md border text-sm font-medium transition-colors ${
+                groupByTrust
+                  ? "bg-[#0091AE]/10 border-[#0091AE] text-[#0091AE] dark:bg-[#0091AE]/20"
+                  : "border-gray-300 dark:border-[#3d4254] text-gray-600 dark:text-[#94a3b8] hover:border-gray-400 dark:hover:bg-[#2d3142] dark:hover:text-white"
+              }`}
+            >
+              Group by Trust
+            </button>
+
             {/* Clear Filters */}
             {hasActiveFilters && (
               <Button
@@ -745,6 +794,50 @@ export default function Companies() {
                 Add your first company
               </Button>
             )}
+          </div>
+        ) : groupByTrust && groupedByTrust ? (
+          <div className="bg-white dark:bg-[#252936] border-x border-gray-200 dark:border-[#3d4254]">
+            {groupedByTrust.map((group) => (
+              <div key={group.trustName} className="border-b border-gray-200 dark:border-[#3d4254]">
+                <button
+                  onClick={() => toggleGroup(group.trustName)}
+                  className="w-full px-6 py-3 flex items-center gap-3 bg-gray-50 dark:bg-[#2d3142] hover:bg-gray-100 dark:hover:bg-[#3d4254] transition-colors text-left"
+                >
+                  <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${collapsedGroups.has(group.trustName) ? "-rotate-90" : ""}`} />
+                  <Landmark className="h-4 w-4 text-purple-500" />
+                  <span className="font-semibold text-gray-900 dark:text-white">{group.trustName}</span>
+                  <Badge variant="secondary" className="ml-1 dark:bg-[#3d4254] dark:text-[#94a3b8]">
+                    {group.companies.length} {group.companies.length === 1 ? "school" : "schools"}
+                  </Badge>
+                  {group.trustId && (
+                    <Link
+                      href={`/trusts/${group.trustId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="ml-auto text-xs text-[#0091AE] hover:underline"
+                    >
+                      View Trust
+                    </Link>
+                  )}
+                </button>
+                {!collapsedGroups.has(group.trustName) && (
+                  <div className="divide-y divide-gray-100 dark:divide-[#3d4254]">
+                    {group.companies.map((company) => (
+                      <div key={company.id} className="px-6 py-2.5 flex items-center gap-4 hover:bg-blue-50/50 dark:hover:bg-[#2d3142] pl-14">
+                        <Link href={`/company/${company.id}`} className="flex items-center gap-2 flex-1 min-w-0">
+                          <Building2 className="h-3.5 w-3.5 text-[#0091AE] flex-shrink-0" />
+                          <span className="text-sm font-medium text-[#0091AE] hover:underline truncate">{company.name}</span>
+                        </Link>
+                        <span className="text-xs text-gray-500 dark:text-[#64748b] w-24 truncate">{company.location || "--"}</span>
+                        <span className="text-xs w-28">{getLeadStatusBadge(company.budgetStatus)}</span>
+                        <span className="text-xs text-gray-500 dark:text-[#64748b] w-24">
+                          {company.lastContactDate ? format(new Date(company.lastContactDate), "MMM d, yyyy") : "--"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         ) : (
           <div className="bg-white dark:bg-[#252936] border-x border-gray-200 dark:border-[#3d4254]">

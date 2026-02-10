@@ -23,6 +23,8 @@ const Pipeline = lazy(() => import("@/pages/pipeline"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const ImportCSV = lazy(() => import("@/pages/import-csv"));
 const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
+const Trusts = lazy(() => import("@/pages/trusts"));
+const TrustDetail = lazy(() => import("@/pages/trust-detail"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function PageLoader() {
@@ -49,6 +51,8 @@ function Router() {
         <Route path="/pipeline" component={Pipeline} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/call-analytics" component={CallAnalytics} />
+        <Route path="/trusts" component={Trusts} />
+        <Route path="/trusts/:id" component={TrustDetail} />
         <Route path="/import" component={ImportCSV} />
         <Route component={NotFound} />
       </Switch>

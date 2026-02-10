@@ -20,7 +20,8 @@
       "Bash(node -e:*)",
       "Bash(npx drizzle-kit push:*)",
       "Bash(printf:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

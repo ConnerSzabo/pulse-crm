@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Activity } from "@shared/schema";
 import { Link } from "wouter";
-import type { Company, PipelineStage, TaskWithCompany } from "@shared/schema";
+import type { Company, PipelineStage, TaskWithCompany, TrustWithStats } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, ArrowUpDown, Building2, ExternalLink, Check, X, AlertTriangle, Clock, ChevronRight, DollarSign, TrendingUp, Phone, Users } from "lucide-react";
+import { Search, ArrowUpDown, Building2, ExternalLink, Check, X, AlertTriangle, Clock, ChevronRight, DollarSign, TrendingUp, Phone, Users, Landmark } from "lucide-react";
 import { formatDistanceToNow, format, isBefore, startOfToday, isToday } from "date-fns";
 
 type CompanyWithStage = Company & { stage?: PipelineStage };
@@ -84,6 +84,17 @@ export default function Dashboard() {
       return res.json();
     },
   });
+
+  const { data: trustsWithStats } = useQuery<TrustWithStats[]>({
+    queryKey: ["/api/trusts-with-stats"],
+  });
+
+  const topTrusts = useMemo(() => {
+    if (!trustsWithStats) return [];
+    return [...trustsWithStats]
+      .sort((a, b) => b.totalPipelineValue - a.totalPipelineValue)
+      .slice(0, 5);
+  }, [trustsWithStats]);
 
   const todayCallBreakdown = useMemo(() => {
     if (!todayCalls) return { connected: 0, details: 0, reception: 0, total: 0, connectRate: 0 };
@@ -339,6 +350,42 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Top Trusts Widget */}
+      {topTrusts.length > 0 && (
+        <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Top Trusts by Pipeline</CardTitle>
+            <Link href="/trusts">
+              <div className="flex items-center gap-1 text-xs text-[#0091AE] hover:underline">
+                View all <ChevronRight className="h-3 w-3" />
+              </div>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {topTrusts.map((trust) => (
+                <Link key={trust.id} href={`/trusts/${trust.id}`}>
+                  <div className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors cursor-pointer">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Landmark className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{trust.name}</span>
+                      <Badge variant="secondary" className="text-[10px] dark:bg-[#3d4254] dark:text-[#94a3b8]">
+                        {trust.schoolCount}
+                      </Badge>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white flex-shrink-0 ml-2">
+                      {trust.totalPipelineValue > 0
+                        ? `£${trust.totalPipelineValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                        : "£0"}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[250px]">

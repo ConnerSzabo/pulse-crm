@@ -8,7 +8,8 @@ import {
   Settings,
   HelpCircle,
   ChevronDown,
-  Phone
+  Phone,
+  Landmark
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,11 @@ const mainMenuItems = [
     url: "/call-analytics",
     icon: Phone,
   },
+  {
+    title: "Trusts",
+    url: "/trusts",
+    icon: Landmark,
+  },
 ];
 
 const toolsMenuItems = [
@@ -61,6 +67,7 @@ export function AppSidebar() {
     if (url === "/") return location === "/";
     if (url === "/companies") return location === "/companies" || location.startsWith("/company/");
     if (url === "/contacts") return location === "/contacts" || location.startsWith("/contact/");
+    if (url === "/trusts") return location === "/trusts" || location.startsWith("/trusts/");
     return location.startsWith(url);
   };
 

@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
-import { Search, Building2, User, Briefcase, X } from "lucide-react";
-import type { Company, Contact, Deal, PipelineStage } from "@shared/schema";
+import { Search, Building2, User, Briefcase, X, Landmark } from "lucide-react";
+import type { Company, Contact, Deal, PipelineStage, Trust } from "@shared/schema";
 
 type SearchResults = {
   companies: (Company & { stage?: PipelineStage })[];
   contacts: (Contact & { companyName?: string })[];
   deals: (Deal & { companyName?: string; stage?: PipelineStage })[];
+  trusts: Trust[];
 };
 
 export function GlobalSearch() {
@@ -83,21 +84,21 @@ export function GlobalSearch() {
     );
   };
 
-  const handleResultClick = (type: "company" | "contact" | "deal", id: string) => {
+  const handleResultClick = (type: "company" | "contact" | "deal" | "trust", id: string) => {
     setIsOpen(false);
     setSearchQuery("");
 
     if (type === "company") {
       navigate(`/company/${id}`);
     } else if (type === "contact") {
-      // For now, navigate to the company page with the contact's company
       const contact = results?.contacts.find(c => c.id === id);
       if (contact) {
         navigate(`/company/${contact.companyId}`);
       }
     } else if (type === "deal") {
-      // Navigate to pipeline for now
       navigate("/pipeline");
+    } else if (type === "trust") {
+      navigate(`/trusts/${id}`);
     }
   };
 
@@ -110,7 +111,8 @@ export function GlobalSearch() {
   const hasResults = results && (
     results.companies.length > 0 ||
     results.contacts.length > 0 ||
-    results.deals.length > 0
+    results.deals.length > 0 ||
+    results.trusts?.length > 0
   );
 
   return (
@@ -224,7 +226,7 @@ export function GlobalSearch() {
 
           {/* Deals Section */}
           {results && results.deals.length > 0 && (
-            <div>
+            <div className="border-b border-[#3d4254]">
               <div className="px-4 py-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
                   Deals
@@ -253,6 +255,33 @@ export function GlobalSearch() {
                       {deal.companyName && (
                         <span>{deal.companyName}</span>
                       )}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Trusts Section */}
+          {results && results.trusts?.length > 0 && (
+            <div>
+              <div className="px-4 py-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[#64748b]">
+                  Trusts
+                </h3>
+              </div>
+              {results.trusts.map((trust) => (
+                <button
+                  key={trust.id}
+                  onClick={() => handleResultClick("trust", trust.id)}
+                  className="w-full px-4 py-3 flex items-start gap-3 hover:bg-[#2d3142] transition-colors text-left"
+                >
+                  <div className="w-8 h-8 rounded-md bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Landmark className="h-4 w-4 text-purple-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-white text-sm mb-0.5">
+                      {highlightMatch(trust.name, debouncedQuery)}
                     </div>
                   </div>
                 </button>
