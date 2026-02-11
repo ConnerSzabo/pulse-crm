@@ -72,6 +72,8 @@ export const companies = pgTable("companies", {
   academyTrustName: text("academy_trust_name"),
   industry: text("industry").default("Secondary School"),
   trustId: varchar("trust_id").references(() => trusts.id),
+  isTrust: boolean("is_trust").default(false).notNull(),
+  parentCompanyId: varchar("parent_company_id"),
   ext: text("ext"),
   notes: text("notes"),
   itManagerName: text("it_manager_name"),
@@ -106,6 +108,28 @@ export const insertCompanySchema = createInsertSchema(companies).omit({
 
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
 export type Company = typeof companies.$inferSelect;
+
+// Company Relationships (many-to-many between companies)
+export const companyRelationships = pgTable("company_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  relatedCompanyId: varchar("related_company_id").references(() => companies.id).notNull(),
+  relationshipType: text("relationship_type").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCompanyRelationshipSchema = createInsertSchema(companyRelationships).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCompanyRelationship = z.infer<typeof insertCompanyRelationshipSchema>;
+export type CompanyRelationship = typeof companyRelationships.$inferSelect;
+
+export type CompanyRelationshipWithCompany = CompanyRelationship & {
+  relatedCompany: Company;
+};
 
 // Contacts for companies
 export const contacts = pgTable("contacts", {
@@ -270,4 +294,7 @@ export type CompanyWithRelations = Company & {
   deals: DealWithStage[];
   stage?: PipelineStage;
   trust?: Trust;
+  parentCompany?: Company;
+  childCompanies?: Company[];
+  relationships?: CompanyRelationshipWithCompany[];
 };

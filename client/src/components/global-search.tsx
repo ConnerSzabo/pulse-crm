@@ -98,7 +98,8 @@ export function GlobalSearch() {
     } else if (type === "deal") {
       navigate("/pipeline");
     } else if (type === "trust") {
-      navigate(`/trusts/${id}`);
+      // Navigate to company page for trust companies
+      navigate(`/company/${id}`);
     }
   };
 
@@ -166,8 +167,13 @@ export function GlobalSearch() {
                     <Building2 className="h-4 w-4 text-[#0091AE]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-white text-sm mb-0.5">
+                    <div className="font-semibold text-white text-sm mb-0.5 flex items-center gap-1.5">
                       {highlightMatch(company.name, debouncedQuery)}
+                      {company.isTrust && (
+                        <span className="inline-flex items-center px-1.5 py-0 text-[9px] font-medium bg-purple-600 text-white rounded">
+                          Trust
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-[#94a3b8]">
                       {company.location && (

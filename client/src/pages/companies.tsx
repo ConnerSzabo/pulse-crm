@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import type { Company, PipelineStage, Trust } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +69,8 @@ const addCompanySchema = z.object({
   itManagerEmail: z.string().optional(),
   stageId: z.string().optional(),
   budgetStatus: z.string().default("0-unqualified"),
+  isTrust: z.boolean().default(false),
+  parentCompanyId: z.string().optional(),
 });
 
 const industryOptions = [
@@ -81,7 +83,7 @@ const industryOptions = [
 
 type AddCompanyForm = z.infer<typeof addCompanySchema>;
 
-type CompanyWithStage = Company & { stage?: PipelineStage; trust?: Trust };
+type CompanyWithStage = Company & { stage?: PipelineStage; trust?: Trust; parentCompany?: Company };
 
 type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry" | "trust";
 type SortDirection = "asc" | "desc";
@@ -97,6 +99,9 @@ const leadStatusOptions = [
 ];
 
 export default function Companies() {
+  const searchParams = useSearch();
+  const urlType = new URLSearchParams(searchParams).get("type");
+
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -109,6 +114,7 @@ export default function Companies() {
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>(urlType === "trusts" ? "trusts" : "all");
   const [groupByTrust, setGroupByTrust] = useState(false);
 
   const { toast } = useToast();
@@ -155,12 +161,14 @@ export default function Companies() {
         phone: data.phone || null,
         location: data.location || null,
         academyTrustName: data.academyTrustName || null,
-        industry: data.industry || "Secondary School",
+        industry: data.isTrust ? "Academy Trust" : (data.industry || "Secondary School"),
         ext: data.ext || null,
         notes: data.notes || null,
         itManagerName: data.itManagerName || null,
         itManagerEmail: data.itManagerEmail || null,
         stageId: data.stageId || null,
+        isTrust: data.isTrust || false,
+        parentCompanyId: data.parentCompanyId || null,
       });
     },
     onSuccess: () => {
@@ -224,6 +232,13 @@ export default function Companies() {
           c.academyTrustName?.toLowerCase().includes(searchLower) ||
           c.phone?.includes(search)
       );
+    }
+
+    // Type filter
+    if (typeFilter === "trusts") {
+      filtered = filtered.filter((c) => c.isTrust);
+    } else if (typeFilter === "schools") {
+      filtered = filtered.filter((c) => !c.isTrust);
     }
 
     // Lead status filter
@@ -292,14 +307,14 @@ export default function Companies() {
           comparison = (a.industry || "").localeCompare(b.industry || "");
           break;
         case "trust":
-          comparison = (a.trust?.name || a.academyTrustName || "").localeCompare(b.trust?.name || b.academyTrustName || "");
+          comparison = (a.parentCompany?.name || a.trust?.name || a.academyTrustName || "").localeCompare(b.parentCompany?.name || b.trust?.name || b.academyTrustName || "");
           break;
       }
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
     return filtered;
-  }, [companies, search, leadStatusFilter, dateFilter, sortField, sortDirection]);
+  }, [companies, search, leadStatusFilter, dateFilter, typeFilter, sortField, sortDirection]);
 
   // Pagination
   const totalCompanies = filteredCompanies.length;
@@ -314,11 +329,11 @@ export default function Companies() {
     if (!groupByTrust) return null;
     const groups = new Map<string, { trustName: string; trustId: string | null; companies: CompanyWithStage[] }>();
     for (const c of filteredCompanies) {
-      const key = c.trust?.name || c.academyTrustName || "__independent__";
+      const key = c.parentCompany?.name || c.trust?.name || c.academyTrustName || "__independent__";
       if (!groups.has(key)) {
         groups.set(key, {
           trustName: key === "__independent__" ? "Independent Schools" : key,
-          trustId: c.trust?.id || null,
+          trustId: c.parentCompany?.id || c.trust?.id || null,
           companies: [],
         });
       }
@@ -378,10 +393,11 @@ export default function Companies() {
     setLeadStatusFilter("all");
     setOwnerFilter("all");
     setDateFilter("all");
+    setTypeFilter("all");
     setSearch("");
   };
 
-  const hasActiveFilters = leadStatusFilter !== "all" || ownerFilter !== "all" || dateFilter !== "all" || search !== "";
+  const hasActiveFilters = leadStatusFilter !== "all" || ownerFilter !== "all" || dateFilter !== "all" || typeFilter !== "all" || search !== "";
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <button
@@ -714,6 +730,32 @@ export default function Companies() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Type Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
+                  <Building2 className="h-4 w-4" />
+                  Type
+                  {typeFilter !== "all" && (
+                    <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Filter by Type</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { setTypeFilter("all"); setCurrentPage(1); }}>
+                  All types
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setTypeFilter("schools"); setCurrentPage(1); }}>
+                  Schools Only
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setTypeFilter("trusts"); setCurrentPage(1); }}>
+                  Trusts Only
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Group by Trust Toggle */}
             <button
               onClick={() => setGroupByTrust(!groupByTrust)}
@@ -811,7 +853,7 @@ export default function Companies() {
                   </Badge>
                   {group.trustId && (
                     <Link
-                      href={`/trusts/${group.trustId}`}
+                      href={`/company/${group.trustId}`}
                       onClick={(e) => e.stopPropagation()}
                       className="ml-auto text-xs text-[#0091AE] hover:underline"
                     >
@@ -910,11 +952,18 @@ export default function Companies() {
                         <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#0091AE]/20 to-[#06b6d4]/20 dark:from-[#0091AE]/30 dark:to-[#06b6d4]/30 flex items-center justify-center flex-shrink-0 shadow-sm">
                           <Building2 className="h-4 w-4 text-[#0091AE]" />
                         </div>
-                        <span
-                          className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate"
-                          data-testid={`text-company-name-${company.id}`}
-                        >
-                          {company.name}
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate"
+                            data-testid={`text-company-name-${company.id}`}
+                          >
+                            {company.name}
+                          </span>
+                          {company.isTrust && (
+                            <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[9px] px-1.5 py-0 flex-shrink-0">
+                              Trust
+                            </Badge>
+                          )}
                         </span>
                       </Link>
                     </td>
@@ -970,9 +1019,15 @@ export default function Companies() {
                       </span>
                     </td>
                     <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                        {company.trust?.name || company.academyTrustName || "--"}
-                      </span>
+                      {company.parentCompany ? (
+                        <Link href={`/company/${company.parentCompany.id}`} className="text-sm text-[#0091AE] hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
+                          {company.parentCompany.name}
+                        </Link>
+                      ) : (
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                          {company.trust?.name || company.academyTrustName || "--"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <DropdownMenu>

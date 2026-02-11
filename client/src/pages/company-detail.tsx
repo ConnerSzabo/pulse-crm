@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation, Link } from "wouter";
-import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact, Trust } from "@shared/schema";
+import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact, Trust, Company, CompanyRelationshipWithCompany } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,6 +104,7 @@ const editCompanySchema = z.object({
   decisionTimeline: z.string().optional(),
   budgetStatus: z.string().optional(),
   trustId: z.string().nullable().optional(),
+  parentCompanyId: z.string().nullable().optional(),
 });
 
 const dealSchema = z.object({
@@ -190,6 +191,14 @@ export default function CompanyDetail() {
   const [deleteCompanyConfirmName, setDeleteCompanyConfirmName] = useState("");
   const [showDeleteDealDialog, setShowDeleteDealDialog] = useState(false);
   const [dealToDelete, setDealToDelete] = useState<DealWithStage | null>(null);
+  const [showLinkSchoolsDialog, setShowLinkSchoolsDialog] = useState(false);
+  const [showAddRelationshipDialog, setShowAddRelationshipDialog] = useState(false);
+  const [linkSchoolSearch, setLinkSchoolSearch] = useState("");
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<Set<string>>(new Set());
+  const [relationshipCompanySearch, setRelationshipCompanySearch] = useState("");
+  const [selectedRelCompanyId, setSelectedRelCompanyId] = useState("");
+  const [selectedRelType, setSelectedRelType] = useState("");
+  const [relNotes, setRelNotes] = useState("");
 
   // Key information inline editing
   const [editingField, setEditingField] = useState<string | null>(null);
@@ -233,6 +242,14 @@ export default function CompanyDetail() {
 
   const { data: allTrusts } = useQuery<Trust[]>({
     queryKey: ["/api/trusts"],
+  });
+
+  const { data: trustCompanies } = useQuery<Company[]>({
+    queryKey: ["/api/trust-companies"],
+  });
+
+  const { data: allCompanies } = useQuery<Company[]>({
+    queryKey: ["/api/companies"],
   });
 
   const taskForm = useForm<z.infer<typeof addTaskSchema>>({
@@ -899,9 +916,16 @@ export default function CompanyDetail() {
 
         {/* Company name and quick actions - Optimized spacing */}
         <div className="px-4 pt-3 pb-4 border-b dark:border-[#3d4254] flex-shrink-0">
-          <h1 className="text-xl font-bold text-white mb-2" data-testid="text-company-detail-name">
-            {company.name}
-          </h1>
+          <div className="flex items-center gap-2 mb-2">
+            <h1 className="text-xl font-bold text-white" data-testid="text-company-detail-name">
+              {company.name}
+            </h1>
+            {company.isTrust && (
+              <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[10px] px-2 py-0.5">
+                Trust
+              </Badge>
+            )}
+          </div>
           {company.website && (
             <a
               href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
@@ -1041,7 +1065,20 @@ export default function CompanyDetail() {
                   <Landmark className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-medium text-[#64748b] uppercase tracking-wider mb-1">Academy Trust</p>
-                    {company.trust ? (
+                    {company.parentCompany ? (
+                      <div className="flex items-center gap-2">
+                        <Link href={`/company/${company.parentCompany.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
+                          {company.parentCompany.name}
+                        </Link>
+                        <button
+                          onClick={() => updateCompanyMutation.mutate({ parentCompanyId: null })}
+                          className="text-[#64748b] hover:text-red-400 transition-colors p-0.5"
+                          title="Remove from trust"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : company.trust ? (
                       <div className="flex items-center gap-2">
                         <Link href={`/trusts/${company.trust.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
                           {company.trust.name}
@@ -1061,14 +1098,16 @@ export default function CompanyDetail() {
                           if (val === "__new__") {
                             const name = prompt("Enter new trust name:");
                             if (name?.trim()) {
-                              apiRequest("POST", "/api/trusts", { name: name.trim() }).then(async (res) => {
-                                const trust = await res.json();
-                                updateCompanyMutation.mutate({ trustId: trust.id });
-                                queryClient.invalidateQueries({ queryKey: ["/api/trusts"] });
+                              apiRequest("POST", "/api/companies", { name: name.trim(), isTrust: true, industry: "Academy Trust" }).then(async (res) => {
+                                const trustCompany = await res.json();
+                                updateCompanyMutation.mutate({ parentCompanyId: trustCompany.id });
+                                queryClient.invalidateQueries({ queryKey: ["/api/trust-companies"] });
                               }).catch(() => toast({ title: "Failed to create trust", variant: "destructive" }));
                             }
+                          } else if (val === "__independent__") {
+                            updateCompanyMutation.mutate({ parentCompanyId: null });
                           } else {
-                            updateCompanyMutation.mutate({ trustId: val });
+                            updateCompanyMutation.mutate({ parentCompanyId: val });
                           }
                         }}
                       >
@@ -1076,7 +1115,8 @@ export default function CompanyDetail() {
                           <SelectValue placeholder="Select trust..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {allTrusts?.map((t) => (
+                          <SelectItem value="__independent__">Independent</SelectItem>
+                          {trustCompanies?.map((t: Company) => (
                             <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                           ))}
                           <SelectItem value="__new__">+ Create new trust</SelectItem>
@@ -1658,6 +1698,106 @@ export default function CompanyDetail() {
                         </a>
                       )}
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Companies Section (only for trust companies) */}
+          {company.isTrust && (
+            <CollapsibleSection
+              title="Schools"
+              count={company.childCompanies?.length || 0}
+              icon={Building2}
+              onAdd={() => setShowLinkSchoolsDialog(true)}
+            >
+              {(company.childCompanies?.length || 0) === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">No schools linked</p>
+              ) : (
+                <div className="space-y-2">
+                  {company.childCompanies?.map((child) => (
+                    <div
+                      key={child.id}
+                      className="p-3 border dark:border-[#3d4254] rounded-xl hover:bg-[#2d3142]/60 hover:border-[#4d5264] group transition-all duration-200"
+                    >
+                      <div className="flex items-start justify-between">
+                        <Link href={`/company/${child.id}`} className="flex items-center gap-2.5 flex-1 min-w-0">
+                          <div className="h-8 w-8 rounded-md bg-[#0091AE]/15 flex items-center justify-center flex-shrink-0">
+                            <Building2 className="h-4 w-4 text-[#0091AE]" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-[#0091AE] hover:underline truncate">{child.name}</p>
+                            {child.location && (
+                              <p className="text-xs text-muted-foreground">{child.location}</p>
+                            )}
+                          </div>
+                        </Link>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600"
+                          onClick={() => {
+                            apiRequest("POST", `/api/companies/${child.id}/unlink-school`).then(() => {
+                              queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+                              toast({ title: "School unlinked" });
+                            });
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CollapsibleSection>
+          )}
+
+          {/* Related Companies Section */}
+          <CollapsibleSection
+            title="Related Companies"
+            count={company.relationships?.length || 0}
+            icon={Building}
+            onAdd={() => setShowAddRelationshipDialog(true)}
+            defaultOpen={false}
+          >
+            {(company.relationships?.length || 0) === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No related companies</p>
+            ) : (
+              <div className="space-y-2">
+                {company.relationships?.map((rel) => (
+                  <div
+                    key={rel.id}
+                    className="p-3 border dark:border-[#3d4254] rounded-xl hover:bg-[#2d3142]/60 hover:border-[#4d5264] group transition-all duration-200"
+                  >
+                    <div className="flex items-start justify-between">
+                      <Link href={`/company/${rel.relatedCompany.id}`} className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <div className="h-8 w-8 rounded-md bg-purple-500/15 flex items-center justify-center flex-shrink-0">
+                          <Building className="h-4 w-4 text-purple-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm text-[#0091AE] hover:underline truncate">{rel.relatedCompany.name}</p>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-0.5 dark:bg-[#3d4254]">{rel.relationshipType}</Badge>
+                        </div>
+                      </Link>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600"
+                        onClick={() => {
+                          apiRequest("DELETE", `/api/company-relationships/${rel.id}`).then(() => {
+                            queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+                            toast({ title: "Relationship removed" });
+                          });
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {rel.notes && (
+                      <p className="text-xs text-muted-foreground mt-1 pl-[42px] line-clamp-2">{rel.notes}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2605,6 +2745,160 @@ export default function CompanyDetail() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Link Schools Dialog (for trust companies) */}
+      <Dialog open={showLinkSchoolsDialog} onOpenChange={(open) => {
+        setShowLinkSchoolsDialog(open);
+        if (!open) { setSelectedSchoolIds(new Set()); setLinkSchoolSearch(""); }
+      }}>
+        <DialogContent className="sm:max-w-[500px] dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Add Schools to Trust</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search schools..."
+                value={linkSchoolSearch}
+                onChange={(e) => setLinkSchoolSearch(e.target.value)}
+                className="pl-10 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white"
+              />
+            </div>
+            <div className="max-h-[300px] overflow-y-auto space-y-1">
+              {allCompanies
+                ?.filter(c => !c.isTrust && !c.parentCompanyId && c.id !== params.id)
+                .filter(c => !linkSchoolSearch || c.name.toLowerCase().includes(linkSchoolSearch.toLowerCase()))
+                .slice(0, 50)
+                .map(c => (
+                  <label key={c.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-[#2d3142] cursor-pointer">
+                    <Checkbox
+                      checked={selectedSchoolIds.has(c.id)}
+                      onCheckedChange={(checked) => {
+                        const newSet = new Set(selectedSchoolIds);
+                        if (checked) newSet.add(c.id); else newSet.delete(c.id);
+                        setSelectedSchoolIds(newSet);
+                      }}
+                    />
+                    <div>
+                      <p className="text-sm font-medium dark:text-white">{c.name}</p>
+                      {c.location && <p className="text-xs text-muted-foreground">{c.location}</p>}
+                    </div>
+                  </label>
+                ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLinkSchoolsDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white">Cancel</Button>
+            <Button
+              className="bg-[#0091AE] hover:bg-[#007a94] text-white"
+              disabled={selectedSchoolIds.size === 0}
+              onClick={() => {
+                apiRequest("POST", `/api/companies/${params.id}/link-schools`, {
+                  schoolIds: Array.from(selectedSchoolIds),
+                }).then(() => {
+                  queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+                  setShowLinkSchoolsDialog(false);
+                  setSelectedSchoolIds(new Set());
+                  setLinkSchoolSearch("");
+                  toast({ title: `${selectedSchoolIds.size} school(s) linked` });
+                });
+              }}
+            >
+              Link {selectedSchoolIds.size} School{selectedSchoolIds.size !== 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Related Company Dialog */}
+      <Dialog open={showAddRelationshipDialog} onOpenChange={(open) => {
+        setShowAddRelationshipDialog(open);
+        if (!open) { setSelectedRelCompanyId(""); setSelectedRelType(""); setRelNotes(""); setRelationshipCompanySearch(""); }
+      }}>
+        <DialogContent className="sm:max-w-[500px] dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Add Related Company</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8] mb-2 block">Company</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search companies..."
+                  value={relationshipCompanySearch}
+                  onChange={(e) => setRelationshipCompanySearch(e.target.value)}
+                  className="pl-10 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white"
+                />
+              </div>
+              {relationshipCompanySearch && (
+                <div className="max-h-[200px] overflow-y-auto mt-1 border dark:border-[#3d4254] rounded-md">
+                  {allCompanies
+                    ?.filter(c => c.id !== params.id && c.name.toLowerCase().includes(relationshipCompanySearch.toLowerCase()))
+                    .slice(0, 20)
+                    .map(c => (
+                      <button
+                        key={c.id}
+                        onClick={() => { setSelectedRelCompanyId(c.id); setRelationshipCompanySearch(c.name); }}
+                        className={`w-full text-left px-3 py-2 hover:bg-[#2d3142] text-sm ${selectedRelCompanyId === c.id ? "bg-[#0091AE]/20 text-[#0091AE]" : "dark:text-white"}`}
+                      >
+                        {c.name}
+                        {c.location && <span className="text-xs text-muted-foreground ml-2">{c.location}</span>}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8] mb-2 block">Relationship Type</label>
+              <Select value={selectedRelType} onValueChange={setSelectedRelType}>
+                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                  <SelectValue placeholder="Select type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Sister School", "Feeder School", "Partner Organization", "Supplier", "Parent Organization", "Diocese/Regional Authority", "Shared Services", "Other"].map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8] mb-2 block">Notes (optional)</label>
+              <Textarea
+                value={relNotes}
+                onChange={(e) => setRelNotes(e.target.value)}
+                placeholder="Add notes about this relationship..."
+                className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddRelationshipDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white">Cancel</Button>
+            <Button
+              className="bg-[#0091AE] hover:bg-[#007a94] text-white"
+              disabled={!selectedRelCompanyId || !selectedRelType}
+              onClick={() => {
+                apiRequest("POST", `/api/companies/${params.id}/relationships`, {
+                  relatedCompanyId: selectedRelCompanyId,
+                  relationshipType: selectedRelType,
+                  notes: relNotes || null,
+                }).then(() => {
+                  queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+                  setShowAddRelationshipDialog(false);
+                  setSelectedRelCompanyId("");
+                  setSelectedRelType("");
+                  setRelNotes("");
+                  setRelationshipCompanySearch("");
+                  toast({ title: "Relationship added" });
+                });
+              }}
+            >
+              Add Relationship
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -25,6 +25,7 @@ const ImportCSV = lazy(() => import("@/pages/import-csv"));
 const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
 const Trusts = lazy(() => import("@/pages/trusts"));
 const TrustDetail = lazy(() => import("@/pages/trust-detail"));
+
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function PageLoader() {

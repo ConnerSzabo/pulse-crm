@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation } from "./storage";
-import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 
@@ -411,8 +411,21 @@ export async function registerRoutes(
         } else {
           // Auto-link trust from academyTrustName
           let trustId: string | null = null;
+          let parentCompanyId: string | null = null;
           if (companyData.academyTrustName?.trim()) {
             const trustName = companyData.academyTrustName.trim();
+            // Try new trust-as-company system first
+            let trustCompany = await storage.findTrustCompanyByName(trustName);
+            if (!trustCompany) {
+              // Create trust as company with isTrust=true
+              trustCompany = await storage.createCompany({
+                name: trustName,
+                isTrust: true,
+                industry: "Academy Trust",
+              });
+            }
+            parentCompanyId = trustCompany.id;
+            // Also link legacy trust for backward compat
             let trust = await storage.getTrustByName(trustName);
             if (!trust) {
               trust = await storage.createTrust({ name: trustName });
@@ -436,6 +449,7 @@ export async function registerRoutes(
             importBatchId: importBatch.id,
             budgetStatus: companyData.budgetStatus || "0-unqualified",
             trustId,
+            parentCompanyId,
           });
 
           results.imported++;
@@ -936,6 +950,123 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Trust migration error:", error);
       res.status(500).json({ error: "Failed to migrate trusts" });
+    }
+  });
+
+  // Trust-as-company & relationship endpoints
+  app.get("/api/companies/:id/children", isAuthenticated, async (req, res) => {
+    try {
+      const children = await storage.getChildCompanies(req.params.id as string);
+      res.json(children);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch child companies" });
+    }
+  });
+
+  app.post("/api/companies/:id/link-schools", isAuthenticated, async (req, res) => {
+    try {
+      const { schoolIds } = req.body;
+      if (!Array.isArray(schoolIds)) {
+        return res.status(400).json({ error: "schoolIds must be an array" });
+      }
+      await storage.linkSchoolsToTrust(req.params.id as string, schoolIds);
+      res.json({ linked: schoolIds.length });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to link schools" });
+    }
+  });
+
+  app.post("/api/companies/:id/unlink-school", isAuthenticated, async (req, res) => {
+    try {
+      await storage.unlinkSchoolFromTrust(req.params.id as string);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to unlink school" });
+    }
+  });
+
+  app.get("/api/companies/:id/relationships", isAuthenticated, async (req, res) => {
+    try {
+      const relationships = await storage.getCompanyRelationships(req.params.id as string);
+      res.json(relationships);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch relationships" });
+    }
+  });
+
+  app.post("/api/companies/:id/relationships", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertCompanyRelationshipSchema.parse({
+        ...req.body,
+        companyId: req.params.id as string,
+      });
+      const relationship = await storage.createCompanyRelationship(data);
+      res.status(201).json(relationship);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      res.status(500).json({ error: "Failed to create relationship" });
+    }
+  });
+
+  app.delete("/api/company-relationships/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteCompanyRelationship(req.params.id as string);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete relationship" });
+    }
+  });
+
+  app.get("/api/trust-companies", isAuthenticated, async (req, res) => {
+    try {
+      const trustCompanies = await storage.getTrustCompanies();
+      res.json(trustCompanies);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trust companies" });
+    }
+  });
+
+  // Migration endpoint: trusts table → companies with isTrust=true
+  app.post("/api/migrate-trusts-to-companies", isAuthenticated, async (req, res) => {
+    try {
+      const allTrusts = await storage.getTrusts();
+      let created = 0;
+      let skipped = 0;
+
+      for (const trust of allTrusts) {
+        // Check if a trust company already exists
+        const existing = await storage.findTrustCompanyByName(trust.name);
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Create company with isTrust=true
+        const newCompany = await storage.createCompany({
+          name: trust.name,
+          website: trust.website,
+          phone: trust.phone,
+          isTrust: true,
+          notes: trust.notes,
+          industry: "Academy Trust",
+        });
+
+        // Update children: find companies with this trustId and set parentCompanyId
+        const trustSchools = await storage.getCompaniesByTrust(trust.id);
+        const schoolIds = trustSchools.map(s => s.id);
+        if (schoolIds.length > 0) {
+          await storage.linkSchoolsToTrust(newCompany.id, schoolIds);
+        }
+
+        created++;
+      }
+
+      res.json({ created, skipped, total: allTrusts.length });
+    } catch (error) {
+      console.error("Trust migration error:", error);
+      res.status(500).json({ error: "Failed to migrate trusts to companies" });
     }
   });
 

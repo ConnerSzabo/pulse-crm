@@ -11,6 +11,7 @@ import {
   csvImports,
   deals,
   trusts,
+  companyRelationships,
   type Company,
   type InsertCompany,
   type Contact,
@@ -37,6 +38,9 @@ import {
   type InsertTrust,
   type TrustWithStats,
   type ContactWithCompany,
+  type CompanyRelationship,
+  type InsertCompanyRelationship,
+  type CompanyRelationshipWithCompany,
 } from "@shared/schema";
 
 /**
@@ -160,6 +164,16 @@ export interface IStorage {
   getTrustsWithStats(): Promise<TrustWithStats[]>;
   migrateAcademyTrusts(): Promise<{ migratedCount: number; trustsCreated: number }>;
 
+  // Trust Companies & Relationships
+  getChildCompanies(parentId: string): Promise<(Company & { stage?: PipelineStage })[]>;
+  getTrustCompanies(): Promise<(Company & { stage?: PipelineStage; childCount?: number })[]>;
+  findTrustCompanyByName(name: string): Promise<Company | undefined>;
+  getCompanyRelationships(companyId: string): Promise<CompanyRelationshipWithCompany[]>;
+  createCompanyRelationship(data: InsertCompanyRelationship): Promise<CompanyRelationship>;
+  deleteCompanyRelationship(id: string): Promise<void>;
+  linkSchoolsToTrust(trustId: string, schoolIds: string[]): Promise<void>;
+  unlinkSchoolFromTrust(schoolId: string): Promise<void>;
+
   // Seed
   seedData(): Promise<void>;
 }
@@ -193,22 +207,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Companies
-  async getCompanies(): Promise<(Company & { stage?: PipelineStage; trust?: Trust })[]> {
+  async getCompanies(): Promise<(Company & { stage?: PipelineStage; trust?: Trust; parentCompany?: Company })[]> {
     const companiesList = await db.select().from(companies).orderBy(companies.name);
     const stages = await this.getPipelineStages();
     const stageMap = new Map(stages.map((s) => [s.id, s]));
 
-    // Load trusts for companies that have trustId
+    // Load trusts for companies that have trustId (legacy)
     const trustIds = Array.from(new Set(companiesList.map(c => c.trustId).filter(Boolean))) as string[];
     const trustsList = trustIds.length > 0
       ? await db.select().from(trusts).where(inArray(trusts.id, trustIds))
       : [];
     const trustMap = new Map(trustsList.map(t => [t.id, t]));
 
+    // Build a map of all companies for parentCompany lookups
+    const companyMap = new Map(companiesList.map(c => [c.id, c]));
+
     return companiesList.map((c) => ({
       ...c,
       stage: c.stageId ? stageMap.get(c.stageId) : undefined,
       trust: c.trustId ? trustMap.get(c.trustId) : undefined,
+      parentCompany: c.parentCompanyId ? companyMap.get(c.parentCompanyId) : undefined,
     }));
   }
 
@@ -223,10 +241,13 @@ export class DatabaseStorage implements IStorage {
       this.getTasksByCompany(id),
       this.getDealsByCompany(id),
       this.getPipelineStages(),
-      company.trustId ? db.select().from(trusts).where(eq(trusts.id, company.trustId)).then(r => r[0]) : Promise.resolve(undefined)
+      company.trustId ? db.select().from(trusts).where(eq(trusts.id, company.trustId)).then(r => r[0]) : Promise.resolve(undefined),
+      company.parentCompanyId ? db.select().from(companies).where(eq(companies.id, company.parentCompanyId)).then(r => r[0]) : Promise.resolve(undefined),
+      company.isTrust ? db.select().from(companies).where(eq(companies.parentCompanyId, id)).orderBy(companies.name) : Promise.resolve([]),
+      this.getCompanyRelationships(id),
     ]);
 
-    const queryNames = ["contacts", "callNotes", "activities", "tasks", "deals", "stages", "trust"];
+    const queryNames = ["contacts", "callNotes", "activities", "tasks", "deals", "stages", "trust", "parentCompany", "childCompanies", "relationships"];
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T, name: string): T => {
       if (result.status === "rejected") {
         console.error(`getCompany(${id}): ${name} query failed:`, result.reason);
@@ -242,6 +263,9 @@ export class DatabaseStorage implements IStorage {
     const dealsList = getValue(results[4], [] as DealWithStage[], queryNames[4]);
     const stages = getValue(results[5], [] as PipelineStage[], queryNames[5]);
     const trust = getValue(results[6], undefined, queryNames[6]);
+    const parentCompany = getValue(results[7], undefined, queryNames[7]);
+    const childCompanies = getValue(results[8], [] as Company[], queryNames[8]);
+    const relationships = getValue(results[9], [] as CompanyRelationshipWithCompany[], queryNames[9]);
 
     const stage = company.stageId ? stages.find((s) => s.id === company.stageId) : undefined;
 
@@ -254,6 +278,9 @@ export class DatabaseStorage implements IStorage {
       deals: dealsList,
       stage,
       trust,
+      parentCompany,
+      childCompanies,
+      relationships,
     };
   }
 
@@ -294,6 +321,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(activities).where(eq(activities.companyId, id));
     await db.delete(tasks).where(eq(tasks.companyId, id));
     await db.delete(deals).where(eq(deals.companyId, id));
+    // Delete company relationships
+    await db.delete(companyRelationships).where(
+      sql`${companyRelationships.companyId} = ${id} OR ${companyRelationships.relatedCompanyId} = ${id}`
+    );
+    // Null out parentCompanyId for child companies
+    await db.update(companies).set({ parentCompanyId: null }).where(eq(companies.parentCompanyId, id));
     await db.delete(companies).where(eq(companies.id, id));
   }
 
@@ -906,15 +939,36 @@ export class DatabaseStorage implements IStorage {
       stage: d.stageId ? stageMap.get(d.stageId) : undefined,
     }));
 
-    // Search trusts
+    // Search trusts (both legacy trusts table and companies with isTrust=true)
     const trustsResults = await db
       .select()
       .from(trusts)
       .where(sql`LOWER(${trusts.name}) LIKE LOWER(${searchPattern})`)
       .limit(5);
 
+    // Also search trust companies (companies with isTrust=true)
+    const trustCompaniesResults = await db
+      .select()
+      .from(companies)
+      .where(
+        and(
+          eq(companies.isTrust, true),
+          sql`LOWER(${companies.name}) LIKE LOWER(${searchPattern})`
+        )
+      )
+      .limit(5);
+
+    // Add trust companies to companies results (avoid duplicates)
+    const existingCompanyIds = new Set(companiesWithStages.map(c => c.id));
+    const trustCompaniesWithStages = trustCompaniesResults
+      .filter(c => !existingCompanyIds.has(c.id))
+      .map(c => ({
+        ...c,
+        stage: c.stageId ? stageMap.get(c.stageId) : undefined,
+      }));
+
     return {
-      companies: companiesWithStages,
+      companies: [...companiesWithStages, ...trustCompaniesWithStages],
       contacts: contactsWithCompany,
       deals: dealsWithCompanyAndStage,
       trusts: trustsResults,
@@ -1147,6 +1201,134 @@ export class DatabaseStorage implements IStorage {
     migratedCount += noTrustResult.length;
 
     return { migratedCount, trustsCreated };
+  }
+
+  // Trust Companies & Relationships
+  async getChildCompanies(parentId: string): Promise<(Company & { stage?: PipelineStage })[]> {
+    const childList = await db.select().from(companies).where(eq(companies.parentCompanyId, parentId)).orderBy(companies.name);
+    if (childList.length === 0) return [];
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+    return childList.map(c => ({
+      ...c,
+      stage: c.stageId ? stageMap.get(c.stageId) : undefined,
+    }));
+  }
+
+  async getTrustCompanies(): Promise<(Company & { stage?: PipelineStage; childCount?: number })[]> {
+    const trustCompaniesList = await db.select().from(companies).where(eq(companies.isTrust, true)).orderBy(companies.name);
+    if (trustCompaniesList.length === 0) return [];
+
+    const stages = await this.getPipelineStages();
+    const stageMap = new Map(stages.map(s => [s.id, s]));
+
+    // Count children for each trust company
+    const trustIds = trustCompaniesList.map(c => c.id);
+    const allChildren = await db
+      .select({ parentCompanyId: companies.parentCompanyId })
+      .from(companies)
+      .where(inArray(companies.parentCompanyId, trustIds));
+
+    const childCountMap = new Map<string, number>();
+    for (const child of allChildren) {
+      if (child.parentCompanyId) {
+        childCountMap.set(child.parentCompanyId, (childCountMap.get(child.parentCompanyId) || 0) + 1);
+      }
+    }
+
+    return trustCompaniesList.map(c => ({
+      ...c,
+      stage: c.stageId ? stageMap.get(c.stageId) : undefined,
+      childCount: childCountMap.get(c.id) || 0,
+    }));
+  }
+
+  async findTrustCompanyByName(name: string): Promise<Company | undefined> {
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(and(eq(companies.isTrust, true), ilike(companies.name, name)));
+    return company;
+  }
+
+  async getCompanyRelationships(companyId: string): Promise<CompanyRelationshipWithCompany[]> {
+    const rels = await db
+      .select()
+      .from(companyRelationships)
+      .where(
+        sql`${companyRelationships.companyId} = ${companyId} OR ${companyRelationships.relatedCompanyId} = ${companyId}`
+      )
+      .orderBy(desc(companyRelationships.createdAt));
+
+    if (rels.length === 0) return [];
+
+    // Get all related company IDs
+    const relatedIds = new Set<string>();
+    for (const r of rels) {
+      if (r.companyId !== companyId) relatedIds.add(r.companyId);
+      if (r.relatedCompanyId !== companyId) relatedIds.add(r.relatedCompanyId);
+    }
+
+    const relatedCompanies = relatedIds.size > 0
+      ? await db.select().from(companies).where(inArray(companies.id, Array.from(relatedIds)))
+      : [];
+    const companyMap = new Map(relatedCompanies.map(c => [c.id, c]));
+
+    // Deduplicate: for bidirectional pairs, only show one
+    const seen = new Set<string>();
+    const result: CompanyRelationshipWithCompany[] = [];
+    for (const r of rels) {
+      const otherId = r.companyId === companyId ? r.relatedCompanyId : r.companyId;
+      const pairKey = [r.companyId, r.relatedCompanyId].sort().join("||");
+      if (seen.has(pairKey)) continue;
+      seen.add(pairKey);
+      const relatedCompany = companyMap.get(otherId);
+      if (relatedCompany) {
+        result.push({ ...r, relatedCompany });
+      }
+    }
+
+    return result;
+  }
+
+  async createCompanyRelationship(data: InsertCompanyRelationship): Promise<CompanyRelationship> {
+    // Create bidirectional relationship
+    const [result] = await db.insert(companyRelationships).values(data).returning();
+    // Create reverse
+    await db.insert(companyRelationships).values({
+      companyId: data.relatedCompanyId,
+      relatedCompanyId: data.companyId,
+      relationshipType: data.relationshipType,
+      notes: data.notes,
+    });
+    return result;
+  }
+
+  async deleteCompanyRelationship(id: string): Promise<void> {
+    // Find the relationship to delete the reverse too
+    const [rel] = await db.select().from(companyRelationships).where(eq(companyRelationships.id, id));
+    if (rel) {
+      await db.delete(companyRelationships).where(eq(companyRelationships.id, id));
+      // Delete reverse
+      await db.delete(companyRelationships).where(
+        and(
+          eq(companyRelationships.companyId, rel.relatedCompanyId),
+          eq(companyRelationships.relatedCompanyId, rel.companyId),
+          eq(companyRelationships.relationshipType, rel.relationshipType),
+        )
+      );
+    }
+  }
+
+  async linkSchoolsToTrust(trustId: string, schoolIds: string[]): Promise<void> {
+    if (schoolIds.length === 0) return;
+    for (const schoolId of schoolIds) {
+      await db.update(companies).set({ parentCompanyId: trustId }).where(eq(companies.id, schoolId));
+    }
+  }
+
+  async unlinkSchoolFromTrust(schoolId: string): Promise<void> {
+    await db.update(companies).set({ parentCompanyId: null }).where(eq(companies.id, schoolId));
   }
 
   // Seed default pipeline stages (Wave Systems)
