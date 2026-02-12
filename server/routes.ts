@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage, normalizeCompanyName, normalizeLocation } from "./storage";
+import { storage, normalizeCompanyName, normalizeLocation, normalizePhone, normalizeWebsite } from "./storage";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
@@ -92,7 +92,7 @@ export async function registerRoutes(
     try {
       const query = req.params.query as string;
       if (!query || query.length < 2) {
-        return res.json({ companies: [], contacts: [], deals: [], trusts: [] });
+        return res.json({ companies: [], contacts: [], deals: [] });
       }
       const results = await storage.globalSearch(query);
       res.json(results);
@@ -130,14 +130,31 @@ export async function registerRoutes(
     try {
       const data = insertCompanySchema.parse(req.body);
 
-      // Check for duplicate using normalized name + location matching
+      // Normalize phone before saving
+      if (data.phone) {
+        data.phone = normalizePhone(data.phone);
+      }
+
+      // Check for duplicates: name+location, phone, website
       if (data.name) {
-        const existing = await storage.findCompanyByNameAndLocation(data.name, data.location);
-        if (existing) {
+        const duplicates = await storage.checkDuplicates({
+          name: data.name,
+          phone: data.phone || undefined,
+          website: data.website || undefined,
+          location: data.location || undefined,
+        });
+
+        if (duplicates.phoneMatch || duplicates.websiteMatch || duplicates.nameMatch) {
+          const match = duplicates.phoneMatch || duplicates.websiteMatch || duplicates.nameMatch;
+          const matchType = duplicates.phoneMatch ? "phone" : duplicates.websiteMatch ? "website" : "name";
           return res.status(409).json({
-            error: "A company with this name and location already exists",
-            existingId: existing.id,
-            existingName: existing.name,
+            error: `A company with this ${matchType} already exists`,
+            existingId: match!.id,
+            existingName: match!.name,
+            matchType,
+            phoneMatch: duplicates.phoneMatch ? { id: duplicates.phoneMatch.id, name: duplicates.phoneMatch.name, phone: duplicates.phoneMatch.phone } : undefined,
+            websiteMatch: duplicates.websiteMatch ? { id: duplicates.websiteMatch.id, name: duplicates.websiteMatch.name, website: duplicates.websiteMatch.website } : undefined,
+            nameMatch: duplicates.nameMatch ? { id: duplicates.nameMatch.id, name: duplicates.nameMatch.name, location: duplicates.nameMatch.location } : undefined,
           });
         }
       }
@@ -155,6 +172,10 @@ export async function registerRoutes(
   app.patch("/api/companies/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertCompanySchema.partial().parse(req.body);
+      // Normalize phone before saving
+      if (data.phone) {
+        data.phone = normalizePhone(data.phone);
+      }
       const company = await storage.updateCompany(req.params.id as string, data);
       if (!company) {
         return res.status(404).json({ error: "Company not found" });
@@ -337,7 +358,49 @@ export async function registerRoutes(
         }
         seenInBatch.add(batchKey);
 
-        // 2. Check for existing company in database (normalized name + location)
+        // Normalize phone before checks
+        const normalizedPhone = companyData.phone ? normalizePhone(companyData.phone) : "";
+        if (normalizedPhone) companyData.phone = normalizedPhone;
+
+        // 2. Check for existing company by phone
+        if (normalizedPhone) {
+          const phoneMatch = await storage.findCompanyByPhone(normalizedPhone);
+          if (phoneMatch) {
+            if (mode === "skip") {
+              results.skipped++;
+              results.duplicates.push({
+                name: trimmedName,
+                location: trimmedLocation,
+                existingId: phoneMatch.id,
+                hasNewInfo: false,
+                reason: "duplicate_phone",
+              });
+              continue;
+            }
+            // For merge/overwrite modes, treat as existing
+          }
+        }
+
+        // 3. Check for existing company by website
+        const normalizedWeb = companyData.website ? normalizeWebsite(companyData.website) : "";
+        if (normalizedWeb) {
+          const websiteMatch = await storage.findCompanyByWebsite(companyData.website);
+          if (websiteMatch) {
+            if (mode === "skip") {
+              results.skipped++;
+              results.duplicates.push({
+                name: trimmedName,
+                location: trimmedLocation,
+                existingId: websiteMatch.id,
+                hasNewInfo: false,
+                reason: "duplicate_website",
+              });
+              continue;
+            }
+          }
+        }
+
+        // 4. Check for existing company in database (normalized name + location)
         const existing = await storage.findCompanyByNameAndLocation(trimmedName, trimmedLocation);
 
         if (existing) {
@@ -523,23 +586,157 @@ export async function registerRoutes(
     }
   });
 
-  // Check for duplicate company name + location (uses normalized matching)
+  // Check for duplicate company by name, phone, website, location
   app.get("/api/companies/check-duplicate", isAuthenticated, async (req, res) => {
     try {
       const name = req.query.name as string;
-      const location = (req.query.location as string) || null;
+      const phone = (req.query.phone as string) || undefined;
+      const website = (req.query.website as string) || undefined;
+      const location = (req.query.location as string) || undefined;
       if (!name) {
         return res.status(400).json({ error: "Name is required" });
       }
 
-      const existing = await storage.findCompanyByNameAndLocation(name, location);
+      const duplicates = await storage.checkDuplicates({ name, phone, website, location });
+      const hasAny = !!(duplicates.phoneMatch || duplicates.websiteMatch || duplicates.nameMatch);
+
       res.json({
-        exists: !!existing,
-        existingId: existing?.id || null,
-        existingName: existing?.name || null,
+        exists: hasAny,
+        phoneMatch: duplicates.phoneMatch ? { id: duplicates.phoneMatch.id, name: duplicates.phoneMatch.name, phone: duplicates.phoneMatch.phone } : null,
+        websiteMatch: duplicates.websiteMatch ? { id: duplicates.websiteMatch.id, name: duplicates.websiteMatch.name, website: duplicates.websiteMatch.website } : null,
+        nameMatch: duplicates.nameMatch ? { id: duplicates.nameMatch.id, name: duplicates.nameMatch.name, location: duplicates.nameMatch.location } : null,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to check for duplicate" });
+    }
+  });
+
+  // Cleanup endpoints
+  app.post("/api/cleanup/normalize-phones", isAuthenticated, async (req, res) => {
+    try {
+      const allCompanies = await storage.getCompanies();
+      let updated = 0;
+
+      for (const company of allCompanies) {
+        if (!company.phone) continue;
+        const normalized = normalizePhone(company.phone);
+        if (normalized && normalized !== company.phone) {
+          await storage.updateCompany(company.id, { phone: normalized });
+          updated++;
+        }
+      }
+
+      res.json({ updated });
+    } catch (error) {
+      console.error("Normalize phones error:", error);
+      res.status(500).json({ error: "Failed to normalize phones" });
+    }
+  });
+
+  app.post("/api/cleanup/merge-duplicates", isAuthenticated, async (req, res) => {
+    try {
+      const allCompanies = await storage.getCompanies();
+      const mergeDetails: { kept: string; deleted: string; reason: string }[] = [];
+
+      // Pass 1: Group by normalized phone
+      type CompanyEntry = (typeof allCompanies)[number];
+      const phoneGroups = new Map<string, CompanyEntry[]>();
+      for (const company of allCompanies) {
+        const normalized = normalizePhone(company.phone);
+        if (!normalized) continue;
+        const group = phoneGroups.get(normalized) || [];
+        group.push(company);
+        phoneGroups.set(normalized, group);
+      }
+
+      const mergedIds = new Set<string>();
+
+      for (const [, group] of Array.from(phoneGroups.entries())) {
+        if (group.length <= 1) continue;
+        // Score each company and sort by score desc, then by createdAt asc (oldest first)
+        const scored = await Promise.all(group.map(async (c) => ({
+          company: c,
+          score: await storage.scoreCompany(c),
+        })));
+        scored.sort((a, b) => b.score - a.score || new Date(a.company.createdAt).getTime() - new Date(b.company.createdAt).getTime());
+
+        const keeper = scored[0].company;
+        for (let i = 1; i < scored.length; i++) {
+          const duplicate = scored[i].company;
+          if (mergedIds.has(duplicate.id)) continue;
+
+          // Merge non-null fields from duplicate into keeper
+          const updates: Record<string, unknown> = {};
+          if (!keeper.website && duplicate.website) updates.website = duplicate.website;
+          if (!keeper.location && duplicate.location) updates.location = duplicate.location;
+          if (!keeper.itManagerName && duplicate.itManagerName) updates.itManagerName = duplicate.itManagerName;
+          if (!keeper.itManagerEmail && duplicate.itManagerEmail) updates.itManagerEmail = duplicate.itManagerEmail;
+          if (!keeper.notes && duplicate.notes) updates.notes = duplicate.notes;
+          if (!keeper.academyTrustName && duplicate.academyTrustName) updates.academyTrustName = duplicate.academyTrustName;
+          if (!keeper.ext && duplicate.ext) updates.ext = duplicate.ext;
+
+          if (Object.keys(updates).length > 0) {
+            await storage.updateCompany(keeper.id, updates);
+          }
+
+          await storage.mergeCompanies(keeper.id, duplicate.id);
+          mergedIds.add(duplicate.id);
+          mergeDetails.push({ kept: keeper.name, deleted: duplicate.name, reason: "duplicate_phone" });
+        }
+      }
+
+      // Pass 2: Group by normalized name + location (only for companies not already merged)
+      const nameGroups = new Map<string, CompanyEntry[]>();
+      for (const company of allCompanies) {
+        if (mergedIds.has(company.id)) continue;
+        const key = normalizeCompanyName(company.name) + "||" + normalizeLocation(company.location);
+        const group = nameGroups.get(key) || [];
+        group.push(company);
+        nameGroups.set(key, group);
+      }
+
+      for (const [, group] of Array.from(nameGroups.entries())) {
+        if (group.length <= 1) continue;
+        // Only auto-merge if phones match or one has no phone
+        const normalizedPhones = group.map((c: CompanyEntry) => normalizePhone(c.phone));
+        const uniquePhones = new Set(normalizedPhones.filter((p: string) => p));
+        if (uniquePhones.size > 1) continue; // Different phones, skip
+
+        const scored = await Promise.all(group.map(async (c) => ({
+          company: c,
+          score: await storage.scoreCompany(c),
+        })));
+        scored.sort((a, b) => b.score - a.score || new Date(a.company.createdAt).getTime() - new Date(b.company.createdAt).getTime());
+
+        const keeper = scored[0].company;
+        for (let i = 1; i < scored.length; i++) {
+          const duplicate = scored[i].company;
+          if (mergedIds.has(duplicate.id)) continue;
+
+          const updates: Record<string, unknown> = {};
+          if (!keeper.website && duplicate.website) updates.website = duplicate.website;
+          if (!keeper.phone && duplicate.phone) updates.phone = duplicate.phone;
+          if (!keeper.location && duplicate.location) updates.location = duplicate.location;
+          if (!keeper.itManagerName && duplicate.itManagerName) updates.itManagerName = duplicate.itManagerName;
+          if (!keeper.itManagerEmail && duplicate.itManagerEmail) updates.itManagerEmail = duplicate.itManagerEmail;
+          if (!keeper.notes && duplicate.notes) updates.notes = duplicate.notes;
+          if (!keeper.academyTrustName && duplicate.academyTrustName) updates.academyTrustName = duplicate.academyTrustName;
+          if (!keeper.ext && duplicate.ext) updates.ext = duplicate.ext;
+
+          if (Object.keys(updates).length > 0) {
+            await storage.updateCompany(keeper.id, updates);
+          }
+
+          await storage.mergeCompanies(keeper.id, duplicate.id);
+          mergedIds.add(duplicate.id);
+          mergeDetails.push({ kept: keeper.name, deleted: duplicate.name, reason: "duplicate_name" });
+        }
+      }
+
+      res.json({ merged: mergeDetails.length, details: mergeDetails });
+    } catch (error) {
+      console.error("Merge duplicates error:", error);
+      res.status(500).json({ error: "Failed to merge duplicates" });
     }
   });
 
@@ -833,7 +1030,7 @@ export async function registerRoutes(
       const query = (req.query.q as string || "").trim();
 
       if (!query || query.length < 2) {
-        return res.json({ companies: [], contacts: [], deals: [], trusts: [] });
+        return res.json({ companies: [], contacts: [], deals: [] });
       }
 
       const searchResults = await storage.globalSearch(query);

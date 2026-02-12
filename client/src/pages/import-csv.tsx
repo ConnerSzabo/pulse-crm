@@ -611,7 +611,7 @@ export default function ImportCSV() {
                 <div className="p-4 rounded-lg bg-muted dark:bg-[#2d3142] space-y-3">
                   <h4 className="font-medium dark:text-white">Import Summary</h4>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
                       <p className="text-xs text-muted-foreground dark:text-[#94a3b8]">Total rows in CSV</p>
                       <p className="text-lg font-semibold dark:text-white">{parsedData.length}</p>
@@ -627,6 +627,12 @@ export default function ImportCSV() {
                     <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
                       <p className="text-xs text-blue-600 dark:text-[#0091AE]">Updated (merged)</p>
                       <p className="text-lg font-semibold text-blue-600 dark:text-[#0091AE]">{importResult.updated}</p>
+                    </div>
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-gray-500 dark:text-[#64748b]">No website</p>
+                      <p className="text-lg font-semibold text-gray-500 dark:text-[#64748b]">
+                        {importResult.duplicates.filter(d => d.reason === "no_website").length}
+                      </p>
                     </div>
                   </div>
 
@@ -645,7 +651,11 @@ export default function ImportCSV() {
                               {" "}&mdash;{" "}
                               {dup.reason === "duplicate_in_csv"
                                 ? "duplicate within CSV"
-                                : "already exists in database"}
+                                : dup.reason === "duplicate_phone"
+                                ? "matching phone number in database"
+                                : dup.reason === "duplicate_website"
+                                ? "matching website in database"
+                                : "matching name in database"}
                             </span>
                           </li>
                         ))}

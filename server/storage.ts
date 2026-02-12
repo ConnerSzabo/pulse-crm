@@ -44,6 +44,30 @@ import {
 } from "@shared/schema";
 
 /**
+ * Normalize a phone number for duplicate detection.
+ * Strips all non-digits, prepends 0 if exactly 10 digits (UK numbers missing leading 0).
+ */
+export function normalizePhone(phone: string | null | undefined): string {
+  if (!phone) return "";
+  let digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) digits = "0" + digits;
+  return digits;
+}
+
+/**
+ * Normalize a website URL for duplicate detection.
+ * Lowercases, removes protocol, www., and trailing slash.
+ */
+export function normalizeWebsite(website: string | null | undefined): string {
+  if (!website) return "";
+  let normalized = website.trim().toLowerCase();
+  normalized = normalized.replace(/^https?:\/\//, "");
+  normalized = normalized.replace(/^www\./, "");
+  normalized = normalized.replace(/\/+$/, "");
+  return normalized;
+}
+
+/**
  * Normalize a company name for duplicate detection.
  * Trims whitespace, lowercases, removes common prefixes,
  * standardizes "St." / "St " to "Saint ", and collapses multiple spaces.
@@ -78,6 +102,11 @@ export interface IStorage {
   getCompanies(): Promise<(Company & { stage?: PipelineStage; trust?: Trust })[]>;
   getCompany(id: string): Promise<CompanyWithRelations | undefined>;
   findCompanyByNameAndLocation(name: string, location: string | null | undefined): Promise<Company | undefined>;
+  findCompanyByPhone(phone: string): Promise<Company | undefined>;
+  findCompanyByWebsite(website: string): Promise<Company | undefined>;
+  checkDuplicates(params: { name: string; phone?: string; website?: string; location?: string }): Promise<{ phoneMatch?: Company; websiteMatch?: Company; nameMatch?: Company }>;
+  mergeCompanies(keepId: string, deleteId: string): Promise<void>;
+  scoreCompany(company: Company): Promise<number>;
   createCompany(company: InsertCompany): Promise<Company>;
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company | undefined>;
   deleteCompany(id: string): Promise<void>;
@@ -148,7 +177,6 @@ export interface IStorage {
     companies: (Company & { stage?: PipelineStage })[];
     contacts: (Contact & { companyName?: string })[];
     deals: (Deal & { companyName?: string; stage?: PipelineStage })[];
-    trusts: Trust[];
   }>;
 
   // Trusts
@@ -298,6 +326,102 @@ export class DatabaseStorage implements IStorage {
         AND LOWER(TRIM(COALESCE(${companies.location}, ''))) = ${normalizedLoc}`
       );
     return company;
+  }
+
+  async findCompanyByPhone(phone: string): Promise<Company | undefined> {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return undefined;
+    // Match by stripping non-digits from the DB phone and comparing, also handle 10-digit → 11-digit normalization
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(
+        sql`CASE
+          WHEN LENGTH(REGEXP_REPLACE(${companies.phone}, '\\D', '', 'g')) = 10
+          THEN '0' || REGEXP_REPLACE(${companies.phone}, '\\D', '', 'g')
+          ELSE REGEXP_REPLACE(${companies.phone}, '\\D', '', 'g')
+        END = ${normalized}
+        AND ${companies.phone} IS NOT NULL
+        AND ${companies.phone} != ''`
+      )
+      .limit(1);
+    return company;
+  }
+
+  async findCompanyByWebsite(website: string): Promise<Company | undefined> {
+    const normalized = normalizeWebsite(website);
+    if (!normalized) return undefined;
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(
+        sql`REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(LOWER(TRIM(${companies.website})), '^https?://', '', 'i'), '^www\\.', '', 'i'), '/+$', '', 'g') = ${normalized}
+        AND ${companies.website} IS NOT NULL
+        AND ${companies.website} != ''`
+      )
+      .limit(1);
+    return company;
+  }
+
+  async checkDuplicates(params: { name: string; phone?: string; website?: string; location?: string }): Promise<{ phoneMatch?: Company; websiteMatch?: Company; nameMatch?: Company }> {
+    const result: { phoneMatch?: Company; websiteMatch?: Company; nameMatch?: Company } = {};
+
+    if (params.phone) {
+      const match = await this.findCompanyByPhone(params.phone);
+      if (match) result.phoneMatch = match;
+    }
+
+    if (params.website) {
+      const match = await this.findCompanyByWebsite(params.website);
+      if (match) result.websiteMatch = match;
+    }
+
+    if (params.name) {
+      const match = await this.findCompanyByNameAndLocation(params.name, params.location);
+      if (match) result.nameMatch = match;
+    }
+
+    return result;
+  }
+
+  async mergeCompanies(keepId: string, deleteId: string): Promise<void> {
+    // Move contacts from duplicate to keeper
+    await db.update(contacts).set({ companyId: keepId }).where(eq(contacts.companyId, deleteId));
+    // Move activities
+    await db.update(activities).set({ companyId: keepId }).where(eq(activities.companyId, deleteId));
+    // Move tasks
+    await db.update(tasks).set({ companyId: keepId }).where(eq(tasks.companyId, deleteId));
+    // Move deals
+    await db.update(deals).set({ companyId: keepId }).where(eq(deals.companyId, deleteId));
+    // Move call notes
+    await db.update(callNotes).set({ companyId: keepId }).where(eq(callNotes.companyId, deleteId));
+    // Update parentCompanyId references
+    await db.update(companies).set({ parentCompanyId: keepId }).where(eq(companies.parentCompanyId, deleteId));
+    // Move company relationships
+    await db.update(companyRelationships).set({ companyId: keepId }).where(eq(companyRelationships.companyId, deleteId));
+    await db.update(companyRelationships).set({ relatedCompanyId: keepId }).where(eq(companyRelationships.relatedCompanyId, deleteId));
+    // Delete the duplicate company
+    await db.delete(companyRelationships).where(
+      sql`${companyRelationships.companyId} = ${deleteId} OR ${companyRelationships.relatedCompanyId} = ${deleteId}`
+    );
+    await db.delete(companies).where(eq(companies.id, deleteId));
+  }
+
+  async scoreCompany(company: Company): Promise<number> {
+    let score = 0;
+    if (company.website) score += 5;
+    if (company.phone) score += 3;
+    if (company.location) score += 2;
+    if (company.itManagerName) score += 2;
+    if (company.itManagerEmail) score += 2;
+    if (company.notes) score += 1;
+    if (company.academyTrustName) score += 1;
+    if (company.lastContactDate) score += 2;
+    if (company.lastQuoteValue) score += 2;
+    // Count contacts
+    const contactsList = await db.select({ id: contacts.id }).from(contacts).where(eq(contacts.companyId, company.id));
+    score += contactsList.length * 2;
+    return score;
   }
 
   async createCompany(company: InsertCompany): Promise<Company> {
@@ -876,7 +1000,6 @@ export class DatabaseStorage implements IStorage {
     companies: (Company & { stage?: PipelineStage })[];
     contacts: (Contact & { companyName?: string })[];
     deals: (Deal & { companyName?: string; stage?: PipelineStage })[];
-    trusts: Trust[];
   }> {
     const searchPattern = `%${query}%`;
     const stages = await this.getPipelineStages();
@@ -939,14 +1062,7 @@ export class DatabaseStorage implements IStorage {
       stage: d.stageId ? stageMap.get(d.stageId) : undefined,
     }));
 
-    // Search trusts (both legacy trusts table and companies with isTrust=true)
-    const trustsResults = await db
-      .select()
-      .from(trusts)
-      .where(sql`LOWER(${trusts.name}) LIKE LOWER(${searchPattern})`)
-      .limit(5);
-
-    // Also search trust companies (companies with isTrust=true)
+    // Also search trust companies (companies with isTrust=true) and merge into results
     const trustCompaniesResults = await db
       .select()
       .from(companies)
@@ -971,7 +1087,6 @@ export class DatabaseStorage implements IStorage {
       companies: [...companiesWithStages, ...trustCompaniesWithStages],
       contacts: contactsWithCompany,
       deals: dealsWithCompanyAndStage,
-      trusts: trustsResults,
     };
   }
 

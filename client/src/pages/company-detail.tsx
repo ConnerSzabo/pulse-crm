@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useParams, useLocation, Link } from "wouter";
-import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact, Trust, Company, CompanyRelationshipWithCompany } from "@shared/schema";
+import type { CompanyWithRelations, PipelineStage, Task, Activity, DealWithStage, Contact, Company, CompanyRelationshipWithCompany } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -103,7 +103,6 @@ const editCompanySchema = z.object({
   industry: z.string().optional(),
   decisionTimeline: z.string().optional(),
   budgetStatus: z.string().optional(),
-  trustId: z.string().nullable().optional(),
   parentCompanyId: z.string().nullable().optional(),
 });
 
@@ -238,10 +237,6 @@ export default function CompanyDetail() {
 
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
-  });
-
-  const { data: allTrusts } = useQuery<Trust[]>({
-    queryKey: ["/api/trusts"],
   });
 
   const { data: trustCompanies } = useQuery<Company[]>({
@@ -1072,19 +1067,6 @@ export default function CompanyDetail() {
                         </Link>
                         <button
                           onClick={() => updateCompanyMutation.mutate({ parentCompanyId: null })}
-                          className="text-[#64748b] hover:text-red-400 transition-colors p-0.5"
-                          title="Remove from trust"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : company.trust ? (
-                      <div className="flex items-center gap-2">
-                        <Link href={`/trusts/${company.trust.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
-                          {company.trust.name}
-                        </Link>
-                        <button
-                          onClick={() => updateCompanyMutation.mutate({ trustId: null })}
                           className="text-[#64748b] hover:text-red-400 transition-colors p-0.5"
                           title="Remove from trust"
                         >

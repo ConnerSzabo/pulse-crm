@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Link, useSearch } from "wouter";
-import type { Company, PipelineStage, Trust } from "@shared/schema";
+import { Link, useSearch, useLocation } from "wouter";
+import type { Company, PipelineStage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,6 +35,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Plus,
   Search,
   Building2,
@@ -52,6 +62,7 @@ import {
   Calendar,
   Landmark,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -71,6 +82,7 @@ const addCompanySchema = z.object({
   budgetStatus: z.string().default("0-unqualified"),
   isTrust: z.boolean().default(false),
   parentCompanyId: z.string().optional(),
+  skipWebsite: z.boolean().default(false),
 });
 
 const industryOptions = [
@@ -83,7 +95,7 @@ const industryOptions = [
 
 type AddCompanyForm = z.infer<typeof addCompanySchema>;
 
-type CompanyWithStage = Company & { stage?: PipelineStage; trust?: Trust; parentCompany?: Company };
+type CompanyWithStage = Company & { stage?: PipelineStage; parentCompany?: Company };
 
 type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry" | "trust";
 type SortDirection = "asc" | "desc";
@@ -98,13 +110,30 @@ const leadStatusOptions = [
   { value: "4-account-active", label: "4 - Account Active", color: "bg-emerald-200 text-emerald-900 border-emerald-300 dark:bg-emerald-700 dark:text-white dark:border-emerald-600", dotColor: "bg-emerald-600 dark:bg-white" },
 ];
 
+type DuplicateMatch = {
+  id: string;
+  name: string;
+  phone?: string;
+  website?: string;
+  location?: string;
+};
+
+type DuplicateWarning = {
+  phoneMatch?: DuplicateMatch;
+  websiteMatch?: DuplicateMatch;
+  nameMatch?: DuplicateMatch;
+};
+
 export default function Companies() {
   const searchParams = useSearch();
   const urlType = new URLSearchParams(searchParams).get("type");
+  const [, navigate] = useLocation();
 
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [duplicateWarning, setDuplicateWarning] = useState<DuplicateWarning | null>(null);
+  const [pendingFormData, setPendingFormData] = useState<AddCompanyForm | null>(null);
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -146,13 +175,26 @@ export default function Companies() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: AddCompanyForm) => {
-      const checkRes = await fetch(`/api/companies/check-duplicate?name=${encodeURIComponent(data.name)}`);
-      if (checkRes.ok) {
-        const { exists } = await checkRes.json();
-        if (exists) {
-          throw new Error("DUPLICATE");
+    mutationFn: async (data: AddCompanyForm & { force?: boolean }) => {
+      // Check for duplicates unless forcing
+      if (!data.force) {
+        const params = new URLSearchParams({ name: data.name });
+        if (data.phone) params.set("phone", data.phone);
+        if (data.website) params.set("website", data.website);
+        if (data.location) params.set("location", data.location);
+
+        const checkRes = await fetch(`/api/companies/check-duplicate?${params.toString()}`);
+        if (checkRes.ok) {
+          const result = await checkRes.json();
+          if (result.exists) {
+            throw { type: "DUPLICATE", data: result };
+          }
         }
+      }
+
+      // Validate website requirement
+      if (!data.website && !data.skipWebsite && !data.isTrust) {
+        throw { type: "NO_WEBSITE" };
       }
 
       return apiRequest("POST", "/api/companies", {
@@ -174,14 +216,19 @@ export default function Companies() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       setDialogOpen(false);
+      setDuplicateWarning(null);
+      setPendingFormData(null);
       form.reset();
       toast({ title: "Company added successfully" });
     },
-    onError: (error: Error) => {
-      if (error.message === "DUPLICATE") {
+    onError: (error: any) => {
+      if (error?.type === "DUPLICATE") {
+        setDuplicateWarning(error.data);
+        setPendingFormData(form.getValues());
+      } else if (error?.type === "NO_WEBSITE") {
         toast({
-          title: "Duplicate Company",
-          description: "This company already exists in the database",
+          title: "Website required",
+          description: "Please enter a website or check 'Create without website'",
           variant: "destructive",
         });
       } else {
@@ -307,7 +354,7 @@ export default function Companies() {
           comparison = (a.industry || "").localeCompare(b.industry || "");
           break;
         case "trust":
-          comparison = (a.parentCompany?.name || a.trust?.name || a.academyTrustName || "").localeCompare(b.parentCompany?.name || b.trust?.name || b.academyTrustName || "");
+          comparison = (a.parentCompany?.name || a.academyTrustName || "").localeCompare(b.parentCompany?.name || b.academyTrustName || "");
           break;
       }
       return sortDirection === "asc" ? comparison : -comparison;
@@ -329,11 +376,11 @@ export default function Companies() {
     if (!groupByTrust) return null;
     const groups = new Map<string, { trustName: string; trustId: string | null; companies: CompanyWithStage[] }>();
     for (const c of filteredCompanies) {
-      const key = c.parentCompany?.name || c.trust?.name || c.academyTrustName || "__independent__";
+      const key = c.parentCompany?.name || c.academyTrustName || "__independent__";
       if (!groups.has(key)) {
         groups.set(key, {
           trustName: key === "__independent__" ? "Independent Schools" : key,
-          trustId: c.parentCompany?.id || c.trust?.id || null,
+          trustId: c.parentCompany?.id || null,
           companies: [],
         });
       }
@@ -386,7 +433,16 @@ export default function Companies() {
   };
 
   const onSubmit = (data: AddCompanyForm) => {
+    setDuplicateWarning(null);
+    setPendingFormData(null);
     createMutation.mutate(data);
+  };
+
+  const handleForceCreate = () => {
+    if (pendingFormData) {
+      setDuplicateWarning(null);
+      createMutation.mutate({ ...pendingFormData, force: true });
+    }
   };
 
   const clearFilters = () => {
@@ -486,11 +542,28 @@ export default function Companies() {
                         name="website"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Website</FormLabel>
+                            <FormLabel>Website {!form.watch("skipWebsite") && !form.watch("isTrust") && <span className="text-red-500">*</span>}</FormLabel>
                             <FormControl>
                               <Input placeholder="https://example.com" {...field} />
                             </FormControl>
                             <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="skipWebsite"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center gap-2 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormLabel className="text-xs text-muted-foreground font-normal">
+                              Create without website (special case)
+                            </FormLabel>
                           </FormItem>
                         )}
                       />
@@ -1025,7 +1098,7 @@ export default function Companies() {
                         </Link>
                       ) : (
                         <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                          {company.trust?.name || company.academyTrustName || "--"}
+                          {company.academyTrustName || "--"}
                         </span>
                       )}
                     </td>
@@ -1065,6 +1138,64 @@ export default function Companies() {
           </div>
         )}
       </div>
+
+      {/* Duplicate Warning Dialog */}
+      <AlertDialog open={!!duplicateWarning} onOpenChange={(open) => { if (!open) { setDuplicateWarning(null); setPendingFormData(null); } }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Potential Duplicate Found
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>A company with similar details already exists:</p>
+                {duplicateWarning?.phoneMatch && (
+                  <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm">
+                    <span className="font-medium">Phone match:</span> {duplicateWarning.phoneMatch.name} ({duplicateWarning.phoneMatch.phone})
+                  </div>
+                )}
+                {duplicateWarning?.websiteMatch && (
+                  <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm">
+                    <span className="font-medium">Website match:</span> {duplicateWarning.websiteMatch.name} ({duplicateWarning.websiteMatch.website})
+                  </div>
+                )}
+                {duplicateWarning?.nameMatch && (
+                  <div className="p-2 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-sm">
+                    <span className="font-medium">Name match:</span> {duplicateWarning.nameMatch.name} {duplicateWarning.nameMatch.location ? `(${duplicateWarning.nameMatch.location})` : ""}
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2 sm:gap-0">
+            <AlertDialogCancel onClick={() => { setDuplicateWarning(null); setPendingFormData(null); }}>
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const match = duplicateWarning?.phoneMatch || duplicateWarning?.websiteMatch || duplicateWarning?.nameMatch;
+                if (match) {
+                  setDuplicateWarning(null);
+                  setPendingFormData(null);
+                  setDialogOpen(false);
+                  navigate(`/company/${match.id}`);
+                }
+              }}
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              View Existing
+            </Button>
+            <AlertDialogAction
+              onClick={handleForceCreate}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Create Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Pagination - HubSpot Style */}
       {totalCompanies > 0 && (
