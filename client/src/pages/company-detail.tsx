@@ -915,7 +915,7 @@ export default function CompanyDetail() {
             <h1 className="text-xl font-bold text-white" data-testid="text-company-detail-name">
               {company.name}
             </h1>
-            {company.isTrust && (
+            {(company.relationships?.some(r => r.relationshipType === "Part of Trust") || company.isTrust) && (
               <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[10px] px-2 py-0.5">
                 Trust
               </Badge>
@@ -1060,51 +1060,28 @@ export default function CompanyDetail() {
                   <Landmark className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-medium text-[#64748b] uppercase tracking-wider mb-1">Academy Trust</p>
-                    {company.parentCompany ? (
-                      <div className="flex items-center gap-2">
-                        <Link href={`/company/${company.parentCompany.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
-                          {company.parentCompany.name}
-                        </Link>
-                        <button
-                          onClick={() => updateCompanyMutation.mutate({ parentCompanyId: null })}
-                          className="text-[#64748b] hover:text-red-400 transition-colors p-0.5"
-                          title="Remove from trust"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <Select
-                        value=""
-                        onValueChange={(val) => {
-                          if (val === "__new__") {
-                            const name = prompt("Enter new trust name:");
-                            if (name?.trim()) {
-                              apiRequest("POST", "/api/companies", { name: name.trim(), isTrust: true, industry: "Academy Trust" }).then(async (res) => {
-                                const trustCompany = await res.json();
-                                updateCompanyMutation.mutate({ parentCompanyId: trustCompany.id });
-                                queryClient.invalidateQueries({ queryKey: ["/api/trust-companies"] });
-                              }).catch(() => toast({ title: "Failed to create trust", variant: "destructive" }));
-                            }
-                          } else if (val === "__independent__") {
-                            updateCompanyMutation.mutate({ parentCompanyId: null });
-                          } else {
-                            updateCompanyMutation.mutate({ parentCompanyId: val });
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="h-7 text-xs bg-transparent border-[#3d4254] text-white">
-                          <SelectValue placeholder="Select trust..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__independent__">Independent</SelectItem>
-                          {trustCompanies?.map((t: Company) => (
-                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                          ))}
-                          <SelectItem value="__new__">+ Create new trust</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
+                    {(() => {
+                      // Show trust from relationships (Part of Trust where this company is the related side)
+                      const trustRel = company.relationships?.find(r => r.relationshipType === "Part of Trust");
+                      const parentTrust = company.parentCompany;
+                      const trustCompanyLink = trustRel?.relatedCompany || parentTrust;
+
+                      if (trustCompanyLink) {
+                        return (
+                          <div className="flex items-center gap-2">
+                            <Link href={`/company/${trustCompanyLink.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
+                              {trustCompanyLink.name}
+                            </Link>
+                          </div>
+                        );
+                      }
+                      return (
+                        <p className="text-[13px] text-muted-foreground cursor-pointer hover:bg-[#2d3142] rounded p-1 -mx-1 transition-all duration-200"
+                          onClick={() => setShowAddRelationshipDialog(true)}>
+                          {company.academyTrustName || "-- click to link trust --"}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
@@ -1686,63 +1663,13 @@ export default function CompanyDetail() {
             )}
           </CollapsibleSection>
 
-          {/* Companies Section (only for trust companies) */}
-          {company.isTrust && (
-            <CollapsibleSection
-              title="Schools"
-              count={company.childCompanies?.length || 0}
-              icon={Building2}
-              onAdd={() => setShowLinkSchoolsDialog(true)}
-            >
-              {(company.childCompanies?.length || 0) === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No schools linked</p>
-              ) : (
-                <div className="space-y-2">
-                  {company.childCompanies?.map((child) => (
-                    <div
-                      key={child.id}
-                      className="p-3 border dark:border-[#3d4254] rounded-xl hover:bg-[#2d3142]/60 hover:border-[#4d5264] group transition-all duration-200"
-                    >
-                      <div className="flex items-start justify-between">
-                        <Link href={`/company/${child.id}`} className="flex items-center gap-2.5 flex-1 min-w-0">
-                          <div className="h-8 w-8 rounded-md bg-[#0091AE]/15 flex items-center justify-center flex-shrink-0">
-                            <Building2 className="h-4 w-4 text-[#0091AE]" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-sm text-[#0091AE] hover:underline truncate">{child.name}</p>
-                            {child.location && (
-                              <p className="text-xs text-muted-foreground">{child.location}</p>
-                            )}
-                          </div>
-                        </Link>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600"
-                          onClick={() => {
-                            apiRequest("POST", `/api/companies/${child.id}/unlink-school`).then(() => {
-                              queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
-                              toast({ title: "School unlinked" });
-                            });
-                          }}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CollapsibleSection>
-          )}
-
           {/* Related Companies Section */}
           <CollapsibleSection
             title="Related Companies"
             count={company.relationships?.length || 0}
             icon={Building}
             onAdd={() => setShowAddRelationshipDialog(true)}
-            defaultOpen={false}
+            defaultOpen={true}
           >
             {(company.relationships?.length || 0) === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">No related companies</p>
@@ -1944,16 +1871,6 @@ export default function CompanyDetail() {
             defaultOpen={false}
           >
             <p className="text-sm text-muted-foreground text-center py-4">No tickets</p>
-          </CollapsibleSection>
-
-          {/* Companies Section (Related) */}
-          <CollapsibleSection
-            title="Companies"
-            count={0}
-            icon={Building}
-            defaultOpen={false}
-          >
-            <p className="text-sm text-muted-foreground text-center py-4">No related companies</p>
           </CollapsibleSection>
 
           {/* Attachments Section (Placeholder) */}
@@ -2749,7 +2666,7 @@ export default function CompanyDetail() {
             </div>
             <div className="max-h-[300px] overflow-y-auto space-y-1">
               {allCompanies
-                ?.filter(c => !c.isTrust && !c.parentCompanyId && c.id !== params.id)
+                ?.filter(c => c.id !== params.id)
                 .filter(c => !linkSchoolSearch || c.name.toLowerCase().includes(linkSchoolSearch.toLowerCase()))
                 .slice(0, 50)
                 .map(c => (
@@ -2775,16 +2692,22 @@ export default function CompanyDetail() {
             <Button
               className="bg-[#0091AE] hover:bg-[#007a94] text-white"
               disabled={selectedSchoolIds.size === 0}
-              onClick={() => {
-                apiRequest("POST", `/api/companies/${params.id}/link-schools`, {
-                  schoolIds: Array.from(selectedSchoolIds),
-                }).then(() => {
+              onClick={async () => {
+                try {
+                  for (const schoolId of Array.from(selectedSchoolIds)) {
+                    await apiRequest("POST", `/api/companies/${params.id}/relationships`, {
+                      relatedCompanyId: schoolId,
+                      relationshipType: "Part of Trust",
+                    });
+                  }
                   queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
                   setShowLinkSchoolsDialog(false);
                   setSelectedSchoolIds(new Set());
                   setLinkSchoolSearch("");
                   toast({ title: `${selectedSchoolIds.size} school(s) linked` });
-                });
+                } catch {
+                  toast({ title: "Failed to link schools", variant: "destructive" });
+                }
               }}
             >
               Link {selectedSchoolIds.size} School{selectedSchoolIds.size !== 1 ? "s" : ""}
@@ -2839,7 +2762,7 @@ export default function CompanyDetail() {
                   <SelectValue placeholder="Select type..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {["Sister School", "Feeder School", "Partner Organization", "Supplier", "Parent Organization", "Diocese/Regional Authority", "Shared Services", "Other"].map(t => (
+                  {["Part of Trust", "Sister School", "Feeder School", "Partner Organization", "Supplier", "Parent Organization", "Diocese/Regional Authority", "Shared Services", "Other"].map(t => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
                 </SelectContent>

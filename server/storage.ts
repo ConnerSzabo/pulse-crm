@@ -1331,25 +1331,46 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTrustCompanies(): Promise<(Company & { stage?: PipelineStage; childCount?: number })[]> {
-    const trustCompaniesList = await db.select().from(companies).where(eq(companies.isTrust, true)).orderBy(companies.name);
-    if (trustCompaniesList.length === 0) return [];
+    // Find all "Part of Trust" relationships
+    const trustRels = await db
+      .select({
+        companyId: companyRelationships.companyId,
+        relatedCompanyId: companyRelationships.relatedCompanyId,
+      })
+      .from(companyRelationships)
+      .where(eq(companyRelationships.relationshipType, "Part of Trust"));
+
+    // companyId = the trust, relatedCompanyId = the school
+    // Count schools per trust
+    const childCountMap = new Map<string, number>();
+    // Track which companies are schools (related side) so we exclude them
+    const schoolIds = new Set<string>();
+    for (const rel of trustRels) {
+      childCountMap.set(rel.companyId, (childCountMap.get(rel.companyId) || 0) + 1);
+      schoolIds.add(rel.relatedCompanyId);
+    }
+
+    const trustIdsFromRels = Array.from(childCountMap.keys());
+
+    // Get isTrust companies that are NOT schools in any relationship
+    const legacyTrusts = await db.select().from(companies).where(eq(companies.isTrust, true));
+    const legacyTrustIds = legacyTrusts
+      .filter(c => !schoolIds.has(c.id))
+      .map(c => c.id);
+
+    // Combine: trust IDs from relationships + legacy isTrust (excluding schools)
+    const allTrustIds = Array.from(new Set([...trustIdsFromRels, ...legacyTrustIds]));
+
+    if (allTrustIds.length === 0) return [];
+
+    const trustCompaniesList = await db
+      .select()
+      .from(companies)
+      .where(sql`${companies.id} IN (${sql.join(allTrustIds.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(companies.name);
 
     const stages = await this.getPipelineStages();
     const stageMap = new Map(stages.map(s => [s.id, s]));
-
-    // Count children for each trust company
-    const trustIds = trustCompaniesList.map(c => c.id);
-    const allChildren = await db
-      .select({ parentCompanyId: companies.parentCompanyId })
-      .from(companies)
-      .where(inArray(companies.parentCompanyId, trustIds));
-
-    const childCountMap = new Map<string, number>();
-    for (const child of allChildren) {
-      if (child.parentCompanyId) {
-        childCountMap.set(child.parentCompanyId, (childCountMap.get(child.parentCompanyId) || 0) + 1);
-      }
-    }
 
     return trustCompaniesList.map(c => ({
       ...c,

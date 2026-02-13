@@ -356,7 +356,7 @@ export default function Dashboard() {
         <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">Top Trusts by Pipeline</CardTitle>
-            <Link href="/trusts">
+            <Link href="/companies?type=trusts">
               <div className="flex items-center gap-1 text-xs text-[#0091AE] hover:underline">
                 View all <ChevronRight className="h-3 w-3" />
               </div>
@@ -365,7 +365,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="space-y-2">
               {topTrusts.map((trust) => (
-                <Link key={trust.id} href={`/trusts/${trust.id}`}>
+                <Link key={trust.id} href={`/companies?type=trusts`} onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors cursor-pointer">
                     <div className="flex items-center gap-2 min-w-0">
                       <Landmark className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" />

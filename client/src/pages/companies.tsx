@@ -156,6 +156,12 @@ export default function Companies() {
     queryKey: ["/api/pipeline-stages"],
   });
 
+  // Fetch trust companies (those with "Part of Trust" relationships) for trust filtering
+  const { data: trustCompaniesData } = useQuery<(Company & { childCount?: number })[]>({
+    queryKey: ["/api/trust-companies"],
+  });
+  const trustCompanyIds = useMemo(() => new Set(trustCompaniesData?.map(c => c.id) || []), [trustCompaniesData]);
+
   const form = useForm<AddCompanyForm>({
     resolver: zodResolver(addCompanySchema),
     defaultValues: {
@@ -263,9 +269,9 @@ export default function Companies() {
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
   };
 
-  // Filter and sort companies
+  // Filter and sort companies (not used when typeFilter === "trusts")
   const filteredCompanies = useMemo(() => {
-    if (!companies) return [];
+    if (!companies || typeFilter === "trusts") return [];
 
     let filtered = companies;
 
@@ -281,11 +287,11 @@ export default function Companies() {
       );
     }
 
-    // Type filter
-    if (typeFilter === "trusts") {
-      filtered = filtered.filter((c) => c.isTrust);
-    } else if (typeFilter === "schools") {
-      filtered = filtered.filter((c) => !c.isTrust);
+    // Type filter - trusts view uses trustCompaniesData directly (see trustFilteredCompanies)
+    if (typeFilter === "schools") {
+      filtered = filtered.filter((c) => !trustCompanyIds.has(c.id));
+    } else if (typeFilter !== "trusts") {
+      // "all" - no filter needed
     }
 
     // Lead status filter
@@ -361,12 +367,71 @@ export default function Companies() {
     });
 
     return filtered;
-  }, [companies, search, leadStatusFilter, dateFilter, typeFilter, sortField, sortDirection]);
+  }, [companies, search, leadStatusFilter, dateFilter, typeFilter, sortField, sortDirection, trustCompanyIds]);
+
+  // Trust-specific filtered list: uses trustCompaniesData directly
+  const trustFilteredCompanies = useMemo(() => {
+    if (typeFilter !== "trusts" || !trustCompaniesData) return [];
+    let filtered = [...trustCompaniesData] as (Company & { childCount?: number; stage?: PipelineStage })[];
+
+    // Search
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(searchLower) ||
+          c.location?.toLowerCase().includes(searchLower) ||
+          c.phone?.includes(search)
+      );
+    }
+
+    // Lead status filter
+    if (leadStatusFilter !== "all") {
+      filtered = filtered.filter((c) => {
+        const status = c.budgetStatus || "0-unqualified";
+        return status === leadStatusFilter;
+      });
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "name":
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case "lastContactDate": {
+          const aDate = a.lastContactDate ? new Date(a.lastContactDate).getTime() : 0;
+          const bDate = b.lastContactDate ? new Date(b.lastContactDate).getTime() : 0;
+          comparison = aDate - bDate;
+          break;
+        }
+        case "phone":
+          comparison = (a.phone || "").localeCompare(b.phone || "");
+          break;
+        case "location":
+          comparison = (a.location || "").localeCompare(b.location || "");
+          break;
+        case "budgetStatus":
+          comparison = (a.budgetStatus || "0-unqualified").localeCompare(b.budgetStatus || "0-unqualified");
+          break;
+        default:
+          comparison = a.name.localeCompare(b.name);
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return filtered;
+  }, [trustCompaniesData, typeFilter, search, leadStatusFilter, sortField, sortDirection]);
+
+  // Determine the active list based on typeFilter
+  const isTrustView = typeFilter === "trusts";
+  const activeList = isTrustView ? trustFilteredCompanies : filteredCompanies;
 
   // Pagination
-  const totalCompanies = filteredCompanies.length;
+  const totalCompanies = activeList.length;
   const totalPages = Math.ceil(totalCompanies / perPage);
-  const paginatedCompanies = filteredCompanies.slice(
+  const paginatedCompanies = activeList.slice(
     (currentPage - 1) * perPage,
     currentPage * perPage
   );
@@ -496,7 +561,7 @@ export default function Companies() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-                Companies
+                {isTrustView ? "Trusts" : "Companies"}
               </h1>
               <Badge variant="secondary" className="text-sm font-medium dark:bg-[#3d4254] dark:text-[#94a3b8]">
                 {totalCompanies} records
@@ -956,185 +1021,310 @@ export default function Companies() {
           </div>
         ) : (
           <div className="bg-white dark:bg-[#252936] border-x border-gray-200 dark:border-[#3d4254]">
-            <table className="w-full table-fixed">
-              <thead className="bg-gray-50 dark:bg-[#2d3142] sticky top-0 z-10 border-b border-gray-200 dark:border-[#3d4254]">
-                <tr>
-                  <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
-                    <Checkbox
-                      checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </th>
-                  <th className="text-left px-4 py-3 w-[220px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="name">Company Name</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="owner">Company Owner</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[120px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="createdAt">Create Date</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="phone">Phone Number</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[150px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="lastContactDate">Last Activity Date</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[100px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="location">City</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[130px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="country">Country/Region</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[170px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="budgetStatus">Lead Status</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="industry">Industry</SortableHeader>
-                  </th>
-                  <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
-                    <SortableHeader field="trust">Academy Trust</SortableHeader>
-                  </th>
-                  <th className="w-12 px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-[#3d4254]">
-                {paginatedCompanies.map((company, index) => (
-                  <tr
-                    key={company.id}
-                    className={`group transition-colors cursor-pointer ${
-                      index % 2 === 0
-                        ? "bg-white dark:bg-[#252936]"
-                        : "bg-gray-50/70 dark:bg-[#1a1d29]"
-                    } hover:bg-blue-50/50 dark:hover:bg-[#2d3142]`}
-                    data-testid={`row-company-${company.id}`}
-                  >
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+            {isTrustView ? (
+              /* Trust-specific table layout */
+              <table className="w-full table-fixed">
+                <thead className="bg-gray-50 dark:bg-[#2d3142] sticky top-0 z-10 border-b border-gray-200 dark:border-[#3d4254]">
+                  <tr>
+                    <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
                       <Checkbox
-                        checked={selectedIds.has(company.id)}
-                        onCheckedChange={() => handleSelectOne(company.id)}
-                        onClick={(e) => e.stopPropagation()}
+                        checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
+                        onCheckedChange={handleSelectAll}
                       />
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <Link
-                        href={`/company/${company.id}`}
-                        className="flex items-center gap-3"
-                        data-testid={`link-company-${company.id}`}
-                      >
-                        <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#0091AE]/20 to-[#06b6d4]/20 dark:from-[#0091AE]/30 dark:to-[#06b6d4]/30 flex items-center justify-center flex-shrink-0 shadow-sm">
-                          <Building2 className="h-4 w-4 text-[#0091AE]" />
-                        </div>
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <span
-                            className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate"
-                            data-testid={`text-company-name-${company.id}`}
-                          >
-                            {company.name}
-                          </span>
-                          {company.isTrust && (
+                    </th>
+                    <th className="text-left px-4 py-3 w-[280px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="name">Trust Name</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[100px] border-r border-gray-100 dark:border-[#3d4254]">
+                      Schools
+                    </th>
+                    <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="phone">Phone</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[150px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="lastContactDate">Last Activity</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[130px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="location">Location</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[170px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="budgetStatus">Lead Status</SortableHeader>
+                    </th>
+                    <th className="w-12 px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-[#3d4254]">
+                  {(paginatedCompanies as (Company & { childCount?: number })[]).map((company, index) => (
+                    <tr
+                      key={company.id}
+                      className={`group transition-colors cursor-pointer ${
+                        index % 2 === 0
+                          ? "bg-white dark:bg-[#252936]"
+                          : "bg-gray-50/70 dark:bg-[#1a1d29]"
+                      } hover:bg-blue-50/50 dark:hover:bg-[#2d3142]`}
+                    >
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <Checkbox
+                          checked={selectedIds.has(company.id)}
+                          onCheckedChange={() => handleSelectOne(company.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <Link
+                          href={`/company/${company.id}`}
+                          className="flex items-center gap-3"
+                        >
+                          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-purple-500/20 to-purple-600/20 dark:from-purple-500/30 dark:to-purple-600/30 flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <Landmark className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate">
+                              {company.name}
+                            </span>
                             <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[9px] px-1.5 py-0 flex-shrink-0">
                               Trust
                             </Badge>
-                          )}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center flex-shrink-0 shadow-sm">
-                          <span className="text-[10px] font-bold text-white">CS</span>
-                        </div>
-                        <span className="text-sm text-gray-700 dark:text-[#94a3b8] truncate">
-                          Conner Szabo
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
-                        {formatDate(company.createdAt)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      {company.phone ? (
-                        <a
-                          href={`tel:${company.phone}`}
-                          className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {company.phone}
-                        </a>
-                      ) : (
-                        <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
-                        {formatDate(company.lastContactDate)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                        {company.location || "--"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
-                        United Kingdom
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      {getLeadStatusBadge(company.budgetStatus)}
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                        {company.industry || "--"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                      {company.parentCompany ? (
-                        <Link href={`/company/${company.parentCompany.id}`} className="text-sm text-[#0091AE] hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
-                          {company.parentCompany.name}
+                          </span>
                         </Link>
-                      ) : (
-                        <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
-                          {company.academyTrustName || "--"}
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm font-medium text-gray-700 dark:text-[#94a3b8]">
+                          {company.childCount || 0}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#3d4254] rounded-md transition-colors opacity-0 group-hover:opacity-100">
-                            <MoreHorizontal className="h-4 w-4 text-gray-500 dark:text-[#94a3b8]" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/company/${company.id}`} className="flex items-center gap-2">
-                              <ExternalLink className="h-4 w-4" />
-                              View details
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-red-600 focus:text-red-600"
-                            onClick={() => {
-                              if (confirm("Delete this company?")) {
-                                deleteMutation.mutate(company.id);
-                              }
-                            }}
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        {company.phone ? (
+                          <a
+                            href={`tel:${company.phone}`}
+                            className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+                            {company.phone}
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
+                          {formatDate(company.lastContactDate)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                          {company.location || "--"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        {getLeadStatusBadge(company.budgetStatus)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#3d4254] rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                              <MoreHorizontal className="h-4 w-4 text-gray-500 dark:text-[#94a3b8]" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/company/${company.id}`} className="flex items-center gap-2">
+                                <ExternalLink className="h-4 w-4" />
+                                View details
+                              </Link>
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              /* Standard companies table */
+              <table className="w-full table-fixed">
+                <thead className="bg-gray-50 dark:bg-[#2d3142] sticky top-0 z-10 border-b border-gray-200 dark:border-[#3d4254]">
+                  <tr>
+                    <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
+                      <Checkbox
+                        checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </th>
+                    <th className="text-left px-4 py-3 w-[220px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="name">Company Name</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="owner">Company Owner</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[120px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="createdAt">Create Date</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="phone">Phone Number</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[150px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="lastContactDate">Last Activity Date</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[100px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="location">City</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[130px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="country">Country/Region</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[170px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="budgetStatus">Lead Status</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="industry">Industry</SortableHeader>
+                    </th>
+                    <th className="text-left px-4 py-3 w-[160px] border-r border-gray-100 dark:border-[#3d4254]">
+                      <SortableHeader field="trust">Academy Trust</SortableHeader>
+                    </th>
+                    <th className="w-12 px-4 py-3"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-[#3d4254]">
+                  {(paginatedCompanies as CompanyWithStage[]).map((company, index) => (
+                    <tr
+                      key={company.id}
+                      className={`group transition-colors cursor-pointer ${
+                        index % 2 === 0
+                          ? "bg-white dark:bg-[#252936]"
+                          : "bg-gray-50/70 dark:bg-[#1a1d29]"
+                      } hover:bg-blue-50/50 dark:hover:bg-[#2d3142]`}
+                      data-testid={`row-company-${company.id}`}
+                    >
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <Checkbox
+                          checked={selectedIds.has(company.id)}
+                          onCheckedChange={() => handleSelectOne(company.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <Link
+                          href={`/company/${company.id}`}
+                          className="flex items-center gap-3"
+                          data-testid={`link-company-${company.id}`}
+                        >
+                          <div className="w-8 h-8 rounded-md bg-gradient-to-br from-[#0091AE]/20 to-[#06b6d4]/20 dark:from-[#0091AE]/30 dark:to-[#06b6d4]/30 flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <Building2 className="h-4 w-4 text-[#0091AE]" />
+                          </div>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate"
+                              data-testid={`text-company-name-${company.id}`}
+                            >
+                              {company.name}
+                            </span>
+                            {trustCompanyIds.has(company.id) && (
+                              <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[9px] px-1.5 py-0 flex-shrink-0">
+                                Trust{(() => {
+                                  const tc = trustCompaniesData?.find(t => t.id === company.id);
+                                  return tc?.childCount ? ` (${tc.childCount})` : "";
+                                })()}
+                              </Badge>
+                            )}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center flex-shrink-0 shadow-sm">
+                            <span className="text-[10px] font-bold text-white">CS</span>
+                          </div>
+                          <span className="text-sm text-gray-700 dark:text-[#94a3b8] truncate">
+                            Conner Szabo
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
+                          {formatDate(company.createdAt)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        {company.phone ? (
+                          <a
+                            href={`tel:${company.phone}`}
+                            className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {company.phone}
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
+                          {formatDate(company.lastContactDate)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                          {company.location || "--"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8]">
+                          United Kingdom
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        {getLeadStatusBadge(company.budgetStatus)}
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                          {company.industry || "--"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
+                        {company.parentCompany ? (
+                          <Link href={`/company/${company.parentCompany.id}`} className="text-sm text-[#0091AE] hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
+                            {company.parentCompany.name}
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-gray-600 dark:text-[#94a3b8] truncate block">
+                            {company.academyTrustName || "--"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button className="p-1.5 hover:bg-gray-200 dark:hover:bg-[#3d4254] rounded-md transition-colors opacity-0 group-hover:opacity-100">
+                              <MoreHorizontal className="h-4 w-4 text-gray-500 dark:text-[#94a3b8]" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/company/${company.id}`} className="flex items-center gap-2">
+                                <ExternalLink className="h-4 w-4" />
+                                View details
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onClick={() => {
+                                if (confirm("Delete this company?")) {
+                                  deleteMutation.mutate(company.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
