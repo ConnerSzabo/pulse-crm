@@ -170,23 +170,8 @@ async function runPostStartupTasks() {
     console.error("WARNING: Database connection test error:", err);
   }
 
-  try {
-    const backfilled = await storage.backfillLeadStatus();
-    if (backfilled > 0) {
-      console.log(`Updated ${backfilled} companies to default Lead Status: 0 - Unqualified`);
-    }
-  } catch (err) {
-    console.error("Failed to backfill lead status:", err);
-  }
-
-  try {
-    const { migratedCount, trustsCreated } = await storage.migrateAcademyTrusts();
-    if (migratedCount > 0 || trustsCreated > 0) {
-      console.log(`Trust migration: ${migratedCount} companies migrated, ${trustsCreated} trusts created`);
-    }
-  } catch (err) {
-    console.error("Failed to migrate academy trusts:", err);
-  }
+  // Long-running migrations removed from startup to prevent deployment timeouts.
+  // Run manually via POST /api/companies/backfill-lead-status and POST /api/trusts/migrate
 
   log("Post-startup tasks completed.");
 }

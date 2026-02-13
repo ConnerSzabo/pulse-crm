@@ -1588,6 +1588,7 @@ export class DatabaseStorage implements IStorage {
       console.error("Error seeding pipeline stages:", error);
       // Don't throw - allow app to start even if seeding fails
     }
+
   }
 }
 
