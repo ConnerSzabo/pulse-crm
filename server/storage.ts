@@ -201,6 +201,7 @@ export interface IStorage {
   deleteCompanyRelationship(id: string): Promise<void>;
   linkSchoolsToTrust(trustId: string, schoolIds: string[]): Promise<void>;
   unlinkSchoolFromTrust(schoolId: string): Promise<void>;
+  setupTrustsFromAcademyNames(): Promise<{ trustsCreated: number; trustsSkipped: number; schoolsLinked: number; uniqueTrustNames: number }>;
 
   // Seed
   seedData(): Promise<void>;
@@ -1458,6 +1459,77 @@ export class DatabaseStorage implements IStorage {
 
   async unlinkSchoolFromTrust(schoolId: string): Promise<void> {
     await db.update(companies).set({ parentCompanyId: null }).where(eq(companies.id, schoolId));
+  }
+
+  async setupTrustsFromAcademyNames(): Promise<{ trustsCreated: number; trustsSkipped: number; schoolsLinked: number; uniqueTrustNames: number }> {
+    // Step 1: Get all unique academy_trust_name values from companies
+    const rows = await db
+      .selectDistinct({ academyTrustName: companies.academyTrustName })
+      .from(companies)
+      .where(and(isNotNull(companies.academyTrustName), sql`${companies.academyTrustName} != ''`));
+
+    const uniqueNames = rows.map(r => r.academyTrustName!).filter(Boolean);
+    let trustsCreated = 0;
+    let trustsSkipped = 0;
+    let schoolsLinked = 0;
+
+    for (const trustName of uniqueNames) {
+      // Check if trust company already exists (by name with isTrust=true)
+      const existing = await this.findTrustCompanyByName(trustName);
+      let trustCompany: Company;
+
+      if (existing) {
+        trustCompany = existing;
+        trustsSkipped++;
+      } else {
+        // Create the trust company
+        trustCompany = await this.createCompany({
+          name: trustName,
+          isTrust: true,
+          industry: "Academy Trust",
+        });
+        trustsCreated++;
+      }
+
+      // Step 2: Find all schools with this academy_trust_name
+      const schoolsWithTrust = await db
+        .select()
+        .from(companies)
+        .where(and(
+          ilike(companies.academyTrustName, trustName),
+          sql`${companies.id} != ${trustCompany.id}`
+        ));
+
+      // Link each school via company_relationships (skip if already linked)
+      for (const school of schoolsWithTrust) {
+        // Check if relationship already exists
+        const existingRel = await db
+          .select()
+          .from(companyRelationships)
+          .where(and(
+            eq(companyRelationships.companyId, trustCompany.id),
+            eq(companyRelationships.relatedCompanyId, school.id),
+            eq(companyRelationships.relationshipType, "Part of Trust")
+          ));
+
+        if (existingRel.length === 0) {
+          // Create bidirectional relationship
+          await db.insert(companyRelationships).values({
+            companyId: trustCompany.id,
+            relatedCompanyId: school.id,
+            relationshipType: "Part of Trust",
+          });
+          await db.insert(companyRelationships).values({
+            companyId: school.id,
+            relatedCompanyId: trustCompany.id,
+            relationshipType: "Part of Trust",
+          });
+          schoolsLinked++;
+        }
+      }
+    }
+
+    return { trustsCreated, trustsSkipped, schoolsLinked, uniqueTrustNames: uniqueNames.length };
   }
 
   // Seed default pipeline stages (Wave Systems)

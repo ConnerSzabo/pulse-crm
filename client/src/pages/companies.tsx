@@ -296,6 +296,8 @@ export default function Companies() {
     // Type filter - trusts view uses trustCompaniesData directly (see trustFilteredCompanies)
     if (typeFilter === "schools") {
       filtered = filtered.filter((c) => !trustCompanyIds.has(c.id));
+    } else if (typeFilter === "independent") {
+      filtered = filtered.filter((c) => !trustCompanyIds.has(c.id) && !c.academyTrustName);
     } else if (typeFilter !== "trusts") {
       // "all" - no filter needed
     }
@@ -896,6 +898,9 @@ export default function Companies() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setTypeFilter("trusts"); setCurrentPage(1); }}>
                   Trusts Only
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setTypeFilter("independent"); setCurrentPage(1); }}>
+                  Independent Schools
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

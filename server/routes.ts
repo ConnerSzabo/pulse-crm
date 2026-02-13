@@ -1225,45 +1225,14 @@ export async function registerRoutes(
     }
   });
 
-  // Migration endpoint: trusts table → companies with isTrust=true
-  app.post("/api/migrate-trusts-to-companies", isAuthenticated, async (req, res) => {
+  // Setup trusts: create trust companies from academy_trust_name and link schools
+  app.post("/api/setup-trusts", isAuthenticated, async (req, res) => {
     try {
-      const allTrusts = await storage.getTrusts();
-      let created = 0;
-      let skipped = 0;
-
-      for (const trust of allTrusts) {
-        // Check if a trust company already exists
-        const existing = await storage.findTrustCompanyByName(trust.name);
-        if (existing) {
-          skipped++;
-          continue;
-        }
-
-        // Create company with isTrust=true
-        const newCompany = await storage.createCompany({
-          name: trust.name,
-          website: trust.website,
-          phone: trust.phone,
-          isTrust: true,
-          notes: trust.notes,
-          industry: "Academy Trust",
-        });
-
-        // Update children: find companies with this trustId and set parentCompanyId
-        const trustSchools = await storage.getCompaniesByTrust(trust.id);
-        const schoolIds = trustSchools.map(s => s.id);
-        if (schoolIds.length > 0) {
-          await storage.linkSchoolsToTrust(newCompany.id, schoolIds);
-        }
-
-        created++;
-      }
-
-      res.json({ created, skipped, total: allTrusts.length });
+      const result = await storage.setupTrustsFromAcademyNames();
+      res.json(result);
     } catch (error) {
-      console.error("Trust migration error:", error);
-      res.status(500).json({ error: "Failed to migrate trusts to companies" });
+      console.error("Trust setup error:", error);
+      res.status(500).json({ error: "Failed to setup trusts" });
     }
   });
 
