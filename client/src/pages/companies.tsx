@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link, useSearch, useLocation } from "wouter";
@@ -145,6 +145,12 @@ export default function Companies() {
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>(urlType === "trusts" ? "trusts" : "all");
   const [groupByTrust, setGroupByTrust] = useState(false);
+
+  // Sync typeFilter with URL when navigating between Companies and Trusts
+  useEffect(() => {
+    const newType = urlType === "trusts" ? "trusts" : "all";
+    setTypeFilter(newType);
+  }, [urlType]);
 
   const { toast } = useToast();
 

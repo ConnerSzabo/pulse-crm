@@ -1331,7 +1331,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTrustCompanies(): Promise<(Company & { stage?: PipelineStage; childCount?: number })[]> {
-    // Find all "Part of Trust" relationships
+    // Get all companies with isTrust=true — these are the trust parent companies
+    const trustCompaniesList = await db
+      .select()
+      .from(companies)
+      .where(eq(companies.isTrust, true))
+      .orderBy(companies.name);
+
+    if (trustCompaniesList.length === 0) return [];
+
+    const trustIds = trustCompaniesList.map(c => c.id);
+
+    // Count schools per trust via "Part of Trust" relationships
+    // Since relationships are bidirectional, count only where the trust is companyId
+    // and the relatedCompanyId is NOT also a trust (i.e. it's a school)
+    const trustIdSet = new Set(trustIds);
     const trustRels = await db
       .select({
         companyId: companyRelationships.companyId,
@@ -1340,34 +1354,13 @@ export class DatabaseStorage implements IStorage {
       .from(companyRelationships)
       .where(eq(companyRelationships.relationshipType, "Part of Trust"));
 
-    // companyId = the trust, relatedCompanyId = the school
-    // Count schools per trust
     const childCountMap = new Map<string, number>();
-    // Track which companies are schools (related side) so we exclude them
-    const schoolIds = new Set<string>();
     for (const rel of trustRels) {
-      childCountMap.set(rel.companyId, (childCountMap.get(rel.companyId) || 0) + 1);
-      schoolIds.add(rel.relatedCompanyId);
+      // Only count if companyId is a trust and relatedCompanyId is NOT a trust (it's a school)
+      if (trustIdSet.has(rel.companyId) && !trustIdSet.has(rel.relatedCompanyId)) {
+        childCountMap.set(rel.companyId, (childCountMap.get(rel.companyId) || 0) + 1);
+      }
     }
-
-    const trustIdsFromRels = Array.from(childCountMap.keys());
-
-    // Get isTrust companies that are NOT schools in any relationship
-    const legacyTrusts = await db.select().from(companies).where(eq(companies.isTrust, true));
-    const legacyTrustIds = legacyTrusts
-      .filter(c => !schoolIds.has(c.id))
-      .map(c => c.id);
-
-    // Combine: trust IDs from relationships + legacy isTrust (excluding schools)
-    const allTrustIds = Array.from(new Set([...trustIdsFromRels, ...legacyTrustIds]));
-
-    if (allTrustIds.length === 0) return [];
-
-    const trustCompaniesList = await db
-      .select()
-      .from(companies)
-      .where(sql`${companies.id} IN (${sql.join(allTrustIds.map(id => sql`${id}`), sql`, `)})`)
-      .orderBy(companies.name);
 
     const stages = await this.getPipelineStages();
     const stageMap = new Map(stages.map(s => [s.id, s]));
