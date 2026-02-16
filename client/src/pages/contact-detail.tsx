@@ -211,6 +211,7 @@ export default function ContactDetail() {
         type: "call",
         note: data.note || null,
         outcome: data.outcome || null,
+        contactId: contact.id,
       });
     },
     onSuccess: () => {
@@ -229,10 +230,12 @@ export default function ContactDetail() {
         companyId: contact.companyId,
         type: "follow_up",
         note: data.note,
+        contactId: contact.id,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
       addNoteForm.reset();
       setShowAddNoteDialog(false);
       toast({ title: "Note added" });
@@ -266,10 +269,12 @@ export default function ContactDetail() {
         companyId: contact.companyId,
         type: "meeting",
         note: data.note,
+        contactId: contact.id,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
       addMeetingForm.reset();
       setShowAddMeetingDialog(false);
       toast({ title: "Meeting logged" });

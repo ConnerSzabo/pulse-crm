@@ -789,6 +789,12 @@ export async function registerRoutes(
         dueDate: dueDate ? new Date(dueDate) : null,
       });
       const task = await storage.createTask(validated);
+
+      // Update lastContactDate on the company when a task is created
+      await storage.updateCompany(req.params.companyId as string, {
+        lastContactDate: new Date(),
+      });
+
       res.status(201).json(task);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -908,19 +914,17 @@ export async function registerRoutes(
         companyId: req.params.id as string,
       });
       const activity = await storage.createActivity(data, customDate ? new Date(customDate) : undefined);
-      
-      // Update lastContactDate on the company for calls/emails
-      if (data.type === 'call' || data.type === 'email') {
-        await storage.updateCompany(req.params.id as string, {
-          lastContactDate: new Date(),
-        });
-        
-        // Increment daily call counter for call activities
-        if (data.type === 'call') {
-          await storage.incrementCallCounter();
-        }
+
+      // Update lastContactDate on the company for ALL activity types
+      await storage.updateCompany(req.params.id as string, {
+        lastContactDate: new Date(),
+      });
+
+      // Increment daily call counter for call activities
+      if (data.type === 'call') {
+        await storage.incrementCallCounter();
       }
-      
+
       // Update lastQuoteDate and lastQuoteValue for quotes
       if (data.type === 'quote' && data.quoteValue) {
         await storage.updateCompany(req.params.id as string, {
@@ -928,11 +932,19 @@ export async function registerRoutes(
           lastQuoteValue: data.quoteValue,
         });
       }
-      
+
       // Update grossProfit for deal_won
       if (data.type === 'deal_won' && data.grossProfit) {
         await storage.updateCompany(req.params.id as string, {
           grossProfit: data.grossProfit,
+        });
+      }
+
+      // Update contact lastContactDate if contactId provided
+      const { contactId } = req.body;
+      if (contactId) {
+        await storage.updateContact(contactId, {
+          lastContactDate: new Date(),
         });
       }
       
