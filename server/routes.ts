@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation, normalizePhone, normalizeWebsite } from "./storage";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
-import { activities, companies } from "@shared/schema";
+import { activities, companies, contacts, callNotes, tasks } from "@shared/schema";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
@@ -293,22 +293,35 @@ export async function registerRoutes(
   // Call Notes (protected)
   app.post("/api/companies/:id/notes", isAuthenticated, async (req, res) => {
     try {
+      const { contactId, ...rest } = req.body;
+      const companyId = req.params.id as string;
       const data = insertCallNoteSchema.parse({
-        ...req.body,
-        companyId: req.params.id as string,
+        ...rest,
+        companyId,
       });
-      const note = await storage.createCallNote(data);
-      
-      // Update lastContactDate on the company
-      await storage.updateCompany(req.params.id as string, {
-        lastContactDate: new Date(),
+      const now = new Date();
+
+      // Use a transaction so note + date updates are atomic
+      const note = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(callNotes).values(data).returning();
+
+        // Update lastContactDate on the company
+        await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId));
+
+        // Update contact lastContactDate if contactId provided
+        if (contactId) {
+          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+        }
+
+        return created;
       });
-      
+
       res.status(201).json(note);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
+      console.error("Failed to create call note:", error);
       res.status(500).json({ error: "Failed to create call note" });
     }
   });
@@ -1026,17 +1039,28 @@ export async function registerRoutes(
 
   app.post("/api/companies/:companyId/tasks", isAuthenticated, async (req, res) => {
     try {
-      const { dueDate, ...rest } = req.body;
+      const { dueDate, contactId, ...rest } = req.body;
+      const companyId = req.params.companyId as string;
       const validated = insertTaskSchema.parse({
         ...rest,
-        companyId: req.params.companyId,
+        companyId,
         dueDate: dueDate ? new Date(dueDate) : null,
       });
-      const task = await storage.createTask(validated);
+      const now = new Date();
 
-      // Update lastContactDate on the company when a task is created
-      await storage.updateCompany(req.params.companyId as string, {
-        lastContactDate: new Date(),
+      // Use a transaction so task + date updates are atomic
+      const task = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(tasks).values(validated).returning();
+
+        // Update lastContactDate on the company
+        await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId));
+
+        // Update contact lastContactDate if contactId provided
+        if (contactId) {
+          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+        }
+
+        return created;
       });
 
       res.status(201).json(task);
@@ -1044,6 +1068,7 @@ export async function registerRoutes(
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
+      console.error("Failed to create task:", error);
       res.status(500).json({ error: "Failed to create task" });
     }
   });
@@ -1152,51 +1177,54 @@ export async function registerRoutes(
 
   app.post("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
     try {
-      const { createdAt: customDate, ...rest } = req.body;
+      const { createdAt: customDate, contactId, ...rest } = req.body;
+      const companyId = req.params.id as string;
       const data = insertActivitySchema.parse({
         ...rest,
-        companyId: req.params.id as string,
-      });
-      const activity = await storage.createActivity(data, customDate ? new Date(customDate) : undefined);
-
-      // Update lastContactDate on the company for ALL activity types
-      await storage.updateCompany(req.params.id as string, {
-        lastContactDate: new Date(),
+        companyId,
       });
 
-      // Increment daily call counter for call activities
+      const now = new Date();
+
+      // Use a transaction so activity + all date updates are atomic
+      const activity = await db.transaction(async (tx) => {
+        // 1. Create the activity
+        const values = customDate ? { ...data, createdAt: new Date(customDate) } : data;
+        const [created] = await tx.insert(activities).values(values).returning();
+
+        // 2. Build company update (always update lastContactDate)
+        const companyUpdate: Record<string, unknown> = { lastContactDate: now };
+
+        if (data.type === 'quote' && data.quoteValue) {
+          companyUpdate.lastQuoteDate = now;
+          companyUpdate.lastQuoteValue = data.quoteValue;
+        }
+
+        if (data.type === 'deal_won' && data.grossProfit) {
+          companyUpdate.grossProfit = data.grossProfit;
+        }
+
+        await tx.update(companies).set(companyUpdate).where(eq(companies.id, companyId));
+
+        // 3. Update contact lastContactDate if contactId provided
+        if (contactId) {
+          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+        }
+
+        return created;
+      });
+
+      // Increment daily call counter outside the transaction (non-critical)
       if (data.type === 'call') {
         await storage.incrementCallCounter();
       }
 
-      // Update lastQuoteDate and lastQuoteValue for quotes
-      if (data.type === 'quote' && data.quoteValue) {
-        await storage.updateCompany(req.params.id as string, {
-          lastQuoteDate: new Date(),
-          lastQuoteValue: data.quoteValue,
-        });
-      }
-
-      // Update grossProfit for deal_won
-      if (data.type === 'deal_won' && data.grossProfit) {
-        await storage.updateCompany(req.params.id as string, {
-          grossProfit: data.grossProfit,
-        });
-      }
-
-      // Update contact lastContactDate if contactId provided
-      const { contactId } = req.body;
-      if (contactId) {
-        await storage.updateContact(contactId, {
-          lastContactDate: new Date(),
-        });
-      }
-      
       res.status(201).json(activity);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
+      console.error("Failed to create activity:", error);
       res.status(500).json({ error: "Failed to create activity" });
     }
   });

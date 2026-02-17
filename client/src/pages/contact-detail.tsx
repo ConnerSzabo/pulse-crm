@@ -248,17 +248,18 @@ export default function ContactDetail() {
   const addTaskMutation = useMutation({
     mutationFn: async (data: z.infer<typeof addTaskSchema>) => {
       if (!contact?.companyId) throw new Error("No company linked");
-      return apiRequest("POST", "/api/tasks", {
-        companyId: contact.companyId,
+      return apiRequest("POST", `/api/companies/${contact.companyId}/tasks`, {
         name: data.name,
         description: data.description || null,
         dueDate: data.dueDate || null,
         priority: data.priority,
         status: "pending",
+        contactId: contact.id,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
       addTaskForm.reset();
       setShowAddTaskDialog(false);
       toast({ title: "Task created" });
