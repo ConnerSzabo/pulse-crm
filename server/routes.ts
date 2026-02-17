@@ -1,6 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation, normalizePhone, normalizeWebsite } from "./storage";
+import { db } from "./db";
+import { eq, desc } from "drizzle-orm";
+import { activities, companies } from "@shared/schema";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
@@ -28,6 +31,18 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Initialize seed data
   await storage.seedData();
+
+  // Auto-setup trust companies if none exist
+  try {
+    const trustCompanies = await storage.getTrustCompanies();
+    if (trustCompanies.length === 0) {
+      console.log("No trust companies found, running auto-setup...");
+      const result = await storage.setupTrustsFromAcademyNames();
+      console.log(`Trust setup complete: ${result.trustsCreated} trusts created, ${result.schoolsLinked} schools linked`);
+    }
+  } catch (error) {
+    console.error("Trust auto-setup failed (non-fatal):", error);
+  }
 
   // Auth routes (not protected)
   app.post("/api/login", async (req, res) => {
@@ -332,6 +347,9 @@ export async function registerRoutes(
         updated: 0,
         duplicates: [] as { name: string; location: string; existingId: string; hasNewInfo: boolean; reason: string }[],
         importBatchId: importBatch.id,
+        contactsCreated: 0,
+        contactsSkipped: 0,
+        phonesFormatted: 0,
       };
 
       // Track normalized name+location seen within this batch to detect intra-CSV duplicates
@@ -358,64 +376,68 @@ export async function registerRoutes(
         }
         seenInBatch.add(batchKey);
 
-        // Normalize phone before checks
-        const normalizedPhone = companyData.phone ? normalizePhone(companyData.phone) : "";
-        if (normalizedPhone) companyData.phone = normalizedPhone;
-
-        // 2. Check for existing company by phone
+        // Normalize phone before checks (add leading 0 if 10 digits)
+        const rawPhone = companyData.phone || "";
+        const normalizedPhone = rawPhone ? normalizePhone(rawPhone) : "";
         if (normalizedPhone) {
-          const phoneMatch = await storage.findCompanyByPhone(normalizedPhone);
-          if (phoneMatch) {
-            if (mode === "skip") {
-              results.skipped++;
-              results.duplicates.push({
-                name: trimmedName,
-                location: trimmedLocation,
-                existingId: phoneMatch.id,
-                hasNewInfo: false,
-                reason: "duplicate_phone",
-              });
-              continue;
-            }
-            // For merge/overwrite modes, treat as existing
+          if (normalizedPhone !== rawPhone.replace(/\D/g, "")) {
+            results.phonesFormatted++;
+          }
+          companyData.phone = normalizedPhone;
+        }
+
+        // Parse integer fields
+        const schoolCapacity = companyData.schoolCapacity ? parseInt(String(companyData.schoolCapacity), 10) || null : null;
+        const pupilHeadcount = companyData.pupilHeadcount ? parseInt(String(companyData.pupilHeadcount), 10) || null : null;
+
+        // Duplicate detection: phone → website → name
+        let existingCompany: Awaited<ReturnType<typeof storage.findCompanyByPhone>> = undefined;
+        let matchReason = "";
+
+        // Check 1: phone match
+        if (normalizedPhone) {
+          existingCompany = await storage.findCompanyByPhone(normalizedPhone);
+          if (existingCompany) matchReason = "duplicate_phone";
+        }
+
+        // Check 2: website match (if no phone match)
+        if (!existingCompany && companyData.website) {
+          const normalizedWeb = normalizeWebsite(companyData.website);
+          if (normalizedWeb) {
+            existingCompany = await storage.findCompanyByWebsite(companyData.website);
+            if (existingCompany) matchReason = "duplicate_website";
           }
         }
 
-        // 3. Check for existing company by website
-        const normalizedWeb = companyData.website ? normalizeWebsite(companyData.website) : "";
-        if (normalizedWeb) {
-          const websiteMatch = await storage.findCompanyByWebsite(companyData.website);
-          if (websiteMatch) {
-            if (mode === "skip") {
-              results.skipped++;
-              results.duplicates.push({
-                name: trimmedName,
-                location: trimmedLocation,
-                existingId: websiteMatch.id,
-                hasNewInfo: false,
-                reason: "duplicate_website",
-              });
-              continue;
-            }
-          }
+        // Check 3: name match (if no phone or website match)
+        if (!existingCompany) {
+          existingCompany = await storage.findCompanyByNameAndLocation(trimmedName, trimmedLocation);
+          if (existingCompany) matchReason = "duplicate_in_database";
         }
 
-        // 4. Check for existing company in database (normalized name + location)
-        const existing = await storage.findCompanyByNameAndLocation(trimmedName, trimmedLocation);
+        let companyId: string;
 
-        if (existing) {
+        if (existingCompany) {
+          companyId = existingCompany.id;
+
           // Check if the new data has additional info
           const hasNewInfo = !!(
-            (!existing.itManagerName && companyData.itManagerName) ||
-            (!existing.itManagerEmail && companyData.itManagerEmail) ||
-            (!existing.website && companyData.website) ||
-            (!existing.phone && companyData.phone) ||
-            (!existing.location && companyData.location) ||
-            (!existing.academyTrustName && companyData.academyTrustName)
+            (!existingCompany.itManagerName && companyData.itManagerName) ||
+            (!existingCompany.itManagerEmail && companyData.itManagerEmail) ||
+            (!existingCompany.website && companyData.website) ||
+            (!existingCompany.phone && companyData.phone) ||
+            (!existingCompany.location && companyData.location) ||
+            (!existingCompany.academyTrustName && companyData.academyTrustName) ||
+            (!existingCompany.urn && companyData.urn) ||
+            (!existingCompany.street && companyData.street) ||
+            (!existingCompany.postcode && companyData.postcode) ||
+            (!existingCompany.county && companyData.county) ||
+            (!existingCompany.schoolType && companyData.schoolType) ||
+            (existingCompany.schoolCapacity === null && schoolCapacity !== null) ||
+            (existingCompany.pupilHeadcount === null && pupilHeadcount !== null)
           );
 
           if (mode === "overwrite") {
-            // Overwrite all fields with CSV data
             const updateData: Record<string, unknown> = {
               itManagerName: companyData.itManagerName || null,
               itManagerEmail: companyData.itManagerEmail || null,
@@ -427,60 +449,72 @@ export async function registerRoutes(
               ext: companyData.ext || null,
               notes: companyData.notes || null,
               budgetStatus: companyData.budgetStatus || "0-unqualified",
+              urn: companyData.urn || null,
+              street: companyData.street || null,
+              postcode: companyData.postcode || null,
+              county: companyData.county || null,
+              schoolType: companyData.schoolType || null,
+              schoolCapacity,
+              pupilHeadcount,
             };
 
-            await storage.updateCompany(existing.id, updateData);
+            await storage.updateCompany(existingCompany.id, updateData);
             results.updated++;
-          } else if (mode === "merge" && hasNewInfo) {
-            // Merge: only fill empty fields
+          } else if (mode === "merge") {
+            // Merge: only fill empty fields - NEVER overwrite existing lead status, owner, etc.
             const updateData: Record<string, unknown> = {};
-            if (!existing.itManagerName && companyData.itManagerName) updateData.itManagerName = companyData.itManagerName;
-            if (!existing.itManagerEmail && companyData.itManagerEmail) updateData.itManagerEmail = companyData.itManagerEmail;
-            if (!existing.website && companyData.website) updateData.website = companyData.website;
-            if (!existing.phone && companyData.phone) updateData.phone = companyData.phone;
-            if (!existing.location && companyData.location) updateData.location = companyData.location;
-            if (!existing.academyTrustName && companyData.academyTrustName) updateData.academyTrustName = companyData.academyTrustName;
-            if (!existing.ext && companyData.ext) updateData.ext = companyData.ext;
-            if (!existing.notes && companyData.notes) updateData.notes = companyData.notes;
-            if (!existing.budgetStatus && companyData.budgetStatus) updateData.budgetStatus = companyData.budgetStatus;
+            if (!existingCompany.itManagerName && companyData.itManagerName) updateData.itManagerName = companyData.itManagerName;
+            if (!existingCompany.itManagerEmail && companyData.itManagerEmail) updateData.itManagerEmail = companyData.itManagerEmail;
+            if (!existingCompany.website && companyData.website) updateData.website = companyData.website;
+            if (!existingCompany.phone && companyData.phone) updateData.phone = companyData.phone;
+            if (!existingCompany.location && companyData.location) updateData.location = companyData.location;
+            if (!existingCompany.academyTrustName && companyData.academyTrustName) updateData.academyTrustName = companyData.academyTrustName;
+            if (!existingCompany.ext && companyData.ext) updateData.ext = companyData.ext;
+            if (!existingCompany.notes && companyData.notes) updateData.notes = companyData.notes;
+            // New fields - merge only if empty
+            if (!existingCompany.urn && companyData.urn) updateData.urn = companyData.urn;
+            if (!existingCompany.street && companyData.street) updateData.street = companyData.street;
+            if (!existingCompany.postcode && companyData.postcode) updateData.postcode = companyData.postcode;
+            if (!existingCompany.county && companyData.county) updateData.county = companyData.county;
+            if (!existingCompany.schoolType && companyData.schoolType) updateData.schoolType = companyData.schoolType;
+            if (existingCompany.schoolCapacity === null && schoolCapacity !== null) updateData.schoolCapacity = schoolCapacity;
+            if (existingCompany.pupilHeadcount === null && pupilHeadcount !== null) updateData.pupilHeadcount = pupilHeadcount;
+            // NEVER overwrite budgetStatus for merge mode
 
-            await storage.updateCompany(existing.id, updateData);
-            results.updated++;
-
-            // Also create IT Manager contact if they have the info
-            if (companyData.itManagerName && companyData.itManagerEmail) {
-              try {
-                await storage.createContact({
-                  companyId: existing.id,
-                  name: companyData.itManagerName,
-                  email: companyData.itManagerEmail,
-                  role: "IT Manager",
-                  phone: null,
-                });
-              } catch {
-                // Contact might already exist
-              }
+            if (Object.keys(updateData).length > 0) {
+              await storage.updateCompany(existingCompany.id, updateData);
+              results.updated++;
+            } else {
+              results.skipped++;
+              results.duplicates.push({
+                name: trimmedName,
+                location: trimmedLocation,
+                existingId: existingCompany.id,
+                hasNewInfo,
+                reason: matchReason,
+              });
             }
           } else {
+            // skip mode
             results.skipped++;
             results.duplicates.push({
               name: trimmedName,
               location: trimmedLocation,
-              existingId: existing.id,
+              existingId: existingCompany.id,
               hasNewInfo,
-              reason: "duplicate_in_database",
+              reason: matchReason,
             });
           }
         } else {
+          // No duplicate found - CREATE new company
+
           // Auto-link trust from academyTrustName
           let trustId: string | null = null;
           let parentCompanyId: string | null = null;
           if (companyData.academyTrustName?.trim()) {
             const trustName = companyData.academyTrustName.trim();
-            // Try new trust-as-company system first
             let trustCompany = await storage.findTrustCompanyByName(trustName);
             if (!trustCompany) {
-              // Create trust as company with isTrust=true
               trustCompany = await storage.createCompany({
                 name: trustName,
                 isTrust: true,
@@ -488,7 +522,6 @@ export async function registerRoutes(
               });
             }
             parentCompanyId = trustCompany.id;
-            // Also link legacy trust for backward compat
             let trust = await storage.getTrustByName(trustName);
             if (!trust) {
               trust = await storage.createTrust({ name: trustName });
@@ -496,7 +529,6 @@ export async function registerRoutes(
             trustId = trust.id;
           }
 
-          // Create new company with import batch ID
           const company = await storage.createCompany({
             name: trimmedName,
             website: companyData.website || null,
@@ -513,8 +545,16 @@ export async function registerRoutes(
             budgetStatus: companyData.budgetStatus || "0-unqualified",
             trustId,
             parentCompanyId,
+            urn: companyData.urn || null,
+            street: companyData.street || null,
+            postcode: companyData.postcode || null,
+            county: companyData.county || null,
+            schoolType: companyData.schoolType || null,
+            schoolCapacity,
+            pupilHeadcount,
           });
 
+          companyId = company.id;
           results.imported++;
 
           // Auto-create IT Manager as first contact
@@ -530,6 +570,38 @@ export async function registerRoutes(
             } catch {
               // Ignore contact creation errors
             }
+          }
+        }
+
+        // Create headteacher contact (for both new and merged companies)
+        const headName = [companyData.headFirstName, companyData.headLastName]
+          .filter(Boolean)
+          .map((s: string) => s.trim())
+          .join(" ");
+
+        if (headName) {
+          // Check if headteacher already exists for this company
+          const existingContacts = await storage.getContactsByCompany(companyId);
+          const headExists = existingContacts.some((c) => {
+            if (!c.name) return false;
+            return c.name.toLowerCase().trim() === headName.toLowerCase().trim();
+          });
+
+          if (!headExists) {
+            try {
+              await storage.createContact({
+                companyId,
+                name: headName,
+                email: "",
+                role: companyData.headJobTitle?.trim() || "Headteacher",
+                phone: normalizedPhone || null,
+              });
+              results.contactsCreated++;
+            } catch {
+              // Ignore contact creation errors
+            }
+          } else {
+            results.contactsSkipped++;
           }
         }
       }
@@ -733,10 +805,155 @@ export async function registerRoutes(
         }
       }
 
+      // Pass 3: Group by normalized website (only for companies not already merged)
+      const websiteGroups = new Map<string, CompanyEntry[]>();
+      for (const company of allCompanies) {
+        if (mergedIds.has(company.id)) continue;
+        const normalized = normalizeWebsite(company.website);
+        if (!normalized) continue;
+        const group = websiteGroups.get(normalized) || [];
+        group.push(company);
+        websiteGroups.set(normalized, group);
+      }
+
+      for (const [, group] of Array.from(websiteGroups.entries())) {
+        if (group.length <= 1) continue;
+        // Only auto-merge if phones match or one has no phone
+        const normalizedPhones = group.map((c: CompanyEntry) => normalizePhone(c.phone));
+        const uniquePhones = new Set(normalizedPhones.filter((p: string) => p));
+        if (uniquePhones.size > 1) continue; // Different phones, skip
+
+        const scored = await Promise.all(group.map(async (c) => ({
+          company: c,
+          score: await storage.scoreCompany(c),
+        })));
+        scored.sort((a, b) => b.score - a.score || new Date(a.company.createdAt).getTime() - new Date(b.company.createdAt).getTime());
+
+        const keeper = scored[0].company;
+        for (let i = 1; i < scored.length; i++) {
+          const duplicate = scored[i].company;
+          if (mergedIds.has(duplicate.id)) continue;
+
+          const updates: Record<string, unknown> = {};
+          if (!keeper.phone && duplicate.phone) updates.phone = duplicate.phone;
+          if (!keeper.location && duplicate.location) updates.location = duplicate.location;
+          if (!keeper.itManagerName && duplicate.itManagerName) updates.itManagerName = duplicate.itManagerName;
+          if (!keeper.itManagerEmail && duplicate.itManagerEmail) updates.itManagerEmail = duplicate.itManagerEmail;
+          if (!keeper.notes && duplicate.notes) updates.notes = duplicate.notes;
+          if (!keeper.academyTrustName && duplicate.academyTrustName) updates.academyTrustName = duplicate.academyTrustName;
+          if (!keeper.ext && duplicate.ext) updates.ext = duplicate.ext;
+
+          if (Object.keys(updates).length > 0) {
+            await storage.updateCompany(keeper.id, updates);
+          }
+
+          await storage.mergeCompanies(keeper.id, duplicate.id);
+          mergedIds.add(duplicate.id);
+          mergeDetails.push({ kept: keeper.name, deleted: duplicate.name, reason: "duplicate_website" });
+        }
+      }
+
       res.json({ merged: mergeDetails.length, details: mergeDetails });
     } catch (error) {
       console.error("Merge duplicates error:", error);
       res.status(500).json({ error: "Failed to merge duplicates" });
+    }
+  });
+
+  // Comprehensive cleanup: normalize phones + merge all duplicates in one call
+  app.post("/api/cleanup/full", isAuthenticated, async (req, res) => {
+    try {
+      // Step 1: Normalize phones
+      const allCompanies = await storage.getCompanies();
+      let phonesFormatted = 0;
+      for (const company of allCompanies) {
+        if (!company.phone) continue;
+        const normalized = normalizePhone(company.phone);
+        if (normalized && normalized !== company.phone) {
+          await storage.updateCompany(company.id, { phone: normalized });
+          phonesFormatted++;
+        }
+      }
+
+      // Step 2: Merge duplicates (phone → name+location → website)
+      const mergeResponse = await fetch(`http://localhost:${(httpServer.address() as any)?.port || 5000}/api/cleanup/merge-duplicates`, {
+        method: "POST",
+        headers: { cookie: req.headers.cookie || "" },
+      });
+      const mergeResult = await mergeResponse.json();
+
+      res.json({
+        phonesFormatted,
+        merged: mergeResult.merged || 0,
+        details: mergeResult.details || [],
+      });
+    } catch (error) {
+      console.error("Full cleanup error:", error);
+      res.status(500).json({ error: "Failed to run full cleanup" });
+    }
+  });
+
+  // Call Queue endpoint - get prioritized list of companies to call
+  app.get("/api/call-queue", isAuthenticated, async (req, res) => {
+    try {
+      const allCompanies = await storage.getCompanies();
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // Filter and score companies for call queue
+      const queue: { company: typeof allCompanies[0]; priority: number; reason: string }[] = [];
+
+      for (const company of allCompanies) {
+        // Skip closed won/lost (account-active or quoted-lost)
+        if (company.budgetStatus === "4-account-active" || company.budgetStatus === "3b-quoted-lost") continue;
+
+        let priority = 0;
+        let reason = "";
+
+        const lastContact = company.lastContactDate ? new Date(company.lastContactDate) : null;
+        const daysSinceContact = lastContact
+          ? Math.floor((today.getTime() - lastContact.getTime()) / (1000 * 60 * 60 * 24))
+          : 999;
+
+        // Priority 1: Quoted but no follow-up (3-quote-presented with no contact in 3+ days)
+        if (company.budgetStatus === "3-quote-presented" && daysSinceContact >= 3) {
+          priority = 100 + daysSinceContact;
+          reason = "Quote follow-up needed";
+        }
+        // Priority 2: Intent leads not contacted in 5+ days
+        else if (company.budgetStatus === "2-intent" && daysSinceContact >= 5) {
+          priority = 80 + daysSinceContact;
+          reason = "Intent lead - needs contact";
+        }
+        // Priority 3: Qualified leads not contacted in 7+ days
+        else if (company.budgetStatus === "1-qualified" && daysSinceContact >= 7) {
+          priority = 60 + daysSinceContact;
+          reason = "Qualified lead - overdue";
+        }
+        // Priority 4: Unqualified with no contact in 14+ days
+        else if (company.budgetStatus === "0-unqualified" && daysSinceContact >= 14) {
+          priority = 40 + Math.min(daysSinceContact, 60);
+          reason = "Needs qualification";
+        }
+        // Priority 5: Any company never contacted
+        else if (!lastContact) {
+          priority = 50;
+          reason = "Never contacted";
+        }
+        else {
+          continue; // Skip - recently contacted
+        }
+
+        queue.push({ company, priority, reason });
+      }
+
+      // Sort by priority descending
+      queue.sort((a, b) => b.priority - a.priority);
+
+      res.json(queue.slice(0, 100)); // Cap at 100 items
+    } catch (error) {
+      console.error("Call queue error:", error);
+      res.status(500).json({ error: "Failed to generate call queue" });
     }
   });
 
@@ -1273,6 +1490,42 @@ export async function registerRoutes(
       res.json(deals);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch deals needing follow-up" });
+    }
+  });
+
+  // Dashboard: hot leads count (intent status, not trust)
+  app.get("/api/dashboard/hot-leads", isAuthenticated, async (req, res) => {
+    try {
+      const allCompanies = await storage.getCompanies();
+      const hotLeads = allCompanies.filter(
+        (c) => !c.isTrust && c.budgetStatus === "2-intent"
+      );
+      res.json({ count: hotLeads.length, companies: hotLeads.slice(0, 10).map(c => ({ id: c.id, name: c.name })) });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch hot leads" });
+    }
+  });
+
+  // Dashboard: recent activity (last 10 activities across all companies)
+  app.get("/api/dashboard/recent-activity", isAuthenticated, async (req, res) => {
+    try {
+      const result = await db.select({
+        id: activities.id,
+        companyId: activities.companyId,
+        type: activities.type,
+        note: activities.note,
+        outcome: activities.outcome,
+        quoteValue: activities.quoteValue,
+        createdAt: activities.createdAt,
+        companyName: companies.name,
+      })
+        .from(activities)
+        .leftJoin(companies, eq(activities.companyId, companies.id))
+        .orderBy(desc(activities.createdAt))
+        .limit(10);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch recent activity" });
     }
   });
 

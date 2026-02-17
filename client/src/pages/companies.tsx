@@ -129,7 +129,9 @@ type DuplicateWarning = {
 
 export default function Companies() {
   const searchParams = useSearch();
-  const urlType = new URLSearchParams(searchParams).get("type");
+  const urlParams = new URLSearchParams(searchParams);
+  const urlType = urlParams.get("type");
+  const urlStatus = urlParams.get("status");
   const [, navigate] = useLocation();
 
   const [search, setSearch] = useState("");
@@ -143,7 +145,7 @@ export default function Companies() {
   const [perPage, setPerPage] = useState(25);
 
   // Filters
-  const [leadStatusFilter, setLeadStatusFilter] = useState<string>("all");
+  const [leadStatusFilter, setLeadStatusFilter] = useState<string>(urlStatus === "intent" ? "2-intent" : "all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>(urlType === "trusts" ? "trusts" : "all");
@@ -155,6 +157,13 @@ export default function Companies() {
     const newType = urlType === "trusts" ? "trusts" : "all";
     setTypeFilter(newType);
   }, [urlType]);
+
+  // Sync lead status filter with URL param
+  useEffect(() => {
+    if (urlStatus === "intent") {
+      setLeadStatusFilter("2-intent");
+    }
+  }, [urlStatus]);
 
   const { toast } = useToast();
 
@@ -286,7 +295,7 @@ export default function Companies() {
 
   // Filter and sort companies (not used when typeFilter === "trusts")
   const filteredCompanies = useMemo(() => {
-    if (!companies || typeFilter === "trusts") return [];
+    if (!companies || typeFilter === "trusts") return [] as CompanyWithStage[];
 
     let filtered = companies;
 
@@ -304,11 +313,12 @@ export default function Companies() {
 
     // Type filter - trusts view uses trustCompaniesData directly (see trustFilteredCompanies)
     if (typeFilter === "schools") {
-      filtered = filtered.filter((c) => !trustCompanyIds.has(c.id));
+      filtered = filtered.filter((c) => !c.isTrust);
     } else if (typeFilter === "independent") {
-      filtered = filtered.filter((c) => !trustCompanyIds.has(c.id) && !c.academyTrustName);
-    } else if (typeFilter !== "trusts") {
-      // "all" - no filter needed
+      filtered = filtered.filter((c) => !c.isTrust && !c.academyTrustName);
+    } else if (typeFilter === "all") {
+      // Default: hide trust companies from main view, show only schools
+      filtered = filtered.filter((c) => !c.isTrust);
     }
 
     // Lead status filter
@@ -978,16 +988,16 @@ export default function Companies() {
                 <DropdownMenuLabel>Filter by Type</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => { setTypeFilter("all"); setCurrentPage(1); }}>
-                  All types
+                  All Schools
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setTypeFilter("schools"); setCurrentPage(1); }}>
-                  Schools Only
+                <DropdownMenuItem onClick={() => { setTypeFilter("independent"); setCurrentPage(1); }}>
+                  Independent Schools
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setTypeFilter("trusts"); setCurrentPage(1); }}>
                   Trusts Only
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => { setTypeFilter("independent"); setCurrentPage(1); }}>
-                  Independent Schools
+                <DropdownMenuItem onClick={() => { setTypeFilter("everything"); setCurrentPage(1); }}>
+                  Everything (incl. Trusts)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

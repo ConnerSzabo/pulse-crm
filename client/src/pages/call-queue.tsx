@@ -1,0 +1,417 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Link } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Phone,
+  SkipForward,
+  ExternalLink,
+  ListTodo,
+  CheckCircle2,
+  MapPin,
+  Globe,
+  Building2,
+  Clock,
+  ChevronRight,
+  PhoneCall,
+  PhoneOff,
+  RefreshCw,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { format, formatDistanceToNow } from "date-fns";
+import type { Company, PipelineStage, Trust } from "@shared/schema";
+
+type QueueItem = {
+  company: Company & { stage?: PipelineStage; trust?: Trust };
+  priority: number;
+  reason: string;
+};
+
+const LEAD_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  "0-unqualified": { label: "Unqualified", color: "bg-gray-500" },
+  "1-qualified": { label: "Qualified", color: "bg-blue-500" },
+  "2-intent": { label: "Intent", color: "bg-purple-500" },
+  "3-quote-presented": { label: "Quote Presented", color: "bg-amber-500" },
+  "3b-quoted-lost": { label: "Quoted Lost", color: "bg-red-500" },
+  "4-account-active": { label: "Account Active", color: "bg-green-500" },
+};
+
+const CALL_OUTCOMES = [
+  { value: "Reception / Voicemail", label: "Reception / Voicemail" },
+  { value: "Decision Maker Details", label: "Decision Maker Details" },
+  { value: "Connected to DM", label: "Connected to DM" },
+];
+
+export default function CallQueue() {
+  const { toast } = useToast();
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  const [logCallOpen, setLogCallOpen] = useState(false);
+  const [callNote, setCallNote] = useState("");
+  const [callOutcome, setCallOutcome] = useState("");
+
+  const { data: queue, isLoading } = useQuery<QueueItem[]>({
+    queryKey: ["/api/call-queue"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/call-queue");
+      return res.json();
+    },
+  });
+
+  const logCallMutation = useMutation({
+    mutationFn: async ({ companyId, note, outcome }: { companyId: string; note: string; outcome: string }) => {
+      return apiRequest("POST", `/api/companies/${companyId}/activities`, {
+        type: "call",
+        note,
+        outcome,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      toast({ title: "Call logged", description: "Activity recorded successfully" });
+    },
+  });
+
+  // Filter out completed/skipped items
+  const activeQueue = queue?.filter(
+    (item) => !completedIds.has(item.company.id) && !skippedIds.has(item.company.id)
+  ) || [];
+
+  const totalItems = queue?.length || 0;
+  const processed = completedIds.size + skippedIds.size;
+  const progressPercent = totalItems > 0 ? (processed / totalItems) * 100 : 0;
+
+  const currentItem = activeQueue[0];
+
+  const handleLogCall = () => {
+    if (!currentItem) return;
+    setLogCallOpen(true);
+    setCallNote("");
+    setCallOutcome("");
+  };
+
+  const handleSubmitCall = () => {
+    if (!currentItem || !callOutcome) return;
+    logCallMutation.mutate(
+      { companyId: currentItem.company.id, note: callNote, outcome: callOutcome },
+      {
+        onSuccess: () => {
+          setCompletedIds((prev) => new Set(prev).add(currentItem.company.id));
+          setLogCallOpen(false);
+        },
+      }
+    );
+  };
+
+  const handleSkip = () => {
+    if (!currentItem) return;
+    setSkippedIds((prev) => new Set(prev).add(currentItem.company.id));
+  };
+
+  const handleReset = () => {
+    setCompletedIds(new Set());
+    setSkippedIds(new Set());
+    setCurrentIndex(0);
+    queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-8 w-64 dark:bg-[#3d4254]" />
+        <Skeleton className="h-4 w-96 dark:bg-[#3d4254]" />
+        <Skeleton className="h-64 w-full dark:bg-[#3d4254]" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6 bg-gray-50 dark:bg-[#1a1d29] min-h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">Call Queue</h1>
+          <p className="text-muted-foreground dark:text-[#94a3b8]">
+            {activeQueue.length} schools to call &middot; {completedIds.size} called &middot; {skippedIds.size} skipped
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleReset} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Reset Queue
+        </Button>
+      </div>
+
+      {/* Progress Bar */}
+      <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+        <CardContent className="pt-4 pb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium dark:text-white">Today's Progress</span>
+            <span className="text-sm text-muted-foreground dark:text-[#94a3b8]">
+              {processed} / {totalItems}
+            </span>
+          </div>
+          <Progress value={progressPercent} className="h-2" />
+          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground dark:text-[#64748b]">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3 text-green-500" /> {completedIds.size} called
+            </span>
+            <span className="flex items-center gap-1">
+              <SkipForward className="h-3 w-3 text-amber-500" /> {skippedIds.size} skipped
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Current School Card */}
+      {currentItem ? (
+        <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[#0091AE]/10 flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-[#0091AE]" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg dark:text-white">{currentItem.company.name}</CardTitle>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge
+                      className={`text-[10px] text-white ${LEAD_STATUS_LABELS[currentItem.company.budgetStatus || "0-unqualified"]?.color || "bg-gray-500"}`}
+                    >
+                      {LEAD_STATUS_LABELS[currentItem.company.budgetStatus || "0-unqualified"]?.label || "Unknown"}
+                    </Badge>
+                    <span className="text-xs text-amber-500 font-medium">{currentItem.reason}</span>
+                  </div>
+                </div>
+              </div>
+              <Link href={`/company/${currentItem.company.id}`}>
+                <Button variant="ghost" size="sm" className="dark:text-[#94a3b8] dark:hover:text-white">
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Open
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {/* Phone */}
+              <div className="flex items-center gap-2 text-sm">
+                <Phone className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
+                <span className="dark:text-white font-medium">
+                  {currentItem.company.phone || "No phone"}
+                </span>
+                {currentItem.company.ext && (
+                  <span className="text-muted-foreground dark:text-[#64748b]">ext. {currentItem.company.ext}</span>
+                )}
+              </div>
+              {/* Location */}
+              <div className="flex items-center gap-2 text-sm">
+                <MapPin className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
+                <span className="dark:text-[#94a3b8]">{currentItem.company.location || "No location"}</span>
+              </div>
+              {/* Website */}
+              <div className="flex items-center gap-2 text-sm">
+                <Globe className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
+                {currentItem.company.website ? (
+                  <a
+                    href={currentItem.company.website.startsWith("http") ? currentItem.company.website : `https://${currentItem.company.website}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#0091AE] hover:underline truncate"
+                  >
+                    {currentItem.company.website}
+                  </a>
+                ) : (
+                  <span className="dark:text-[#64748b]">No website</span>
+                )}
+              </div>
+            </div>
+
+            {/* Additional info */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm">
+              {currentItem.company.decisionMakerName && (
+                <div>
+                  <span className="text-muted-foreground dark:text-[#64748b]">Decision Maker: </span>
+                  <span className="dark:text-white">{currentItem.company.decisionMakerName}</span>
+                </div>
+              )}
+              {currentItem.company.itManagerName && (
+                <div>
+                  <span className="text-muted-foreground dark:text-[#64748b]">IT Manager: </span>
+                  <span className="dark:text-white">{currentItem.company.itManagerName}</span>
+                </div>
+              )}
+              {currentItem.company.lastContactDate && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground dark:text-[#64748b]" />
+                  <span className="text-muted-foreground dark:text-[#64748b]">Last contact: </span>
+                  <span className="dark:text-white">
+                    {formatDistanceToNow(new Date(currentItem.company.lastContactDate), { addSuffix: true })}
+                  </span>
+                </div>
+              )}
+              {currentItem.company.lastQuoteValue && (
+                <div>
+                  <span className="text-muted-foreground dark:text-[#64748b]">Last Quote: </span>
+                  <span className="dark:text-white font-medium">
+                    £{Number(currentItem.company.lastQuoteValue).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {currentItem.company.notes && (
+                <div className="md:col-span-3">
+                  <span className="text-muted-foreground dark:text-[#64748b]">Notes: </span>
+                  <span className="dark:text-[#94a3b8]">{currentItem.company.notes}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-[#3d4254]">
+              <Button onClick={handleLogCall} className="bg-[#0091AE] hover:bg-[#007a94]">
+                <PhoneCall className="h-4 w-4 mr-2" />
+                Log Call
+              </Button>
+              <Button variant="outline" onClick={handleSkip} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
+                <SkipForward className="h-4 w-4 mr-2" />
+                Skip
+              </Button>
+              <Link href={`/company/${currentItem.company.id}`}>
+                <Button variant="outline" className="dark:border-[#3d4254] dark:text-[#94a3b8]">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open School
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <CardContent className="py-12 text-center">
+            <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold dark:text-white mb-2">Queue Complete!</h3>
+            <p className="text-muted-foreground dark:text-[#94a3b8]">
+              You've worked through all {totalItems} schools. {completedIds.size} calls logged, {skippedIds.size} skipped.
+            </p>
+            <Button onClick={handleReset} variant="outline" className="mt-4 dark:border-[#3d4254]">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Start Over
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upcoming Queue List */}
+      {activeQueue.length > 1 && (
+        <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground dark:text-[#94a3b8]">
+              Up Next ({activeQueue.length - 1} remaining)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1">
+              {activeQueue.slice(1, 11).map((item, idx) => (
+                <div
+                  key={item.company.id}
+                  className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs text-muted-foreground dark:text-[#64748b] w-5 text-right">{idx + 2}</span>
+                    <span className="text-sm font-medium dark:text-white truncate">{item.company.name}</span>
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] dark:bg-[#3d4254] dark:text-[#94a3b8]"
+                    >
+                      {item.reason}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground dark:text-[#64748b]">
+                    {item.company.location && <span>{item.company.location}</span>}
+                    <ChevronRight className="h-3 w-3" />
+                  </div>
+                </div>
+              ))}
+              {activeQueue.length > 11 && (
+                <p className="text-xs text-muted-foreground dark:text-[#64748b] text-center pt-2">
+                  + {activeQueue.length - 11} more
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Log Call Dialog */}
+      <Dialog open={logCallOpen} onOpenChange={setLogCallOpen}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">
+              Log Call - {currentItem?.company.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8]">Outcome *</label>
+              <Select value={callOutcome} onValueChange={setCallOutcome}>
+                <SelectTrigger className="mt-1 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                  <SelectValue placeholder="Select outcome..." />
+                </SelectTrigger>
+                <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                  {CALL_OUTCOMES.map((o) => (
+                    <SelectItem key={o.value} value={o.value} className="dark:text-white dark:focus:bg-[#3d4254]">
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8]">Notes</label>
+              <Textarea
+                value={callNote}
+                onChange={(e) => setCallNote(e.target.value)}
+                placeholder="What happened on the call..."
+                className="mt-1 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLogCallOpen(false)} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitCall}
+              disabled={!callOutcome || logCallMutation.isPending}
+              className="bg-[#0091AE] hover:bg-[#007a94]"
+            >
+              {logCallMutation.isPending ? "Logging..." : "Log Call"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

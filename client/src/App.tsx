@@ -22,6 +22,7 @@ const ContactDetail = lazy(() => import("@/pages/contact-detail"));
 const Pipeline = lazy(() => import("@/pages/pipeline"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const ImportCSV = lazy(() => import("@/pages/import-csv"));
+const CallQueue = lazy(() => import("@/pages/call-queue"));
 const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -63,6 +64,7 @@ function Router() {
         <Route path="/contact/:id" component={ContactDetail} />
         <Route path="/pipeline" component={Pipeline} />
         <Route path="/tasks" component={TasksPage} />
+        <Route path="/call-queue" component={CallQueue} />
         <Route path="/call-analytics" component={CallAnalytics} />
         <Route path="/trusts" component={TrustsRedirect} />
         <Route path="/trusts/:id" component={TrustDetailRedirect} />

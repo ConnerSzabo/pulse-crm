@@ -1057,6 +1057,24 @@ export default function CompanyDetail() {
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <MapPin className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Postcode" field="postcode" value={company.postcode} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <MapPin className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="Street" field="street" value={company.street} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <MapPin className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="County" field="county" value={company.county} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
                   <Landmark className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-medium text-[#64748b] uppercase tracking-wider mb-1">Academy Trust</p>
@@ -1087,9 +1105,39 @@ export default function CompanyDetail() {
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
                   <Tag className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
+                    <EditableField label="School Type" field="schoolType" value={company.schoolType} />
+                  </div>
+                </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Tag className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
                     <EditableField label="Industry" field="industry" value={company.industry} type="select" />
                   </div>
                 </div>
+                <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                  <Hash className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <EditableField label="URN" field="urn" value={company.urn} />
+                  </div>
+                </div>
+                {(company.schoolCapacity !== null && company.schoolCapacity !== undefined) && (
+                  <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                    <Users className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Capacity</p>
+                      <p className="text-[13px] font-medium text-white">{company.schoolCapacity?.toLocaleString()} pupils</p>
+                    </div>
+                  </div>
+                )}
+                {(company.pupilHeadcount !== null && company.pupilHeadcount !== undefined) && (
+                  <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
+                    <Users className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Headcount</p>
+                      <p className="text-[13px] font-medium text-white">{company.pupilHeadcount?.toLocaleString()} pupils</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-start gap-2.5 py-2 border-b border-[#3d4254]/50">
                   <Calendar className="h-3.5 w-3.5 text-[#64748b] mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">

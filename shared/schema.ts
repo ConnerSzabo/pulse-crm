@@ -94,6 +94,14 @@ export const companies = pgTable("companies", {
   buyerHonestyScore: text("buyer_honesty_score"), // Good / Questionable / Time Waster
   nextBudgetCycle: timestamp("next_budget_cycle"),
   importBatchId: varchar("import_batch_id"),
+  // School-specific fields
+  urn: text("urn"),
+  street: text("street"),
+  postcode: text("postcode"),
+  county: text("county"),
+  schoolType: text("school_type"),
+  schoolCapacity: integer("school_capacity"),
+  pupilHeadcount: integer("pupil_headcount"),
 }, (table) => [
   uniqueIndex("companies_name_location_unique_idx").on(
     sql`lower(trim(${table.name}))`,

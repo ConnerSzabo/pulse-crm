@@ -9,6 +9,7 @@ import {
   HelpCircle,
   ChevronDown,
   Phone,
+  PhoneCall,
   Landmark
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
@@ -39,6 +40,11 @@ const mainMenuItems = [
     title: "Tasks",
     url: "/tasks",
     icon: ListTodo,
+  },
+  {
+    title: "Call Queue",
+    url: "/call-queue",
+    icon: PhoneCall,
   },
   {
     title: "Call Analytics",

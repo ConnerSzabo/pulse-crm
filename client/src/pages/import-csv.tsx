@@ -50,6 +50,18 @@ type ParsedRow = {
   itManagerName: string;
   itManagerEmail: string;
   budgetStatus: string;
+  // New school-specific fields
+  urn: string;
+  street: string;
+  postcode: string;
+  county: string;
+  schoolType: string;
+  schoolCapacity: string;
+  pupilHeadcount: string;
+  // Headteacher fields
+  headFirstName: string;
+  headLastName: string;
+  headJobTitle: string;
 };
 
 type ImportResult = {
@@ -58,6 +70,9 @@ type ImportResult = {
   updated: number;
   duplicates: { name: string; location?: string; existingId: string; hasNewInfo: boolean; reason?: string }[];
   importBatchId?: string;
+  contactsCreated?: number;
+  contactsSkipped?: number;
+  phonesFormatted?: number;
 };
 
 type UpdateMode = "skip" | "merge" | "overwrite";
@@ -227,11 +242,11 @@ export default function ImportCSV() {
       const header = parseCSVLine(lines[0], delimiter).map((h) => h.trim().toLowerCase());
 
       const nameIndex = header.findIndex((h) =>
-        h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school") || h === "name"
+        h.includes("establishmentname") || h.includes("company name") || h.includes("company") || h.includes("school name") || h === "name" || h === "school"
       );
       const websiteIndex = header.findIndex((h) => h.includes("website"));
-      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("tel") || h.includes("mobile") || h.includes("cell"));
-      const locationIndex = header.findIndex((h) => h.includes("location") || h.includes("city") || h.includes("address"));
+      const phoneIndex = header.findIndex((h) => h.includes("phone") || h.includes("telephone") || h.includes("tel") || h.includes("mobile") || h.includes("cell"));
+      const locationIndex = header.findIndex((h) => h.includes("town") || h.includes("location") || h.includes("city"));
       const trustIndex = header.findIndex((h) => h.includes("trust") || h.includes("academytrustname"));
       const extIndex = header.findIndex((h) => h === "ext" || h.includes("extension"));
       const notesIndex = header.findIndex((h) => h === "notes" || h.includes("note"));
@@ -242,11 +257,23 @@ export default function ImportCSV() {
         h.includes("it manager email") || h.includes("itmanageremail") || h === "it manager email"
       );
       const industryIndex = header.findIndex((h) =>
-        h === "industry" || h.includes("school type") || h.includes("schooltype")
+        h === "industry" || h === "phase"
       );
       const leadStatusIndex = header.findIndex((h) =>
         h.includes("lead status") || h.includes("leadstatus") || h.includes("budget status") || h.includes("budgetstatus") || h === "lead_status" || h === "budget_status"
       );
+      // New school-specific fields
+      const urnIndex = header.findIndex((h) => h === "urn" || h.includes("unique reference"));
+      const streetIndex = header.findIndex((h) => h === "street" || h.includes("street address") || h.includes("address1"));
+      const postcodeIndex = header.findIndex((h) => h === "postcode" || h.includes("postal code") || h.includes("zip"));
+      const countyIndex = header.findIndex((h) => h === "county" || h === "la" || h === "la (name)" || h.includes("la name") || h.includes("local authority"));
+      const schoolTypeIndex = header.findIndex((h) => h === "type" || h === "typeofe" || h.includes("type of e") || h.includes("school type") || h.includes("schooltype"));
+      const capacityIndex = header.findIndex((h) => h.includes("school capacity") || h.includes("schoolcapacity") || h === "capacity");
+      const headcountIndex = header.findIndex((h) => h.includes("pupil headcount") || h.includes("pupilheadcount") || h === "headcount" || h.includes("number of pupils"));
+      // Headteacher fields
+      const headFirstNameIndex = header.findIndex((h) => h.includes("head first") || h.includes("headfirst") || h === "head first name");
+      const headLastNameIndex = header.findIndex((h) => h.includes("head last") || h.includes("headlast") || h === "head last name");
+      const headJobTitleIndex = header.findIndex((h) => h.includes("head job") || h.includes("headjob") || h.includes("head title") || h === "head job title");
 
       if (nameIndex === -1) {
         toast({ title: "CSV must have a column with company/school name (e.g., 'EstablishmentName', 'Company Name')", variant: "destructive" });
@@ -259,6 +286,9 @@ export default function ImportCSV() {
         const name = values[nameIndex]?.trim();
 
         if (name) {
+          // Use county field, fall back to LA field if county not found
+          const county = countyIndex !== -1 ? values[countyIndex]?.trim() || "" : "";
+
           rows.push({
             name,
             website: websiteIndex !== -1 ? values[websiteIndex]?.trim() || "" : "",
@@ -271,6 +301,16 @@ export default function ImportCSV() {
             itManagerName: itManagerNameIndex !== -1 ? values[itManagerNameIndex]?.trim() || "" : "",
             itManagerEmail: itManagerEmailIndex !== -1 ? values[itManagerEmailIndex]?.trim() || "" : "",
             budgetStatus: leadStatusIndex !== -1 ? values[leadStatusIndex]?.trim() || "0-unqualified" : "0-unqualified",
+            urn: urnIndex !== -1 ? values[urnIndex]?.trim() || "" : "",
+            street: streetIndex !== -1 ? values[streetIndex]?.trim() || "" : "",
+            postcode: postcodeIndex !== -1 ? values[postcodeIndex]?.trim() || "" : "",
+            county,
+            schoolType: schoolTypeIndex !== -1 ? values[schoolTypeIndex]?.trim() || "" : "",
+            schoolCapacity: capacityIndex !== -1 ? values[capacityIndex]?.trim() || "" : "",
+            pupilHeadcount: headcountIndex !== -1 ? values[headcountIndex]?.trim() || "" : "",
+            headFirstName: headFirstNameIndex !== -1 ? values[headFirstNameIndex]?.trim() || "" : "",
+            headLastName: headLastNameIndex !== -1 ? values[headLastNameIndex]?.trim() || "" : "",
+            headJobTitle: headJobTitleIndex !== -1 ? values[headJobTitleIndex]?.trim() || "" : "",
           });
         }
       }
@@ -297,6 +337,9 @@ export default function ImportCSV() {
       skipped: 0,
       updated: 0,
       duplicates: [],
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      phonesFormatted: 0,
     };
 
     try {
@@ -336,6 +379,9 @@ export default function ImportCSV() {
         combinedResult.imported += batchResult.imported;
         combinedResult.skipped += batchResult.skipped;
         combinedResult.updated += batchResult.updated;
+        combinedResult.contactsCreated = (combinedResult.contactsCreated || 0) + (batchResult.contactsCreated || 0);
+        combinedResult.contactsSkipped = (combinedResult.contactsSkipped || 0) + (batchResult.contactsSkipped || 0);
+        combinedResult.phonesFormatted = (combinedResult.phonesFormatted || 0) + (batchResult.phonesFormatted || 0);
         if (batchResult.duplicates) {
           combinedResult.duplicates.push(...batchResult.duplicates);
         }
@@ -390,6 +436,9 @@ export default function ImportCSV() {
       skipped: 0,
       updated: 0,
       duplicates: [],
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      phonesFormatted: 0,
     };
 
     try {
@@ -428,6 +477,9 @@ export default function ImportCSV() {
         combinedResult.imported += batchResult.imported;
         combinedResult.skipped += batchResult.skipped;
         combinedResult.updated += batchResult.updated;
+        combinedResult.contactsCreated = (combinedResult.contactsCreated || 0) + (batchResult.contactsCreated || 0);
+        combinedResult.contactsSkipped = (combinedResult.contactsSkipped || 0) + (batchResult.contactsSkipped || 0);
+        combinedResult.phonesFormatted = (combinedResult.phonesFormatted || 0) + (batchResult.phonesFormatted || 0);
         if (batchResult.duplicates) {
           combinedResult.duplicates.push(...batchResult.duplicates);
         }
@@ -602,39 +654,79 @@ export default function ImportCSV() {
                     <>
                       <Upload className="h-4 w-4 mr-2" />
                       Import {parsedData.length} Schools
+                      {parsedData.some(r => r.headFirstName || r.headLastName) && " + Contacts"}
                     </>
                   )}
                 </Button>
               </div>
 
+              {importing && importProgress.total > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground dark:text-[#94a3b8]">Import Progress</span>
+                    <span className="font-medium dark:text-white">
+                      {Math.min(importProgress.current + BATCH_SIZE, importProgress.total)}/{importProgress.total}
+                      {" "}({Math.round(Math.min(importProgress.current + BATCH_SIZE, importProgress.total) / importProgress.total * 100)}%)
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-[#1a1d29] rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-[#0091AE] h-3 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round(Math.min(importProgress.current + BATCH_SIZE, importProgress.total) / importProgress.total * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {importResult && (
                 <div className="p-4 rounded-lg bg-muted dark:bg-[#2d3142] space-y-3">
-                  <h4 className="font-medium dark:text-white">Import Summary</h4>
+                  <h4 className="font-medium dark:text-white flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    Import Complete!
+                  </h4>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
-                      <p className="text-xs text-muted-foreground dark:text-[#94a3b8]">Total rows in CSV</p>
+                      <p className="text-xs text-muted-foreground dark:text-[#94a3b8]">Processed</p>
                       <p className="text-lg font-semibold dark:text-white">{parsedData.length}</p>
                     </div>
                     <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
-                      <p className="text-xs text-green-600 dark:text-[#10b981]">Successfully imported</p>
+                      <p className="text-xs text-green-600 dark:text-[#10b981]">New companies created</p>
                       <p className="text-lg font-semibold text-green-600 dark:text-[#10b981]">{importResult.imported}</p>
+                    </div>
+                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                      <p className="text-xs text-blue-600 dark:text-[#0091AE]">Existing merged/updated</p>
+                      <p className="text-lg font-semibold text-blue-600 dark:text-[#0091AE]">{importResult.updated}</p>
                     </div>
                     <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
                       <p className="text-xs text-amber-600 dark:text-[#f59e0b]">Skipped (duplicates)</p>
                       <p className="text-lg font-semibold text-amber-600 dark:text-[#f59e0b]">{importResult.skipped}</p>
                     </div>
-                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
-                      <p className="text-xs text-blue-600 dark:text-[#0091AE]">Updated (merged)</p>
-                      <p className="text-lg font-semibold text-blue-600 dark:text-[#0091AE]">{importResult.updated}</p>
-                    </div>
-                    <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
-                      <p className="text-xs text-gray-500 dark:text-[#64748b]">No website</p>
-                      <p className="text-lg font-semibold text-gray-500 dark:text-[#64748b]">
-                        {importResult.duplicates.filter(d => d.reason === "no_website").length}
-                      </p>
-                    </div>
                   </div>
+
+                  {/* Contacts and phone stats */}
+                  {((importResult.contactsCreated || 0) > 0 || (importResult.contactsSkipped || 0) > 0 || (importResult.phonesFormatted || 0) > 0) && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {(importResult.contactsCreated || 0) > 0 && (
+                        <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                          <p className="text-xs text-green-600 dark:text-[#10b981]">Headteacher contacts added</p>
+                          <p className="text-lg font-semibold text-green-600 dark:text-[#10b981]">{importResult.contactsCreated}</p>
+                        </div>
+                      )}
+                      {(importResult.contactsSkipped || 0) > 0 && (
+                        <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                          <p className="text-xs text-gray-500 dark:text-[#64748b]">Contacts skipped (existed)</p>
+                          <p className="text-lg font-semibold text-gray-500 dark:text-[#64748b]">{importResult.contactsSkipped}</p>
+                        </div>
+                      )}
+                      {(importResult.phonesFormatted || 0) > 0 && (
+                        <div className="p-3 rounded-md bg-background dark:bg-[#1a1d29] border dark:border-[#3d4254]">
+                          <p className="text-xs text-gray-500 dark:text-[#64748b]">Phone numbers formatted (+0)</p>
+                          <p className="text-lg font-semibold text-gray-500 dark:text-[#64748b]">{importResult.phonesFormatted}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {importResult.duplicates.length > 0 && (
                     <div className="space-y-1.5">
@@ -693,50 +785,54 @@ export default function ImportCSV() {
                   <Table>
                     <TableHeader>
                       <TableRow className="dark:border-[#3d4254]">
-                        <TableHead className="min-w-[200px] dark:text-[#94a3b8]">Company Name</TableHead>
-                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Website</TableHead>
+                        <TableHead className="min-w-[200px] dark:text-[#94a3b8]">School Name</TableHead>
                         <TableHead className="min-w-[120px] dark:text-[#94a3b8]">Phone</TableHead>
-                        <TableHead className="min-w-[100px] dark:text-[#94a3b8]">Location</TableHead>
+                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Website</TableHead>
+                        <TableHead className="min-w-[100px] dark:text-[#94a3b8]">Town</TableHead>
+                        <TableHead className="min-w-[80px] dark:text-[#94a3b8]">Postcode</TableHead>
+                        <TableHead className="min-w-[100px] dark:text-[#94a3b8]">Type</TableHead>
                         <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Academy Trust</TableHead>
-                        <TableHead className="min-w-[60px] dark:text-[#94a3b8]">Ext</TableHead>
-                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">Notes</TableHead>
-                        <TableHead className="min-w-[120px] dark:text-[#94a3b8]">IT Manager</TableHead>
-                        <TableHead className="min-w-[150px] dark:text-[#94a3b8]">IT Email</TableHead>
+                        <TableHead className="min-w-[120px] dark:text-[#94a3b8]">Headteacher</TableHead>
+                        <TableHead className="min-w-[80px] dark:text-[#94a3b8]">URN</TableHead>
+                        <TableHead className="min-w-[80px] dark:text-[#94a3b8]">Capacity</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {parsedData.slice(0, 10).map((row, index) => (
                         <TableRow key={index} className="dark:border-[#3d4254] dark:hover:bg-[#2d3142]">
                           <TableCell className="font-medium dark:text-white">{row.name}</TableCell>
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.phone || "\u2014"}
+                          </TableCell>
                           <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
                             {row.website || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground dark:text-[#64748b]">
-                            {row.phone || "\u2014"}
+                            {row.location || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground dark:text-[#64748b]">
-                            {row.location || "\u2014"}
+                            {row.postcode || "\u2014"}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground dark:text-[#64748b]">
+                            {row.schoolType || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
                             {row.academyTrustName || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground dark:text-[#64748b]">
-                            {row.ext || "\u2014"}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground truncate max-w-[150px] dark:text-[#64748b]">
-                            {row.notes || "\u2014"}
+                            {[row.headFirstName, row.headLastName].filter(Boolean).join(" ") || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground dark:text-[#64748b]">
-                            {row.itManagerName || "\u2014"}
+                            {row.urn || "\u2014"}
                           </TableCell>
                           <TableCell className="text-muted-foreground dark:text-[#64748b]">
-                            {row.itManagerEmail || "\u2014"}
+                            {row.schoolCapacity || "\u2014"}
                           </TableCell>
                         </TableRow>
                       ))}
                       {parsedData.length > 10 && (
                         <TableRow className="dark:border-[#3d4254]">
-                          <TableCell colSpan={9} className="text-center text-muted-foreground dark:text-[#64748b]">
+                          <TableCell colSpan={10} className="text-center text-muted-foreground dark:text-[#64748b]">
                             ... and {parsedData.length - 10} more rows
                           </TableCell>
                         </TableRow>
@@ -757,19 +853,27 @@ export default function ImportCSV() {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground mb-3 dark:text-[#94a3b8]">
-            Your CSV should have headers that match these fields (case insensitive):
+            Your CSV should have headers that match these fields (case insensitive). Phone numbers with 10 digits will automatically get a leading 0 added.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">EstablishmentName / Company Name</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">SchoolWebsite / Website</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">SchoolPhoneNumber / Phone</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Location</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">AcademyTrustName</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Ext</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Notes</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">School Name / EstablishmentName</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Telephone / Phone</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Website</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Town / Location</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Street</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Postcode</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">County / LA</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Type (school type)</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">URN</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">School Capacity</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Pupil Headcount</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Trust / AcademyTrustName</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Head First Name</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Head Last Name</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Head Job Title</div>
+            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Phase / Industry</div>
             <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Name</div>
             <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">IT Manager Email</div>
-            <div className="bg-muted p-2 rounded dark:bg-[#2d3142] dark:text-[#94a3b8]">Lead Status (optional, defaults to 0-unqualified)</div>
           </div>
         </CardContent>
       </Card>
