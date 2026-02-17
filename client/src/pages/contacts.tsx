@@ -640,7 +640,7 @@ export default function Contacts() {
                           <span className="text-[10px] font-bold text-white">{getInitials(contact.name)}</span>
                         </div>
                         <span className="font-semibold text-[#0091AE] hover:text-[#06b6d4] hover:underline truncate">
-                          {contact.name || "Unnamed"}
+                          {contact.title ? `${contact.title} ` : ""}{contact.name || "Unnamed"}
                         </span>
                       </Link>
                     </td>

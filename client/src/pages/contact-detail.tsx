@@ -123,7 +123,10 @@ export default function ContactDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
+  const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Rev", "Prof"];
+
   const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -297,6 +300,7 @@ export default function ContactDetail() {
 
   const startEditing = () => {
     if (!contact) return;
+    setEditTitle(contact.title || "");
     setEditName(contact.name || "");
     setEditEmail(contact.email);
     setEditPhone(contact.phone || "");
@@ -308,6 +312,7 @@ export default function ContactDetail() {
 
   const saveEditing = () => {
     updateContactMutation.mutate({
+      title: editTitle || null,
       name: editName || null,
       email: editEmail,
       phone: editPhone || null,
@@ -422,7 +427,7 @@ export default function ContactDetail() {
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center mx-auto mb-3 shadow-lg">
             <span className="text-xl font-bold text-white">{getInitials(contact.name)}</span>
           </div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{contact.name || "Unnamed Contact"}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{contact.title ? `${contact.title} ` : ""}{contact.name || "Unnamed Contact"}</h2>
           {contact.role && <p className="text-sm text-gray-500 dark:text-[#94a3b8] mt-0.5">{contact.role}</p>}
 
           {/* Quick Actions */}
@@ -474,6 +479,20 @@ export default function ContactDetail() {
 
               {isEditing ? (
                 <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Title</label>
+                    <Select value={editTitle || "none"} onValueChange={(v) => setEditTitle(v === "none" ? "" : v)}>
+                      <SelectTrigger className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                        <SelectValue placeholder="--" />
+                      </SelectTrigger>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        <SelectItem value="none" className="dark:text-[#94a3b8]">--</SelectItem>
+                        {TITLE_OPTIONS.map((t) => (
+                          <SelectItem key={t} value={t} className="dark:text-white dark:focus:bg-[#2d3142]">{t}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div>
                     <label className="text-[11px] uppercase tracking-[0.5px] text-[#64748b] block mb-1">Name</label>
                     <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" />
@@ -534,6 +553,12 @@ export default function ContactDetail() {
                 <>
                   {/* Contact Info */}
                   <div className="space-y-4">
+                    {contact.title && (
+                      <div className="space-y-1">
+                        <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Title</p>
+                        <p className="text-[14px] font-medium text-white">{contact.title}</p>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Email</p>
                       <a href={`mailto:${contact.email}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1">

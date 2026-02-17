@@ -60,8 +60,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
 
+const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Rev", "Prof"];
+
 const addContactSchema = z.object({
   email: z.string().email("Valid email is required"),
+  title: z.string().optional(),
   name: z.string().optional(),
   phone: z.string().optional(),
   role: z.string().optional(),
@@ -274,7 +277,7 @@ export default function CompanyDetail() {
 
   const contactForm = useForm<z.infer<typeof addContactSchema>>({
     resolver: zodResolver(addContactSchema),
-    defaultValues: { email: "", name: "", phone: "", role: "" },
+    defaultValues: { email: "", title: "", name: "", phone: "", role: "" },
   });
 
   const dealForm = useForm<z.infer<typeof dealSchema>>({
@@ -443,6 +446,7 @@ export default function CompanyDetail() {
       return apiRequest("POST", `/api/companies/${params.id}/contacts`, {
         companyId: params.id,
         email: data.email,
+        title: data.title && data.title !== "none" ? data.title : null,
         name: data.name || null,
         phone: data.phone || null,
         role: data.role || null,
@@ -1672,7 +1676,7 @@ export default function CompanyDetail() {
                           <User className="h-4 w-4 text-[#0091AE]" />
                         </div>
                         <div>
-                          <p className="font-medium text-sm">{contact.name || contact.email}</p>
+                          <p className="font-medium text-sm">{contact.title ? `${contact.title} ` : ""}{contact.name || contact.email}</p>
                           {contact.role && (
                             <p className="text-xs text-muted-foreground">{contact.role}</p>
                           )}
@@ -2246,12 +2250,34 @@ export default function CompanyDetail() {
           </DialogHeader>
           <Form {...contactForm}>
             <form onSubmit={contactForm.handleSubmit((data) => addContactMutation.mutate(data))} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-4 gap-4">
+                <FormField
+                  control={contactForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <Select value={field.value || ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-contact-title">
+                            <SelectValue placeholder="--" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">--</SelectItem>
+                          {TITLE_OPTIONS.map((t) => (
+                            <SelectItem key={t} value={t}>{t}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  )}
+                />
                 <FormField
                   control={contactForm.control}
                   name="name"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="col-span-2">
                       <FormLabel>Name</FormLabel>
                       <FormControl>
                         <Input placeholder="Contact name" data-testid="input-contact-name" {...field} />
@@ -2264,9 +2290,9 @@ export default function CompanyDetail() {
                   name="role"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Role</FormLabel>
+                      <FormLabel>Job Title</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g. IT Manager" data-testid="input-contact-role" {...field} />
+                        <Input placeholder="e.g. Headteacher" data-testid="input-contact-role" {...field} />
                       </FormControl>
                     </FormItem>
                   )}

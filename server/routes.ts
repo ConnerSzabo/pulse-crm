@@ -595,11 +595,24 @@ export async function registerRoutes(
 
           if (!headExists) {
             try {
+              // Determine title (salutation) - from headTitle field, or from headJobTitle if it's a salutation
+              const salutations = ["mr", "mrs", "ms", "miss", "dr", "rev", "prof", "sir", "dame", "lord", "lady"];
+              let contactTitle = companyData.headTitle?.trim() || null;
+              let contactRole = companyData.headJobTitle?.trim() || "Headteacher";
+              // If headJobTitle is actually a salutation, move it to title
+              if (contactRole && salutations.includes(contactRole.toLowerCase())) {
+                if (!contactTitle) contactTitle = contactRole;
+                contactRole = "Headteacher";
+              }
+              // If no job title provided, default to Headteacher
+              if (!contactRole) contactRole = "Headteacher";
+
               await storage.createContact({
                 companyId,
                 name: headName,
                 email: "",
-                role: companyData.headJobTitle?.trim() || "Headteacher",
+                title: contactTitle,
+                role: contactRole,
                 phone: normalizedPhone || null,
               });
               results.contactsCreated++;

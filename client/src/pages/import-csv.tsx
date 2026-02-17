@@ -59,6 +59,7 @@ type ParsedRow = {
   schoolCapacity: string;
   pupilHeadcount: string;
   // Headteacher fields
+  headTitle: string;
   headFirstName: string;
   headLastName: string;
   headJobTitle: string;
@@ -271,9 +272,10 @@ export default function ImportCSV() {
       const capacityIndex = header.findIndex((h) => h.includes("school capacity") || h.includes("schoolcapacity") || h === "capacity");
       const headcountIndex = header.findIndex((h) => h.includes("pupil headcount") || h.includes("pupilheadcount") || h === "headcount" || h.includes("number of pupils"));
       // Headteacher fields
+      const headTitleIndex = header.findIndex((h) => h === "head title" || h === "headtitle" || (h.includes("head") && h.includes("title") && !h.includes("job") && !h.includes("first") && !h.includes("last")));
       const headFirstNameIndex = header.findIndex((h) => h.includes("head first") || h.includes("headfirst") || h === "head first name");
       const headLastNameIndex = header.findIndex((h) => h.includes("head last") || h.includes("headlast") || h === "head last name");
-      const headJobTitleIndex = header.findIndex((h) => h.includes("head job") || h.includes("headjob") || h.includes("head title") || h === "head job title");
+      const headJobTitleIndex = header.findIndex((h) => h.includes("head job") || h.includes("headjob") || h === "head job title");
 
       if (nameIndex === -1) {
         toast({ title: "CSV must have a column with company/school name (e.g., 'EstablishmentName', 'Company Name')", variant: "destructive" });
@@ -308,6 +310,7 @@ export default function ImportCSV() {
             schoolType: schoolTypeIndex !== -1 ? values[schoolTypeIndex]?.trim() || "" : "",
             schoolCapacity: capacityIndex !== -1 ? values[capacityIndex]?.trim() || "" : "",
             pupilHeadcount: headcountIndex !== -1 ? values[headcountIndex]?.trim() || "" : "",
+            headTitle: headTitleIndex !== -1 ? values[headTitleIndex]?.trim() || "" : "",
             headFirstName: headFirstNameIndex !== -1 ? values[headFirstNameIndex]?.trim() || "" : "",
             headLastName: headLastNameIndex !== -1 ? values[headLastNameIndex]?.trim() || "" : "",
             headJobTitle: headJobTitleIndex !== -1 ? values[headJobTitleIndex]?.trim() || "" : "",

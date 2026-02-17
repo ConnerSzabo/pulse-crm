@@ -139,6 +139,7 @@ export const contacts = pgTable("contacts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id),
   email: text("email").notNull(),
+  title: text("title"),
   name: text("name"),
   phone: text("phone"),
   role: text("role"),
