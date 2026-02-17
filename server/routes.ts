@@ -409,10 +409,16 @@ export async function registerRoutes(
           }
         }
 
-        // Check 3: name match (if no phone or website match)
+        // Check 3: name + location match (if no phone or website match)
         if (!existingCompany) {
           existingCompany = await storage.findCompanyByNameAndLocation(trimmedName, trimmedLocation);
           if (existingCompany) matchReason = "duplicate_in_database";
+        }
+
+        // Check 4: name-only match (fallback for different locations)
+        if (!existingCompany && trimmedName) {
+          existingCompany = await storage.findCompanyByNameAndLocation(trimmedName, null);
+          if (existingCompany) matchReason = "duplicate_name_only";
         }
 
         let companyId: string;

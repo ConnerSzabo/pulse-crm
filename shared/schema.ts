@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, numeric, date, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -102,12 +102,7 @@ export const companies = pgTable("companies", {
   schoolType: text("school_type"),
   schoolCapacity: integer("school_capacity"),
   pupilHeadcount: integer("pupil_headcount"),
-}, (table) => [
-  uniqueIndex("companies_name_location_unique_idx").on(
-    sql`lower(trim(${table.name}))`,
-    sql`lower(trim(coalesce(${table.location}, '')))`
-  ),
-]);
+});
 
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,

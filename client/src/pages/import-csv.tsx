@@ -322,7 +322,7 @@ export default function ImportCSV() {
     reader.readAsText(selectedFile);
   };
 
-  const BATCH_SIZE = 200;
+  const BATCH_SIZE = 50;
 
   const performImport = async (mode: UpdateMode) => {
     const dataToImport = pendingImport.length > 0 ? pendingImport : parsedData;
