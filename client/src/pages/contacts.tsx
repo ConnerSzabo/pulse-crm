@@ -104,6 +104,7 @@ export default function Contacts() {
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
   const [leadStatusFilter, setLeadStatusFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<string>("all");
 
   const { toast } = useToast();
@@ -176,6 +177,23 @@ export default function Contacts() {
     return <Badge variant="outline" className="text-xs">{status}</Badge>;
   };
 
+  const roleCategories: Record<string, { label: string; patterns: string[] }> = {
+    headteachers: { label: "Headteachers", patterns: ["headteacher", "head teacher", "head", "principal", "head of school", "executive headteacher", "acting head"] },
+    it: { label: "IT Managers", patterns: ["it manager", "it director", "ict manager", "network manager", "systems manager", "it technician", "it coordinator", "ict coordinator", "ict technician", "it support"] },
+    finance: { label: "Finance Directors", patterns: ["finance", "bursar", "business manager", "finance director", "finance manager", "school business manager", "chief financial officer", "cfo"] },
+    trust_ceo: { label: "Trust CEOs", patterns: ["ceo", "chief executive", "executive director", "trust leader", "accounting officer"] },
+  };
+
+  const matchesRoleCategory = (role: string | null | undefined, category: string): boolean => {
+    if (!role) return category === "other";
+    const r = role.toLowerCase().trim();
+    if (category === "other") {
+      return !Object.values(roleCategories).some(cat => cat.patterns.some(p => r === p || r.includes(p)));
+    }
+    const cat = roleCategories[category];
+    return cat ? cat.patterns.some(p => r === p || r.includes(p)) : false;
+  };
+
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
 
@@ -195,6 +213,10 @@ export default function Contacts() {
 
     if (leadStatusFilter !== "all") {
       filtered = filtered.filter((c) => (c.leadStatus || "0-unqualified") === leadStatusFilter);
+    }
+
+    if (roleFilter !== "all") {
+      filtered = filtered.filter((c) => matchesRoleCategory(c.role, roleFilter));
     }
 
     if (dateFilter !== "all") {
@@ -248,7 +270,7 @@ export default function Contacts() {
     });
 
     return filtered;
-  }, [contacts, search, leadStatusFilter, dateFilter, sortField, sortDirection]);
+  }, [contacts, search, leadStatusFilter, roleFilter, dateFilter, sortField, sortDirection]);
 
   const totalContacts = filteredContacts.length;
   const totalPages = Math.ceil(totalContacts / perPage);
@@ -290,11 +312,12 @@ export default function Contacts() {
 
   const clearFilters = () => {
     setLeadStatusFilter("all");
+    setRoleFilter("all");
     setDateFilter("all");
     setSearch("");
   };
 
-  const hasActiveFilters = leadStatusFilter !== "all" || dateFilter !== "all" || search !== "";
+  const hasActiveFilters = leadStatusFilter !== "all" || roleFilter !== "all" || dateFilter !== "all" || search !== "";
 
   const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <button
@@ -514,6 +537,31 @@ export default function Contacts() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
+                  <User className="h-4 w-4" />
+                  Job Title
+                  {roleFilter !== "all" && <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Filter by Job Title</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => { setRoleFilter("all"); setCurrentPage(1); }}>
+                  All job titles
+                </DropdownMenuItem>
+                {Object.entries(roleCategories).map(([key, cat]) => (
+                  <DropdownMenuItem key={key} onClick={() => { setRoleFilter(key); setCurrentPage(1); }}>
+                    {cat.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem onClick={() => { setRoleFilter("other"); setCurrentPage(1); }}>
+                  Other
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-10 gap-2 border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white hover:border-gray-400">
                   <Calendar className="h-4 w-4" />
                   Create Date
                   {dateFilter !== "all" && <Badge className="ml-1 h-5 px-1.5 bg-[#0091AE] text-white text-[10px]">1</Badge>}
@@ -538,6 +586,31 @@ export default function Contacts() {
           </div>
         </div>
       </div>
+
+      {/* Active Filter Chips */}
+      {(leadStatusFilter !== "all" || roleFilter !== "all" || dateFilter !== "all") && (
+        <div className="px-6 py-2 bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254] flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500 dark:text-[#64748b] mr-1">Filters:</span>
+          {leadStatusFilter !== "all" && (
+            <Badge className="bg-[#0091AE]/10 text-[#0091AE] border border-[#0091AE]/30 px-2.5 py-1 text-xs font-medium gap-1.5 cursor-pointer hover:bg-[#0091AE]/20" onClick={() => { setLeadStatusFilter("all"); setCurrentPage(1); }}>
+              {leadStatusOptions.find(o => o.value === leadStatusFilter)?.label || leadStatusFilter}
+              <X className="h-3 w-3" />
+            </Badge>
+          )}
+          {roleFilter !== "all" && (
+            <Badge className="bg-[#0091AE]/10 text-[#0091AE] border border-[#0091AE]/30 px-2.5 py-1 text-xs font-medium gap-1.5 cursor-pointer hover:bg-[#0091AE]/20" onClick={() => { setRoleFilter("all"); setCurrentPage(1); }}>
+              {roleFilter === "other" ? "Other" : roleCategories[roleFilter]?.label || roleFilter}
+              <X className="h-3 w-3" />
+            </Badge>
+          )}
+          {dateFilter !== "all" && (
+            <Badge className="bg-[#0091AE]/10 text-[#0091AE] border border-[#0091AE]/30 px-2.5 py-1 text-xs font-medium gap-1.5 cursor-pointer hover:bg-[#0091AE]/20" onClick={() => { setDateFilter("all"); setCurrentPage(1); }}>
+              {dateFilter === "today" ? "Today" : dateFilter === "week" ? "Last 7 days" : "Last 30 days"}
+              <X className="h-3 w-3" />
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-auto">

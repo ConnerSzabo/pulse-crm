@@ -579,34 +579,44 @@ export async function registerRoutes(
           }
         }
 
-        // Create headteacher contact (for both new and merged companies)
+        // Upsert headteacher contact (for both new and merged companies)
         const headName = [companyData.headFirstName, companyData.headLastName]
           .filter(Boolean)
           .map((s: string) => s.trim())
           .join(" ");
 
         if (headName) {
-          // Check if headteacher already exists for this company
+          const salutations = ["mr", "mrs", "ms", "miss", "dr", "rev", "prof", "sir", "dame", "lord", "lady"];
+          let contactTitle = companyData.headTitle?.trim() || null;
+          let contactRole = companyData.headJobTitle?.trim() || "Headteacher";
+          if (contactRole && salutations.includes(contactRole.toLowerCase())) {
+            if (!contactTitle) contactTitle = contactRole;
+            contactRole = "Headteacher";
+          }
+          if (!contactRole) contactRole = "Headteacher";
+
+          // Find existing headteacher contact to update
           const existingContacts = await storage.getContactsByCompany(companyId);
-          const headExists = existingContacts.some((c) => {
-            if (!c.name) return false;
-            return c.name.toLowerCase().trim() === headName.toLowerCase().trim();
+          const headteacherRoles = ["headteacher", "head teacher", "head", "principal", ...salutations];
+          const existingHead = existingContacts.find((c) => {
+            // Match by name OR by headteacher-like role
+            const nameMatch = c.name && c.name.toLowerCase().trim() === headName.toLowerCase().trim();
+            const roleMatch = c.role && headteacherRoles.includes(c.role.toLowerCase().trim());
+            return nameMatch || roleMatch;
           });
 
-          if (!headExists) {
-            try {
-              // Determine title (salutation) - from headTitle field, or from headJobTitle if it's a salutation
-              const salutations = ["mr", "mrs", "ms", "miss", "dr", "rev", "prof", "sir", "dame", "lord", "lady"];
-              let contactTitle = companyData.headTitle?.trim() || null;
-              let contactRole = companyData.headJobTitle?.trim() || "Headteacher";
-              // If headJobTitle is actually a salutation, move it to title
-              if (contactRole && salutations.includes(contactRole.toLowerCase())) {
-                if (!contactTitle) contactTitle = contactRole;
-                contactRole = "Headteacher";
-              }
-              // If no job title provided, default to Headteacher
-              if (!contactRole) contactRole = "Headteacher";
-
+          try {
+            if (existingHead) {
+              // Update existing headteacher contact
+              await storage.updateContact(existingHead.id, {
+                name: headName,
+                title: contactTitle,
+                role: contactRole,
+                phone: normalizedPhone || existingHead.phone || null,
+              });
+              results.contactsSkipped++; // counted as update, not new creation
+            } else {
+              // Create new headteacher contact
               await storage.createContact({
                 companyId,
                 name: headName,
@@ -616,11 +626,9 @@ export async function registerRoutes(
                 phone: normalizedPhone || null,
               });
               results.contactsCreated++;
-            } catch {
-              // Ignore contact creation errors
             }
-          } else {
-            results.contactsSkipped++;
+          } catch {
+            // Ignore contact upsert errors
           }
         }
       }
