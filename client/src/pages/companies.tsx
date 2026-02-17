@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link, useSearch, useLocation } from "wouter";
-import type { Company, PipelineStage } from "@shared/schema";
+import type { Company, PipelineStage, ContactWithCompany } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -63,9 +63,12 @@ import {
   Landmark,
   ChevronDown,
   AlertTriangle,
+  Download,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { ExportContactsModal } from "@/components/export-contacts-modal";
 
 const addCompanySchema = z.object({
   name: z.string().min(1, "Company name is required"),
@@ -145,6 +148,7 @@ export default function Companies() {
   const [dateFilter, setDateFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>(urlType === "trusts" ? "trusts" : "all");
   const [groupByTrust, setGroupByTrust] = useState(false);
+  const [exportContactsOpen, setExportContactsOpen] = useState(false);
 
   // Sync typeFilter with URL when navigating between Companies and Trusts
   useEffect(() => {
@@ -160,6 +164,11 @@ export default function Companies() {
 
   const { data: stages } = useQuery<PipelineStage[]>({
     queryKey: ["/api/pipeline-stages"],
+  });
+
+  const { data: allContacts } = useQuery<ContactWithCompany[]>({
+    queryKey: ["/api/contacts"],
+    enabled: exportContactsOpen,
   });
 
   // Fetch trust companies (those with "Part of Trust" relationships) for trust filtering
@@ -555,6 +564,50 @@ export default function Companies() {
     return format(new Date(date), "MMM d, yyyy");
   };
 
+  const handleExportCompanies = () => {
+    try {
+      const escapeCSV = (value: string | null | undefined): string => {
+        if (!value) return "";
+        const str = String(value);
+        if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+          return '"' + str.replace(/"/g, '""') + '"';
+        }
+        return str;
+      };
+
+      const data = activeList;
+      const headers = [
+        "Company Name", "Phone", "Website", "Location", "Academy Trust",
+        "Industry", "Lead Status", "Last Activity Date", "Created Date",
+      ];
+      const rows = data.map((c) => [
+        escapeCSV(c.name),
+        escapeCSV(c.phone),
+        escapeCSV(c.website),
+        escapeCSV(c.location),
+        escapeCSV(c.academyTrustName),
+        escapeCSV(c.industry),
+        escapeCSV(c.budgetStatus),
+        c.lastContactDate ? format(new Date(c.lastContactDate), "yyyy-MM-dd") : "",
+        format(new Date(c.createdAt), "yyyy-MM-dd"),
+      ]);
+
+      const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const today = format(new Date(), "yyyy-MM-dd");
+      link.href = url;
+      link.download = `companies-export-${today}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      toast({ title: `Exported ${data.length} companies` });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+  };
+
   const formatDateTime = (date: string | Date | null) => {
     if (!date) return "--";
     return format(new Date(date), "MMM d, yyyy h:mm a");
@@ -576,6 +629,39 @@ export default function Companies() {
               </Badge>
             </div>
 
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="font-medium border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                    <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 dark:bg-[#252936] dark:border-[#3d4254]">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      // Existing company export logic
+                      handleExportCompanies();
+                    }}
+                    className="dark:text-white dark:focus:bg-[#2d3142]"
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Export Companies
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setExportContactsOpen(true)}
+                    className="dark:text-white dark:focus:bg-[#2d3142]"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Export Contacts with Schools
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button
@@ -764,6 +850,7 @@ export default function Companies() {
                 </Form>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </div>
 
@@ -1475,6 +1562,13 @@ export default function Companies() {
           </div>
         </div>
       )}
+
+      <ExportContactsModal
+        open={exportContactsOpen}
+        onOpenChange={setExportContactsOpen}
+        contacts={allContacts || []}
+        companies={companies || []}
+      />
     </div>
   );
 }

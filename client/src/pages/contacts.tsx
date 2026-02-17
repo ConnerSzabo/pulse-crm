@@ -53,9 +53,11 @@ import {
   Building2,
   Mail,
   Phone,
+  Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { ExportContactsModal } from "@/components/export-contacts-modal";
 
 const addContactSchema = z.object({
   name: z.string().min(1, "Contact name is required"),
@@ -95,6 +97,7 @@ export default function Contacts() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -328,6 +331,15 @@ export default function Contacts() {
                 {totalContacts} contacts
               </Badge>
             </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setExportOpen(true)}
+                className="font-medium border-gray-300 dark:border-[#3d4254] dark:bg-[#252936] dark:text-[#94a3b8] dark:hover:bg-[#2d3142] dark:hover:text-white"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Export Contacts
+              </Button>
             <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0091AE] hover:bg-[#007a94] text-white font-medium shadow-sm">
@@ -460,6 +472,7 @@ export default function Contacts() {
                 </Form>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
         </div>
 
@@ -791,6 +804,13 @@ export default function Contacts() {
           </div>
         </div>
       )}
+
+      <ExportContactsModal
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        contacts={filteredContacts}
+        companies={companies || []}
+      />
     </div>
   );
 }
