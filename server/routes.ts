@@ -301,27 +301,33 @@ export async function registerRoutes(
       });
       const now = new Date();
 
+      console.log(`[callNote] Creating note for company=${companyId}, contact=${contactId || 'none'}`);
+
       // Use a transaction so note + date updates are atomic
       const note = await db.transaction(async (tx) => {
         const [created] = await tx.insert(callNotes).values(data).returning();
+        console.log(`[callNote] Note ${created.id} inserted`);
 
         // Update lastContactDate on the company
-        await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId));
+        const [updatedCompany] = await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId)).returning();
+        console.log(`[callNote] Company ${companyId} lastContactDate updated to ${updatedCompany?.lastContactDate}`);
 
         // Update contact lastContactDate if contactId provided
         if (contactId) {
-          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+          const [updatedContact] = await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId)).returning();
+          console.log(`[callNote] Contact ${contactId} lastContactDate updated to ${updatedContact?.lastContactDate}, rows=${updatedContact ? 1 : 0}`);
         }
 
         return created;
       });
 
+      console.log(`[callNote] Transaction committed for note ${note.id}`);
       res.status(201).json(note);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
-      console.error("Failed to create call note:", error);
+      console.error("[callNote] Failed to create call note:", error);
       res.status(500).json({ error: "Failed to create call note" });
     }
   });
@@ -1048,27 +1054,33 @@ export async function registerRoutes(
       });
       const now = new Date();
 
+      console.log(`[task] Creating task for company=${companyId}, contact=${contactId || 'none'}`);
+
       // Use a transaction so task + date updates are atomic
       const task = await db.transaction(async (tx) => {
         const [created] = await tx.insert(tasks).values(validated).returning();
+        console.log(`[task] Task ${created.id} inserted`);
 
         // Update lastContactDate on the company
-        await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId));
+        const [updatedCompany] = await tx.update(companies).set({ lastContactDate: now }).where(eq(companies.id, companyId)).returning();
+        console.log(`[task] Company ${companyId} lastContactDate updated to ${updatedCompany?.lastContactDate}`);
 
         // Update contact lastContactDate if contactId provided
         if (contactId) {
-          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+          const [updatedContact] = await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId)).returning();
+          console.log(`[task] Contact ${contactId} lastContactDate updated to ${updatedContact?.lastContactDate}, rows=${updatedContact ? 1 : 0}`);
         }
 
         return created;
       });
 
+      console.log(`[task] Transaction committed for task ${task.id}`);
       res.status(201).json(task);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
-      console.error("Failed to create task:", error);
+      console.error("[task] Failed to create task:", error);
       res.status(500).json({ error: "Failed to create task" });
     }
   });
@@ -1177,20 +1189,25 @@ export async function registerRoutes(
 
   app.post("/api/companies/:id/activities", isAuthenticated, async (req, res) => {
     try {
-      const { createdAt: customDate, contactId, ...rest } = req.body;
+      const { createdAt: customDate, ...rest } = req.body;
       const companyId = req.params.id as string;
+      const contactId = req.body.contactId || null;
       const data = insertActivitySchema.parse({
         ...rest,
         companyId,
+        contactId,
       });
 
       const now = new Date();
 
+      console.log(`[activity] Creating type="${data.type}" for company=${companyId}, contact=${contactId}`);
+
       // Use a transaction so activity + all date updates are atomic
       const activity = await db.transaction(async (tx) => {
-        // 1. Create the activity
+        // 1. Create the activity (contactId is now stored on the activity record)
         const values = customDate ? { ...data, createdAt: new Date(customDate) } : data;
         const [created] = await tx.insert(activities).values(values).returning();
+        console.log(`[activity] Activity ${created.id} inserted`);
 
         // 2. Build company update (always update lastContactDate)
         const companyUpdate: Record<string, unknown> = { lastContactDate: now };
@@ -1204,11 +1221,18 @@ export async function registerRoutes(
           companyUpdate.grossProfit = data.grossProfit;
         }
 
-        await tx.update(companies).set(companyUpdate).where(eq(companies.id, companyId));
+        const [updatedCompany] = await tx.update(companies).set(companyUpdate).where(eq(companies.id, companyId)).returning();
+        console.log(`[activity] Company ${companyId} lastContactDate updated to ${updatedCompany?.lastContactDate}`);
 
         // 3. Update contact lastContactDate if contactId provided
         if (contactId) {
-          await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId));
+          const [updatedContact] = await tx.update(contacts).set({ lastContactDate: now }).where(eq(contacts.id, contactId)).returning();
+          console.log(`[activity] Contact ${contactId} lastContactDate updated to ${updatedContact?.lastContactDate}, rows=${updatedContact ? 1 : 0}`);
+          if (!updatedContact) {
+            console.warn(`[activity] WARNING: Contact ${contactId} not found — lastContactDate not updated`);
+          }
+        } else {
+          console.log(`[activity] No contactId provided — skipping contact lastContactDate update`);
         }
 
         return created;
@@ -1219,12 +1243,13 @@ export async function registerRoutes(
         await storage.incrementCallCounter();
       }
 
+      console.log(`[activity] Transaction committed successfully for activity ${activity.id}`);
       res.status(201).json(activity);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors });
       }
-      console.error("Failed to create activity:", error);
+      console.error("[activity] Failed to create activity:", error);
       res.status(500).json({ error: "Failed to create activity" });
     }
   });

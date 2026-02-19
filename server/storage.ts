@@ -1589,6 +1589,49 @@ export class DatabaseStorage implements IStorage {
       // Don't throw - allow app to start even if seeding fails
     }
 
+    // Install database trigger to automatically update lastContactDate
+    // This is the "nuclear fix" — the database itself guarantees the update
+    // even if application code fails or forgets to do it.
+    try {
+      await db.execute(sql`
+        CREATE OR REPLACE FUNCTION update_last_contact_date_on_activity()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          -- Update contact last_contact_date if contact_id is set
+          IF NEW.contact_id IS NOT NULL THEN
+            UPDATE contacts
+            SET last_contact_date = COALESCE(NEW.created_at, NOW())
+            WHERE id = NEW.contact_id;
+          END IF;
+
+          -- Update company last_contact_date
+          IF NEW.company_id IS NOT NULL THEN
+            UPDATE companies
+            SET last_contact_date = COALESCE(NEW.created_at, NOW())
+            WHERE id = NEW.company_id;
+          END IF;
+
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+
+      await db.execute(sql`
+        DROP TRIGGER IF EXISTS trg_activity_update_last_contact ON activities
+      `);
+
+      await db.execute(sql`
+        CREATE TRIGGER trg_activity_update_last_contact
+        AFTER INSERT ON activities
+        FOR EACH ROW
+        EXECUTE FUNCTION update_last_contact_date_on_activity()
+      `);
+
+      console.log("Database trigger trg_activity_update_last_contact installed");
+    } catch (error) {
+      console.error("Error installing activity trigger (non-fatal):", error);
+    }
+
   }
 }
 

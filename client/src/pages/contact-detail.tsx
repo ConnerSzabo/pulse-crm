@@ -220,6 +220,7 @@ export default function ContactDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       logCallForm.reset();
       setShowLogCallDialog(false);
       toast({ title: "Call logged" });
@@ -239,6 +240,7 @@ export default function ContactDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       addNoteForm.reset();
       setShowAddNoteDialog(false);
       toast({ title: "Note added" });
@@ -260,6 +262,7 @@ export default function ContactDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       addTaskForm.reset();
       setShowAddTaskDialog(false);
       toast({ title: "Task created" });
@@ -279,6 +282,7 @@ export default function ContactDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", contact?.companyId] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       addMeetingForm.reset();
       setShowAddMeetingDialog(false);
       toast({ title: "Meeting logged" });

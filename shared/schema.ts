@@ -165,6 +165,7 @@ export type ContactWithCompany = Contact & {
 export const activities = pgTable("activities", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   companyId: varchar("company_id").references(() => companies.id).notNull(),
+  contactId: varchar("contact_id").references(() => contacts.id),
   type: text("type").notNull(), // call, email, quote, follow_up, deal_won, deal_lost
   note: text("note"),
   outcome: text("outcome"), // For calls: Reception / Voicemail, Decision Maker Details, Connected to DM

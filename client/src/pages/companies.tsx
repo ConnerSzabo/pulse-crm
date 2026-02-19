@@ -100,7 +100,7 @@ type AddCompanyForm = z.infer<typeof addCompanySchema>;
 
 type CompanyWithStage = Company & { stage?: PipelineStage; parentCompany?: Company };
 
-type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry" | "trust";
+type SortField = "name" | "createdAt" | "lastContactDate" | "location" | "budgetStatus" | "phone" | "owner" | "country" | "industry" | "trust" | "childCount";
 type SortDirection = "asc" | "desc";
 
 // Lead Status options with colors - dark mode uses solid colored backgrounds with white text
@@ -426,6 +426,9 @@ export default function Companies() {
       switch (sortField) {
         case "name":
           comparison = a.name.localeCompare(b.name);
+          break;
+        case "childCount":
+          comparison = (a.childCount || 0) - (b.childCount || 0);
           break;
         case "lastContactDate": {
           const aDate = a.lastContactDate ? new Date(a.lastContactDate).getTime() : 0;
@@ -1144,7 +1147,7 @@ export default function Companies() {
                       <SortableHeader field="name">Trust Name</SortableHeader>
                     </th>
                     <th className="text-left px-4 py-3 w-[100px] border-r border-gray-100 dark:border-[#3d4254]">
-                      Schools
+                      <SortableHeader field="childCount">Schools</SortableHeader>
                     </th>
                     <th className="text-left px-4 py-3 w-[140px] border-r border-gray-100 dark:border-[#3d4254]">
                       <SortableHeader field="phone">Phone</SortableHeader>

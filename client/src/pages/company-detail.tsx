@@ -386,6 +386,8 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/today"] });
       logCallForm.reset({ note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm") });
       setShowLogCallDialog(false);
@@ -403,6 +405,8 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       addNoteForm.reset();
       setShowAddNoteDialog(false);
       toast({ title: "Note added" });
@@ -419,6 +423,8 @@ export default function CompanyDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       addEmailForm.reset();
       setShowAddEmailDialog(false);
       toast({ title: "Email logged" });
