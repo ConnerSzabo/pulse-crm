@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { registerRoutes } from "./routes";
@@ -25,6 +27,31 @@ const httpServer = createServer(app);
 // Enable gzip compression for all responses
 app.use(compression());
 
+// Security headers
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+      },
+    },
+  })
+);
+
+// Login-specific rate limiter: 10 attempts per 15 minutes per IP
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { message: "Too many login attempts. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -43,6 +70,7 @@ const pgStore = connectPg(session);
 app.set("trust proxy", 1);
 app.use(
   session({
+    name: "wavesys.sid",
     store: new pgStore({
       conString: process.env.DATABASE_URL,
       createTableIfMissing: true,
@@ -54,14 +82,15 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
+      sameSite: "lax",
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours (working day session)
     },
   })
 );
 
 app.use(
   express.json({
-    limit: "10mb",
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
@@ -116,13 +145,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check — responds immediately, no DB required
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 (async () => {
   try {
-    await registerRoutes(httpServer, app);
+    registerRoutes(httpServer, app);
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
-      const message = err.message || "Internal Server Error";
 
       console.error("Internal Server Error:", err);
 
@@ -130,6 +163,7 @@ app.use((req, res, next) => {
         return next(err);
       }
 
+      const message = status >= 500 ? "Internal Server Error" : (err.message || "Internal Server Error");
       return res.status(status).json({ message });
     });
 
@@ -150,6 +184,7 @@ app.use((req, res, next) => {
       () => {
         log(`serving on port ${port}`);
 
+        // All DB operations run AFTER server is listening — never block port binding
         runPostStartupTasks();
       },
     );
@@ -160,6 +195,7 @@ app.use((req, res, next) => {
 })();
 
 async function runPostStartupTasks() {
+  // 1. Test database connection
   try {
     log("Testing database connection...");
     const dbConnected = await testConnection();
@@ -170,8 +206,23 @@ async function runPostStartupTasks() {
     console.error("WARNING: Database connection test error:", err);
   }
 
-  // Long-running migrations removed from startup to prevent deployment timeouts.
-  // Run manually via POST /api/companies/backfill-lead-status and POST /api/trusts/migrate
+  // 2. Seed pipeline stages and admin user (fast — a few simple queries)
+  try {
+    await storage.seedData();
+    log("Seed data initialized.");
+  } catch (err) {
+    console.error("WARNING: Seed data failed (non-fatal):", err);
+  }
+
+  // 3. Auto-link schools to trusts (idempotent, can be slow on large datasets)
+  try {
+    const result = await storage.setupTrustsFromAcademyNames();
+    if (result.trustsCreated > 0 || result.schoolsLinked > 0) {
+      log(`Trust setup: ${result.trustsCreated} trusts created, ${result.schoolsLinked} schools linked`);
+    }
+  } catch (err) {
+    console.error("WARNING: Trust auto-setup failed (non-fatal):", err);
+  }
 
   log("Post-startup tasks completed.");
 }

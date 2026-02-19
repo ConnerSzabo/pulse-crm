@@ -22,7 +22,8 @@
       "Bash(printf:*)",
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(node:*)"
     ]
   }
 }

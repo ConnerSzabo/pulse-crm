@@ -3,14 +3,11 @@ import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation, normalizePhone, normalizeWebsite } from "./storage";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
-import { activities, companies, contacts, callNotes, tasks } from "@shared/schema";
+import { activities, companies, contacts, callNotes, tasks, users } from "@shared/schema";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcrypt";
-
-// Hardcoded admin credentials (password is hashed with bcrypt)
-const ADMIN_USERNAME = "connerszabo";
-const ADMIN_PASSWORD_HASH = "$2b$10$v27rzXh.RCKA8o9kUWm/IOwYpskP0uqk3VJsUgFbOuZIorPEAsvhy";
+import { loginLimiter } from "./index";
 
 // Helper to safely get string param
 const getParam = (param: string | string[] | undefined): string => {
@@ -25,49 +22,35 @@ const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   return res.status(401).json({ message: "Unauthorized" });
 };
 
-export async function registerRoutes(
+export function registerRoutes(
   httpServer: Server,
   app: Express
-): Promise<Server> {
-  // Initialize seed data
-  await storage.seedData();
-
-  // Auto-setup trust companies if none exist
-  try {
-    const trustCompanies = await storage.getTrustCompanies();
-    if (trustCompanies.length === 0) {
-      console.log("No trust companies found, running auto-setup...");
-      const result = await storage.setupTrustsFromAcademyNames();
-      console.log(`Trust setup complete: ${result.trustsCreated} trusts created, ${result.schoolsLinked} schools linked`);
-    }
-  } catch (error) {
-    console.error("Trust auto-setup failed (non-fatal):", error);
-  }
-
+): Server {
   // Auth routes (not protected)
-  app.post("/api/login", async (req, res) => {
+  app.post("/api/login", loginLimiter, async (req, res) => {
     try {
       const { username, password } = req.body;
-      
+
       if (!username || !password) {
         return res.status(400).json({ message: "Username and password are required" });
       }
 
-      // Check credentials
-      if (username !== ADMIN_USERNAME) {
+      // Look up user in database
+      const [user] = await db.select().from(users).where(eq(users.username, username));
+      if (!user) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
 
-      const isValidPassword = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+      const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
 
       // Set session
-      req.session.userId = "admin";
-      req.session.username = username;
-      
-      res.json({ message: "Login successful", username });
+      req.session.userId = user.id;
+      req.session.username = user.username;
+
+      res.json({ message: "Login successful", username: user.username });
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed" });
@@ -79,7 +62,7 @@ export async function registerRoutes(
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
       }
-      res.clearCookie("connect.sid");
+      res.clearCookie("wavesys.sid");
       res.json({ message: "Logged out successfully" });
     });
   });
@@ -582,6 +565,19 @@ export async function registerRoutes(
           companyId = company.id;
           results.imported++;
 
+          // Auto-link school to trust via company_relationships (bidirectional)
+          if (parentCompanyId) {
+            try {
+              await storage.createCompanyRelationship({
+                companyId: parentCompanyId,
+                relatedCompanyId: company.id,
+                relationshipType: "Part of Trust",
+              });
+            } catch {
+              // Ignore if relationship already exists
+            }
+          }
+
           // Auto-create IT Manager as first contact
           if (companyData.itManagerName && companyData.itManagerEmail) {
             try {
@@ -662,10 +658,8 @@ export async function registerRoutes(
       res.json(results);
     } catch (error: any) {
       console.error("Bulk import error:", error);
-      const message = error?.message || "Unknown error";
       res.status(500).json({
-        error: `Import failed: ${message}`,
-        detail: error?.code || undefined,
+        error: "Import failed. Check your CSV format and try again.",
       });
     }
   });
@@ -1088,8 +1082,9 @@ export async function registerRoutes(
   app.patch("/api/tasks/:id", isAuthenticated, async (req, res) => {
     try {
       const { dueDate, ...rest } = req.body;
+      const validated = insertTaskSchema.partial().parse(rest);
       const updateData = {
-        ...rest,
+        ...validated,
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
       };
       const task = await storage.updateTask(req.params.id as string, updateData);
@@ -1098,6 +1093,9 @@ export async function registerRoutes(
       }
       res.json(task);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
       res.status(500).json({ error: "Failed to update task" });
     }
   });
@@ -1151,8 +1149,9 @@ export async function registerRoutes(
   app.patch("/api/deals/:id", isAuthenticated, async (req, res) => {
     try {
       const { decisionTimeline, ...rest } = req.body;
+      const validated = insertDealSchema.partial().parse(rest);
       const updateData = {
-        ...rest,
+        ...validated,
         ...(decisionTimeline !== undefined && { decisionTimeline: decisionTimeline ? new Date(decisionTimeline) : null }),
       };
       const deal = await storage.updateDeal(req.params.id as string, updateData);
@@ -1161,6 +1160,9 @@ export async function registerRoutes(
       }
       res.json(deal);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
       res.status(500).json({ error: "Failed to update deal" });
     }
   });
@@ -1256,11 +1258,17 @@ export async function registerRoutes(
 
   app.patch("/api/activities/:id", isAuthenticated, async (req, res) => {
     try {
-      const { note, outcome, createdAt } = req.body;
+      const activityUpdateSchema = z.object({
+        note: z.string().optional(),
+        outcome: z.string().optional(),
+        createdAt: z.string().optional(),
+      }).strict();
+
+      const parsed = activityUpdateSchema.parse(req.body);
       const updateData: Record<string, unknown> = { editedAt: new Date() };
-      if (note !== undefined) updateData.note = note;
-      if (outcome !== undefined) updateData.outcome = outcome;
-      if (createdAt !== undefined) updateData.createdAt = new Date(createdAt);
+      if (parsed.note !== undefined) updateData.note = parsed.note;
+      if (parsed.outcome !== undefined) updateData.outcome = parsed.outcome;
+      if (parsed.createdAt !== undefined) updateData.createdAt = new Date(parsed.createdAt);
 
       const activity = await storage.updateActivity(req.params.id as string, updateData);
       if (!activity) {
@@ -1268,6 +1276,9 @@ export async function registerRoutes(
       }
       res.json(activity);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
       console.error("Failed to update activity:", error);
       res.status(500).json({ error: "Failed to update activity" });
     }

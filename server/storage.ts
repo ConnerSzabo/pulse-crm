@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { eq, ilike, desc, asc, and, lt, gte, sql, isNull, isNotNull, between, inArray } from "drizzle-orm";
 import {
+  users,
   companies,
   contacts,
   callNotes,
@@ -1466,7 +1467,11 @@ export class DatabaseStorage implements IStorage {
     const rows = await db
       .selectDistinct({ academyTrustName: companies.academyTrustName })
       .from(companies)
-      .where(and(isNotNull(companies.academyTrustName), sql`${companies.academyTrustName} != ''`));
+      .where(and(
+        isNotNull(companies.academyTrustName),
+        sql`${companies.academyTrustName} != ''`,
+        sql`${companies.academyTrustName} != '--'`
+      ));
 
     const uniqueNames = rows.map(r => r.academyTrustName!).filter(Boolean);
     let trustsCreated = 0;
@@ -1587,6 +1592,20 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Error seeding pipeline stages:", error);
       // Don't throw - allow app to start even if seeding fails
+    }
+
+    // Seed admin user if no users exist
+    try {
+      const existingUsers = await db.select().from(users).limit(1);
+      if (existingUsers.length === 0) {
+        await db.insert(users).values({
+          username: "connerszabo",
+          password: "$2b$10$v27rzXh.RCKA8o9kUWm/IOwYpskP0uqk3VJsUgFbOuZIorPEAsvhy",
+        });
+        console.log("Default admin user seeded");
+      }
+    } catch (error) {
+      console.error("Error seeding admin user:", error);
     }
 
     // Install database trigger to automatically update lastContactDate
