@@ -23,7 +23,9 @@ const Pipeline = lazy(() => import("@/pages/pipeline"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const ImportCSV = lazy(() => import("@/pages/import-csv"));
 const CallQueue = lazy(() => import("@/pages/call-queue"));
+const CallHistory = lazy(() => import("@/pages/call-history"));
 const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
+const IntelPage = lazy(() => import("@/pages/intel"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 // Redirect /trusts → /companies?type=trusts
@@ -65,7 +67,9 @@ function Router() {
         <Route path="/pipeline" component={Pipeline} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/call-queue" component={CallQueue} />
+        <Route path="/call-history" component={CallHistory} />
         <Route path="/call-analytics" component={CallAnalytics} />
+        <Route path="/intel" component={IntelPage} />
         <Route path="/trusts" component={TrustsRedirect} />
         <Route path="/trusts/:id" component={TrustDetailRedirect} />
         <Route path="/import" component={ImportCSV} />

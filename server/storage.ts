@@ -134,6 +134,7 @@ export interface IStorage {
   deleteActivity(id: string): Promise<void>;
   getActivitiesThisMonth(type?: string): Promise<Activity[]>;
   getCallActivities(startDate: Date, endDate: Date): Promise<(Activity & { companyName?: string })[]>;
+  getCallHistory(opts: { limit: number; offset: number; outcome?: string; search?: string }): Promise<{ calls: (Activity & { companyName?: string; contactName?: string })[]; total: number }>;
   migrateCallOutcomes(): Promise<{ updated: number }>;
 
   // Tasks
@@ -698,6 +699,65 @@ export class DatabaseStorage implements IStorage {
       ...a,
       companyName: companyMap.get(a.companyId),
     }));
+  }
+
+  async getCallHistory(opts: { limit: number; offset: number; outcome?: string; search?: string }): Promise<{ calls: (Activity & { companyName?: string; contactName?: string })[]; total: number }> {
+    // If searching by company name, find matching company IDs first
+    let matchingCompanyIds: string[] | undefined;
+    if (opts.search) {
+      const matched = await db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(ilike(companies.name, `%${opts.search}%`));
+      matchingCompanyIds = matched.map(c => c.id);
+      if (matchingCompanyIds.length === 0) return { calls: [], total: 0 };
+    }
+
+    // Build WHERE conditions
+    const conditions = [
+      eq(activities.type, "call"),
+      ...(opts.outcome ? [eq(activities.outcome, opts.outcome)] : []),
+      ...(matchingCompanyIds ? [inArray(activities.companyId, matchingCompanyIds)] : []),
+    ];
+    const whereClause = and(...conditions);
+
+    // Total count
+    const [{ total }] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(activities)
+      .where(whereClause);
+
+    // Paginated rows
+    const rows = await db
+      .select()
+      .from(activities)
+      .where(whereClause)
+      .orderBy(desc(activities.createdAt))
+      .limit(opts.limit)
+      .offset(opts.offset);
+
+    // Enrich with company names
+    const companyIds = Array.from(new Set(rows.map(r => r.companyId)));
+    const companiesList = companyIds.length > 0
+      ? await db.select({ id: companies.id, name: companies.name }).from(companies).where(inArray(companies.id, companyIds))
+      : [];
+    const companyMap = new Map(companiesList.map(c => [c.id, c.name]));
+
+    // Enrich with contact names
+    const contactIds = Array.from(new Set(rows.map(r => r.contactId).filter(Boolean) as string[]));
+    const contactsList = contactIds.length > 0
+      ? await db.select({ id: contacts.id, name: contacts.name }).from(contacts).where(inArray(contacts.id, contactIds))
+      : [];
+    const contactMap = new Map(contactsList.map(c => [c.id, c.name]));
+
+    return {
+      calls: rows.map(r => ({
+        ...r,
+        companyName: companyMap.get(r.companyId),
+        contactName: r.contactId ? (contactMap.get(r.contactId) ?? undefined) : undefined,
+      })),
+      total: Number(total),
+    };
   }
 
   async migrateCallOutcomes(): Promise<{ updated: number }> {

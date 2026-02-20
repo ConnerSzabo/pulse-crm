@@ -1341,7 +1341,7 @@ export default function Companies() {
                         </Link>
                       </td>
                       <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center flex-shrink-0 shadow-sm">
                             <span className="text-[10px] font-bold text-white">CS</span>
                           </div>

@@ -10,7 +10,9 @@ import {
   ChevronDown,
   Phone,
   PhoneCall,
-  Landmark
+  PhoneIncoming,
+  Landmark,
+  Newspaper,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -47,9 +49,19 @@ const mainMenuItems = [
     icon: PhoneCall,
   },
   {
+    title: "Call History",
+    url: "/call-history",
+    icon: PhoneIncoming,
+  },
+  {
     title: "Call Analytics",
     url: "/call-analytics",
     icon: Phone,
+  },
+  {
+    title: "Intel",
+    url: "/intel",
+    icon: Newspaper,
   },
   {
     title: "Trusts",

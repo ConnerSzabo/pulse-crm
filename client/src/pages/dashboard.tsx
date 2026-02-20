@@ -664,17 +664,17 @@ export default function Dashboard() {
                     >
                       <TableCell className="dark:border-[#3d4254]">
                         <Link href={`/company/${company.id}`}>
-                          <div className="flex items-center gap-2 font-medium text-[#0091AE] hover:underline">
-                            {company.name}
-                            <ExternalLink className="h-3 w-3" />
+                          <div className="flex items-center gap-2 font-medium text-[#0091AE] hover:underline min-w-0" title={company.name}>
+                            <span className="truncate">{company.name}</span>
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
                           </div>
                         </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground dark:text-[#94a3b8] dark:border-[#3d4254]">
-                        {company.location || "—"}
+                        <span className="truncate block" title={company.location || undefined}>{company.location || "—"}</span>
                       </TableCell>
                       <TableCell className="text-muted-foreground dark:text-[#94a3b8] dark:border-[#3d4254]">
-                        {company.academyTrustName || "—"}
+                        <span className="truncate block" title={company.academyTrustName || undefined}>{company.academyTrustName || "—"}</span>
                       </TableCell>
                       <TableCell className="dark:border-[#3d4254]">
                         {getLeadStatusBadge(company.budgetStatus)}

@@ -188,13 +188,13 @@ export default function CallQueue() {
       {currentItem ? (
         <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#0091AE]/10 flex items-center justify-center">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-10 h-10 rounded-lg bg-[#0091AE]/10 flex items-center justify-center flex-shrink-0">
                   <Building2 className="h-5 w-5 text-[#0091AE]" />
                 </div>
-                <div>
-                  <CardTitle className="text-lg dark:text-white">{currentItem.company.name}</CardTitle>
+                <div className="min-w-0">
+                  <CardTitle className="text-lg dark:text-white truncate" title={currentItem.company.name}>{currentItem.company.name}</CardTitle>
                   <div className="flex items-center gap-2 mt-0.5">
                     <Badge
                       className={`text-[10px] text-white ${LEAD_STATUS_LABELS[currentItem.company.budgetStatus || "0-unqualified"]?.color || "bg-gray-500"}`}

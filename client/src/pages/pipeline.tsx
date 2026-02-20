@@ -784,8 +784,8 @@ function DealCard({
           {deal.company && (
             <div className="pt-2 border-t dark:border-[#3d4254]">
               <Link href={`/company/${deal.companyId}`}>
-                <div className="flex items-center gap-1.5 text-xs dark:text-[#94a3b8] hover:text-[#0091AE] cursor-pointer">
-                  <Building2 className="h-3 w-3" />
+                <div className="flex items-center gap-1.5 text-xs dark:text-[#94a3b8] hover:text-[#0091AE] cursor-pointer min-w-0">
+                  <Building2 className="h-3 w-3 flex-shrink-0" />
                   <span className="font-medium truncate">{deal.company.name}</span>
                 </div>
               </Link>

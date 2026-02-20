@@ -1676,22 +1676,22 @@ export default function CompanyDetail() {
                     className="p-3 border dark:border-[#3d4254] rounded-xl hover:bg-[#2d3142]/60 hover:border-[#4d5264] group transition-all duration-200 cursor-default"
                     data-testid={`card-contact-${contact.id}`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="h-8 w-8 rounded-full bg-[#0091AE]/15 flex items-center justify-center">
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                        <div className="h-8 w-8 rounded-full bg-[#0091AE]/15 flex items-center justify-center flex-shrink-0">
                           <User className="h-4 w-4 text-[#0091AE]" />
                         </div>
-                        <div>
-                          <p className="font-medium text-sm">{contact.title ? `${contact.title} ` : ""}{contact.name || contact.email}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate" title={`${contact.title ? `${contact.title} ` : ""}${contact.name || contact.email}`}>{contact.title ? `${contact.title} ` : ""}{contact.name || contact.email}</p>
                           {contact.role && (
-                            <p className="text-xs text-muted-foreground">{contact.role}</p>
+                            <p className="text-xs text-muted-foreground truncate">{contact.role}</p>
                           )}
                         </div>
                       </div>
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600"
+                        className="h-6 w-6 flex-shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-600"
                         onClick={() => deleteContactMutation.mutate(contact.id)}
                       >
                         <Trash2 className="h-3 w-3" />
@@ -1700,18 +1700,18 @@ export default function CompanyDetail() {
                     <div className="mt-2 space-y-1">
                       <a
                         href={`mailto:${contact.email}`}
-                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1 min-w-0"
                       >
-                        <Mail className="h-3 w-3" />
-                        {contact.email}
+                        <Mail className="h-3 w-3 flex-shrink-0" />
+                        <span className="truncate">{contact.email}</span>
                       </a>
                       {contact.phone && (
                         <a
                           href={`tel:${contact.phone}`}
-                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1 min-w-0"
                         >
-                          <Phone className="h-3 w-3" />
-                          {contact.phone}
+                          <Phone className="h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">{contact.phone}</span>
                         </a>
                       )}
                     </div>
@@ -1744,7 +1744,7 @@ export default function CompanyDetail() {
                           <Building className="h-4 w-4 text-purple-500" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium text-sm text-[#0091AE] hover:underline truncate">{rel.relatedCompany.name}</p>
+                          <p className="font-medium text-sm text-[#0091AE] hover:underline truncate" title={rel.relatedCompany.name}>{rel.relatedCompany.name}</p>
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-0.5 dark:bg-[#3d4254]">{rel.relationshipType}</Badge>
                         </div>
                       </Link>
@@ -1829,7 +1829,7 @@ export default function CompanyDetail() {
                           <DollarSign className="h-4 w-4 text-[#10b981]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm text-white truncate pr-6">{deal.title}</p>
+                          <p className="font-semibold text-sm text-white truncate pr-6" title={deal.title}>{deal.title}</p>
                           {deal.expectedGP && (
                             <p className="text-base font-bold text-[#10b981] mt-0.5">
                               £{parseFloat(deal.expectedGP).toLocaleString()}
@@ -1883,7 +1883,7 @@ export default function CompanyDetail() {
                       isTaskOverdue(task) ? "border-red-500/30 bg-red-950/20 dark:border-red-500/30 dark:bg-red-950/20" : "dark:border-[#3d4254] hover:border-[#4d5264]"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Checkbox
                         checked={task.status === "completed"}
                         onCheckedChange={() => {
@@ -1892,9 +1892,9 @@ export default function CompanyDetail() {
                             status: task.status === "completed" ? "todo" : "completed",
                           });
                         }}
-                        className="h-4 w-4"
+                        className="h-4 w-4 flex-shrink-0"
                       />
-                      <span className={isTaskOverdue(task) ? "text-red-600" : ""}>
+                      <span className={`truncate ${isTaskOverdue(task) ? "text-red-600" : ""}`} title={task.name}>
                         {task.name}
                       </span>
                     </div>

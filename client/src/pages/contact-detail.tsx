@@ -566,15 +566,15 @@ export default function ContactDetail() {
                     )}
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Email</p>
-                      <a href={`mailto:${contact.email}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1">
-                        <Mail className="h-3.5 w-3.5" />{contact.email}
+                      <a href={`mailto:${contact.email}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 min-w-0">
+                        <Mail className="h-3.5 w-3.5 flex-shrink-0" /><span className="truncate">{contact.email}</span>
                       </a>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Phone</p>
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1">
-                          <Phone className="h-3.5 w-3.5" />{contact.phone}
+                        <a href={`tel:${contact.phone}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 min-w-0">
+                          <Phone className="h-3.5 w-3.5 flex-shrink-0" /><span className="truncate">{contact.phone}</span>
                         </a>
                       ) : (
                         <p className="text-[14px] text-muted-foreground">--</p>
@@ -594,8 +594,8 @@ export default function ContactDetail() {
                       <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Company</p>
                       {contact.companyId && contact.companyName ? (
                         <Link href={`/company/${contact.companyId}`}
-                          className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5" />{contact.companyName}<ArrowUpRight className="h-3 w-3" />
+                          className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1.5 min-w-0">
+                          <Building2 className="h-3.5 w-3.5 flex-shrink-0" /><span className="truncate">{contact.companyName}</span><ArrowUpRight className="h-3 w-3 flex-shrink-0" />
                         </Link>
                       ) : (
                         <p className="text-[14px] text-muted-foreground">No company</p>

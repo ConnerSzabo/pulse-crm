@@ -8,6 +8,12 @@ import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertT
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import { loginLimiter } from "./index";
+import Anthropic from "@anthropic-ai/sdk";
+
+// Intel news in-memory cache (1-hour TTL)
+let intelCache: { news: any[]; fetchedAt: string } | null = null;
+let intelCacheTime = 0;
+const INTEL_CACHE_TTL = 60 * 60 * 1000;
 
 // Helper to safely get string param
 const getParam = (param: string | string[] | undefined): string => {
@@ -1312,6 +1318,27 @@ export function registerRoutes(
     }
   });
 
+  // Call History route
+  app.get("/api/call-history", isAuthenticated, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const outcome = (req.query.outcome as string) || undefined;
+      const search = (req.query.search as string) || undefined;
+
+      const result = await storage.getCallHistory({
+        limit,
+        offset,
+        outcome: outcome || undefined,
+        search: search || undefined,
+      });
+      res.json(result);
+    } catch (error) {
+      console.error("Call history error:", error);
+      res.status(500).json({ error: "Failed to fetch call history" });
+    }
+  });
+
   // Call Analytics routes
   app.get("/api/call-analytics", isAuthenticated, async (req, res) => {
     try {
@@ -1617,6 +1644,79 @@ export function registerRoutes(
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch recent activity" });
+    }
+  });
+
+  // Intel news endpoint — fetches UK education IT news via Anthropic web search
+  app.get("/api/intel/news", isAuthenticated, async (req, res) => {
+    const forceRefresh = req.query.refresh === "true";
+    const now = Date.now();
+
+    if (!forceRefresh && intelCache && now - intelCacheTime < INTEL_CACHE_TTL) {
+      return res.json({ ...intelCache, cached: true });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      if (intelCache) return res.json({ ...intelCache, cached: true, stale: true });
+      return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
+    }
+
+    try {
+      const client = new Anthropic({ apiKey });
+      const today = new Date().toISOString().split("T")[0];
+
+      const prompt = `You are a UK education IT market intelligence assistant for a hardware reseller selling laptops, Chromebooks, tablets, and infrastructure to schools and MATs. Today's date is ${today}.
+
+Search the web for the latest UK education IT news from the past 30 days. Focus specifically on these sources:
+- Schools Week (schoolsweek.co.uk): MAT mergers, trust news, academy conversions
+- TES (tes.com): which MATs are growing or consolidating
+- Education Business UK (educationbusinessuk.net): EdTech and hardware procurement
+- BESA (besa.org.uk): school technology spending trends and surveys
+- GOV.UK education news: DfE funding announcements, policy (e.g. 6 digital standards all schools must meet by 2030)
+
+Prioritise stories about: MAT expansions and mergers, school device refresh cycles, DfE funding announcements, HP/Lenovo/Dell in education, trade-in and leasing programmes, school IT budget decisions, and procurement frameworks.
+
+Find 8-12 relevant news stories and return them ONLY as a raw JSON array (no markdown, no code blocks) where each item has exactly this structure:
+{
+  "headline": "Full article headline",
+  "source": "Source name (e.g. Schools Week)",
+  "sourceUrl": "https://actual-article-url",
+  "date": "YYYY-MM-DD",
+  "summary": "Exactly two sentences summarising the key facts.",
+  "salesSignal": "One or two sentences explaining specifically why this creates an opportunity for selling IT hardware to schools or MATs.",
+  "signalStrength": 2,
+  "category": "MAT & Trust Updates"
+}
+
+signalStrength: 1 = informational/weak, 2 = moderate opportunity, 3 = strong/immediate sales opportunity.
+category must be exactly one of: "MAT & Trust Updates", "Hardware", "Policy & Funding", "Procurement"
+
+Return ONLY the JSON array. No other text.`;
+
+      const response = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8000,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{ role: "user", content: prompt }],
+      } as any);
+
+      // Extract final text blocks (skip tool_use blocks from web search)
+      const textBlocks = (response.content as any[]).filter((b: any) => b.type === "text");
+      const rawText = textBlocks.map((b: any) => b.text).join("");
+
+      // Robustly extract JSON array from response
+      const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error("No JSON array found in response");
+      const newsItems = JSON.parse(jsonMatch[0]);
+
+      intelCache = { news: newsItems, fetchedAt: new Date().toISOString() };
+      intelCacheTime = Date.now();
+      return res.json({ ...intelCache, cached: false });
+    } catch (error: any) {
+      console.error("Intel news fetch error:", error.message);
+      if (intelCache) return res.json({ ...intelCache, cached: true, stale: true });
+      return res.status(500).json({ error: "Failed to fetch news", details: error.message });
     }
   });
 
