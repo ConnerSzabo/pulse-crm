@@ -1019,6 +1019,26 @@ export function registerRoutes(
     }
   });
 
+  // Skip a company in the call queue — persists the skip by updating lastContactDate,
+  // so the company drops off the queue on every subsequent load until the threshold passes.
+  app.post("/api/call-queue/skip/:id", isAuthenticated, async (req, res) => {
+    try {
+      const companyId = req.params.id as string;
+      const [updated] = await db
+        .update(companies)
+        .set({ lastContactDate: new Date() })
+        .where(eq(companies.id, companyId))
+        .returning({ id: companies.id });
+      if (!updated) {
+        return res.status(404).json({ error: "Company not found" });
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Call queue skip error:", error);
+      res.status(500).json({ error: "Failed to skip company" });
+    }
+  });
+
   // Tasks routes
   app.get("/api/tasks", isAuthenticated, async (req, res) => {
     try {

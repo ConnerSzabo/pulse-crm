@@ -94,6 +94,15 @@ export default function CallQueue() {
     },
   });
 
+  const skipMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      return apiRequest("POST", `/api/call-queue/skip/${companyId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
+    },
+  });
+
   // Filter out completed/skipped items
   const activeQueue = queue?.filter(
     (item) => !completedIds.has(item.company.id) && !skippedIds.has(item.company.id)
@@ -127,7 +136,11 @@ export default function CallQueue() {
 
   const handleSkip = () => {
     if (!currentItem) return;
+    // Immediately hide in UI for a snappy feel
     setSkippedIds((prev) => new Set(prev).add(currentItem.company.id));
+    // Persist to DB — updates lastContactDate so the company drops off the
+    // queue on every future page load until the contact threshold passes again
+    skipMutation.mutate(currentItem.company.id);
   };
 
   const handleReset = () => {
