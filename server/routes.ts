@@ -8,12 +8,28 @@ import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertT
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import { loginLimiter } from "./index";
-import Anthropic from "@anthropic-ai/sdk";
+import Parser from "rss-parser";
 
-// Intel news in-memory cache (1-hour TTL)
-let intelCache: { news: any[]; fetchedAt: string } | null = null;
-let intelCacheTime = 0;
-const INTEL_CACHE_TTL = 60 * 60 * 1000;
+// Intel RSS feeds
+const RSS_FEEDS = [
+  { url: "https://schoolsweek.co.uk/feed/", source: "Schools Week" },
+  { url: "https://www.tes.com/magazine/rss", source: "TES" },
+  { url: "https://www.educationbusinessuk.net/rss.xml", source: "Education Business UK" },
+  { url: "https://www.gov.uk/search/news-and-communications.atom?keywords=schools+technology&topic=%2Feducation", source: "GOV.UK" },
+];
+
+function categorizeArticle(title: string, summary: string): string {
+  const text = (title + " " + summary).toLowerCase();
+  if (/\bmat\b|multi.academy|multi academy|\btrust\b|merger|academy conversion|academy transfer|consolidat|trust network/.test(text)) return "MAT & Trust Updates";
+  if (/laptop|chromebook|tablet|\bdevice\b|hardware|desktop|\bpc\b|computer|lenovo|\bhp\b|dell|acer|it kit|device refresh|tech refresh|refresh cycle/.test(text)) return "Hardware";
+  if (/procurement|contract|tender|framework|supplier|espo|crown commercial|buying authority|purchasing/.test(text)) return "Procurement";
+  return "Policy & Funding";
+}
+
+// Intel RSS cache (30-minute TTL)
+let rssCache: { news: any[]; fetchedAt: string } | null = null;
+let rssCacheTime = 0;
+const RSS_CACHE_TTL = 30 * 60 * 1000;
 
 // Helper to safely get string param
 const getParam = (param: string | string[] | undefined): string => {
@@ -1647,76 +1663,56 @@ export function registerRoutes(
     }
   });
 
-  // Intel news endpoint — fetches UK education IT news via Anthropic web search
+  // Intel news endpoint — fetches UK education IT news from RSS feeds
   app.get("/api/intel/news", isAuthenticated, async (req, res) => {
     const forceRefresh = req.query.refresh === "true";
     const now = Date.now();
 
-    if (!forceRefresh && intelCache && now - intelCacheTime < INTEL_CACHE_TTL) {
-      return res.json({ ...intelCache, cached: true });
-    }
-
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      if (intelCache) return res.json({ ...intelCache, cached: true, stale: true });
-      return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
+    if (!forceRefresh && rssCache && now - rssCacheTime < RSS_CACHE_TTL) {
+      return res.json({ ...rssCache, cached: true });
     }
 
     try {
-      const client = new Anthropic({ apiKey });
-      const today = new Date().toISOString().split("T")[0];
+      const parser = new Parser({
+        timeout: 12000,
+        headers: { "User-Agent": "WaveCRM/1.0 RSS Reader" },
+        customFields: { item: [["media:content", "mediaContent"], ["dc:creator", "creator"]] },
+      });
 
-      const prompt = `You are a UK education IT market intelligence assistant for a hardware reseller selling laptops, Chromebooks, tablets, and infrastructure to schools and MATs. Today's date is ${today}.
+      const results = await Promise.allSettled(
+        RSS_FEEDS.map(async ({ url, source }) => {
+          const feed = await parser.parseURL(url);
+          return feed.items.map((item) => {
+            const rawSummary = item.contentSnippet || (item as any).summary || "";
+            const summary = rawSummary.replace(/\s+/g, " ").trim().slice(0, 400);
+            const category = categorizeArticle(item.title || "", summary);
+            return {
+              headline: (item.title || "").trim(),
+              source,
+              sourceUrl: item.link || (item as any).guid || "",
+              date: item.isoDate || item.pubDate || new Date().toISOString(),
+              summary,
+              category,
+            };
+          });
+        })
+      );
 
-Search the web for the latest UK education IT news from the past 30 days. Focus specifically on these sources:
-- Schools Week (schoolsweek.co.uk): MAT mergers, trust news, academy conversions
-- TES (tes.com): which MATs are growing or consolidating
-- Education Business UK (educationbusinessuk.net): EdTech and hardware procurement
-- BESA (besa.org.uk): school technology spending trends and surveys
-- GOV.UK education news: DfE funding announcements, policy (e.g. 6 digital standards all schools must meet by 2030)
+      const articles = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+      const feedErrors = results.filter((r) => r.status === "rejected").length;
 
-Prioritise stories about: MAT expansions and mergers, school device refresh cycles, DfE funding announcements, HP/Lenovo/Dell in education, trade-in and leasing programmes, school IT budget decisions, and procurement frameworks.
+      // Sort newest first, drop articles with no headline
+      articles
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      const news = articles.filter((a) => a.headline.length > 0);
 
-Find 8-12 relevant news stories and return them ONLY as a raw JSON array (no markdown, no code blocks) where each item has exactly this structure:
-{
-  "headline": "Full article headline",
-  "source": "Source name (e.g. Schools Week)",
-  "sourceUrl": "https://actual-article-url",
-  "date": "YYYY-MM-DD",
-  "summary": "Exactly two sentences summarising the key facts.",
-  "salesSignal": "One or two sentences explaining specifically why this creates an opportunity for selling IT hardware to schools or MATs.",
-  "signalStrength": 2,
-  "category": "MAT & Trust Updates"
-}
-
-signalStrength: 1 = informational/weak, 2 = moderate opportunity, 3 = strong/immediate sales opportunity.
-category must be exactly one of: "MAT & Trust Updates", "Hardware", "Policy & Funding", "Procurement"
-
-Return ONLY the JSON array. No other text.`;
-
-      const response = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 8000,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: [{ role: "user", content: prompt }],
-      } as any);
-
-      // Extract final text blocks (skip tool_use blocks from web search)
-      const textBlocks = (response.content as any[]).filter((b: any) => b.type === "text");
-      const rawText = textBlocks.map((b: any) => b.text).join("");
-
-      // Robustly extract JSON array from response
-      const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error("No JSON array found in response");
-      const newsItems = JSON.parse(jsonMatch[0]);
-
-      intelCache = { news: newsItems, fetchedAt: new Date().toISOString() };
-      intelCacheTime = Date.now();
-      return res.json({ ...intelCache, cached: false });
+      rssCache = { news, fetchedAt: new Date().toISOString() };
+      rssCacheTime = Date.now();
+      return res.json({ ...rssCache, cached: false, feedErrors });
     } catch (error: any) {
-      console.error("Intel news fetch error:", error.message);
-      if (intelCache) return res.json({ ...intelCache, cached: true, stale: true });
-      return res.status(500).json({ error: "Failed to fetch news", details: error.message });
+      console.error("Intel RSS fetch error:", error.message);
+      if (rssCache) return res.json({ ...rssCache, cached: true, stale: true });
+      return res.status(500).json({ error: "Failed to fetch RSS feeds", details: error.message });
     }
   });
 
