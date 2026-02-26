@@ -657,7 +657,6 @@ export default function CompanyDetail() {
         if (activityFilter === "notes") return a.type === "follow_up";
         if (activityFilter === "emails") return a.type === "email";
         if (activityFilter === "calls") return a.type === "call";
-        if (activityFilter === "tasks") return false; // Tasks are separate
         if (activityFilter === "meetings") return a.type === "meeting";
         return true;
       });
@@ -1293,7 +1292,6 @@ export default function CompanyDetail() {
                     { key: "notes", label: "Notes" },
                     { key: "emails", label: "Emails" },
                     { key: "calls", label: "Calls" },
-                    { key: "tasks", label: "Tasks" },
                     { key: "meetings", label: "Meetings" },
                   ].map((filter) => (
                     <Button
@@ -1316,26 +1314,38 @@ export default function CompanyDetail() {
 
             {/* Activity Timeline */}
             <ScrollArea className="flex-1">
-              <div className="p-6">
-                {activityFilter === "tasks" ? (
-                  // Show tasks
-                  <div className="space-y-3">
-                    {(company.tasks || []).length === 0 ? (
-                      <div className="text-center py-12 text-muted-foreground">
-                        <CheckCircle2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                        <p>No tasks yet</p>
-                        <Button
-                          className="mt-3 bg-[#0091AE] hover:bg-[#007a94]"
-                          onClick={() => setShowAddTaskDialog(true)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Task
-                        </Button>
-                      </div>
-                    ) : (
-                      company.tasks?.map((task) => (
+              <div className="p-6 space-y-6">
+
+                {/* ── TASKS (always visible at top) ── */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-[#0091AE]" />
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Tasks</h3>
+                      <Badge variant="secondary" className="text-xs dark:bg-[#3d4254] dark:text-[#94a3b8]">
+                        {(company.tasks || []).filter(t => t.status !== "completed").length}
+                      </Badge>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="h-7 px-3 text-xs bg-[#0091AE] hover:bg-[#007a94] text-white"
+                      onClick={() => setShowAddTaskDialog(true)}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Task
+                    </Button>
+                  </div>
+
+                  {(company.tasks || []).length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 dark:border-[#3d4254] py-6 text-center text-muted-foreground bg-gray-50/50 dark:bg-[#1a1d29]/50">
+                      <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-25" />
+                      <p className="text-sm">No tasks yet — add one to track follow-ups</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {company.tasks?.map((task) => (
                         <Card key={task.id} className={`dark:bg-[#252936] dark:border-[#3d4254] ${isTaskOverdue(task) ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30" : ""}`}>
-                          <CardContent className="p-4">
+                          <CardContent className="p-3.5">
                             <div className="flex items-center gap-3">
                               <Checkbox
                                 checked={task.status === "completed"}
@@ -1346,11 +1356,11 @@ export default function CompanyDetail() {
                                   });
                                 }}
                               />
-                              <div className="flex-1">
-                                <p className={`font-medium ${task.status === "completed" ? "line-through text-muted-foreground" : ""}`}>
+                              <div className="flex-1 min-w-0">
+                                <p className={`font-medium text-sm ${task.status === "completed" ? "line-through text-muted-foreground" : ""}`}>
                                   {task.name}
                                 </p>
-                                <div className="flex items-center gap-2 mt-1">
+                                <div className="flex items-center gap-2 mt-0.5">
                                   <Badge className={getPriorityColor(task.priority)} variant="secondary">
                                     {task.priority}
                                   </Badge>
@@ -1364,18 +1374,30 @@ export default function CompanyDetail() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                                className="h-7 w-7 text-muted-foreground hover:text-red-600 flex-shrink-0"
                                 onClick={() => deleteTaskMutation.mutate(task.id)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </CardContent>
                         </Card>
-                      ))
-                    )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── ACTIVITY FEED (below tasks) ── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="h-4 w-4 text-[#0091AE]" />
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Activity Feed</h3>
+                    <Badge variant="secondary" className="text-xs dark:bg-[#3d4254] dark:text-[#94a3b8]">
+                      {filteredActivities.length}
+                    </Badge>
                   </div>
-                ) : filteredActivities.length === 0 ? (
+
+                  {filteredActivities.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
                     <p>No activities found</p>
@@ -1513,6 +1535,8 @@ export default function CompanyDetail() {
                     </div>
                   </div>
                 )}
+                </div>{/* end Activity Feed section */}
+
               </div>
             </ScrollArea>
           </TabsContent>
@@ -1912,7 +1936,7 @@ export default function CompanyDetail() {
                     variant="ghost"
                     size="sm"
                     className="w-full text-xs text-muted-foreground"
-                    onClick={() => setActivityFilter("tasks")}
+                    onClick={() => setActivityFilter("all")}
                   >
                     View all {activeTasks.length} tasks
                   </Button>
