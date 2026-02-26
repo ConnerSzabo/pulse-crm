@@ -1436,8 +1436,27 @@ export function registerRoutes(
 
   app.get("/api/trusts-with-stats", isAuthenticated, async (req, res) => {
     try {
-      const trusts = await storage.getTrustsWithStats();
-      res.json(trusts);
+      const sortBy = (req.query.sortBy as string) || "name";
+      let trustsList = await storage.getTrustsWithStats();
+
+      if (sortBy === "last_activity") {
+        trustsList = trustsList.sort((a, b) => {
+          if (!a.lastActivityDate) return 1;
+          if (!b.lastActivityDate) return -1;
+          return new Date(b.lastActivityDate).getTime() - new Date(a.lastActivityDate).getTime();
+        });
+      } else if (sortBy === "oldest_activity") {
+        trustsList = trustsList.sort((a, b) => {
+          if (!a.lastActivityDate) return 1;
+          if (!b.lastActivityDate) return -1;
+          return new Date(a.lastActivityDate).getTime() - new Date(b.lastActivityDate).getTime();
+        });
+      } else if (sortBy === "schools") {
+        trustsList = trustsList.sort((a, b) => b.schoolCount - a.schoolCount);
+      }
+      // default: already sorted by name in getTrustsWithStats
+
+      res.json(trustsList);
     } catch (error) {
       console.error("Failed to fetch trusts with stats:", error);
       res.status(500).json({ error: "Failed to fetch trusts with stats" });

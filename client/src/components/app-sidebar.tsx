@@ -14,7 +14,7 @@ import {
   Landmark,
   Newspaper,
 } from "lucide-react";
-import { Link, useLocation, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
 const mainMenuItems = [
@@ -65,7 +65,7 @@ const mainMenuItems = [
   },
   {
     title: "Trusts",
-    url: "/companies?type=trusts",
+    url: "/trusts",
     icon: Landmark,
   },
 ];
@@ -80,18 +80,14 @@ const toolsMenuItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const searchParams = useSearch();
 
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
-    // Trusts link is active when on /companies with ?type=trusts
-    if (url === "/companies?type=trusts") {
-      return location === "/companies" && new URLSearchParams(searchParams).get("type") === "trusts";
+    if (url === "/trusts") {
+      return location === "/trusts" || location.startsWith("/trust/");
     }
     if (url === "/companies") {
-      // Companies is active on /companies (without trusts filter) or /company/:id
-      const isTrustsFilter = new URLSearchParams(searchParams).get("type") === "trusts";
-      return (location === "/companies" && !isTrustsFilter) || location.startsWith("/company/");
+      return location === "/companies" || location.startsWith("/company/");
     }
     if (url === "/contacts") return location === "/contacts" || location.startsWith("/contact/");
     return location.startsWith(url);

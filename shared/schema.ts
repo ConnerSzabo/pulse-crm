@@ -60,6 +60,8 @@ export type TrustWithStats = Trust & {
   schoolCount: number;
   totalPipelineValue: number;
   lastActivityDate: Date | null;
+  lastActivityType: string | null;
+  lastActivitySchoolName: string | null;
 };
 
 // Companies/Schools

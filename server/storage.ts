@@ -188,7 +188,7 @@ export interface IStorage {
   createTrust(trust: InsertTrust): Promise<Trust>;
   updateTrust(id: string, data: Partial<InsertTrust>): Promise<Trust | undefined>;
   deleteTrust(id: string): Promise<void>;
-  getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[] })[]>;
+  getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[]; lastActivityType?: string | null; contacts: Contact[] })[]>;
   getTrustPipelineSummary(trustId: string): Promise<{ stageId: string; stageName: string; stageColor: string; dealCount: number; totalValue: number }[]>;
   getTrustActivities(trustId: string, limit: number, offset: number): Promise<(Activity & { companyName?: string })[]>;
   getTrustsWithStats(): Promise<TrustWithStats[]>;
@@ -1187,16 +1187,24 @@ export class DatabaseStorage implements IStorage {
     await db.delete(trusts).where(eq(trusts.id, id));
   }
 
-  async getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[] })[]> {
+  async getCompaniesByTrust(trustId: string): Promise<(Company & { stage?: PipelineStage; deals: DealWithStage[]; lastActivityType?: string | null; contacts: Contact[] })[]> {
     const companiesList = await db.select().from(companies).where(eq(companies.trustId, trustId)).orderBy(companies.name);
     if (companiesList.length === 0) return [];
 
     const stages = await this.getPipelineStages();
     const stageMap = new Map(stages.map(s => [s.id, s]));
 
-    // Batch load deals for all companies
     const companyIds = companiesList.map(c => c.id);
-    const allDeals = await db.select().from(deals).where(inArray(deals.companyId, companyIds));
+
+    // Batch load deals, contacts, and last activity type in parallel
+    const [allDeals, allContacts, recentActivities] = await Promise.all([
+      db.select().from(deals).where(inArray(deals.companyId, companyIds)),
+      db.select().from(contacts).where(inArray(contacts.companyId, companyIds)).orderBy(contacts.name),
+      db.select({ companyId: activities.companyId, type: activities.type })
+        .from(activities)
+        .where(inArray(activities.companyId, companyIds))
+        .orderBy(desc(activities.createdAt)),
+    ]);
 
     const dealsByCompany = new Map<string, DealWithStage[]>();
     for (const deal of allDeals) {
@@ -1205,10 +1213,27 @@ export class DatabaseStorage implements IStorage {
       dealsByCompany.set(deal.companyId, list);
     }
 
+    const contactsByCompany = new Map<string, Contact[]>();
+    for (const contact of allContacts) {
+      if (!contact.companyId) continue;
+      const list = contactsByCompany.get(contact.companyId) || [];
+      list.push(contact);
+      contactsByCompany.set(contact.companyId, list);
+    }
+
+    const lastActivityTypeMap = new Map<string, string>();
+    for (const a of recentActivities) {
+      if (!lastActivityTypeMap.has(a.companyId)) {
+        lastActivityTypeMap.set(a.companyId, a.type);
+      }
+    }
+
     return companiesList.map(c => ({
       ...c,
       stage: c.stageId ? stageMap.get(c.stageId) : undefined,
       deals: dealsByCompany.get(c.id) || [],
+      contacts: contactsByCompany.get(c.id) || [],
+      lastActivityType: lastActivityTypeMap.get(c.id) ?? null,
     }));
   }
 
@@ -1302,20 +1327,34 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Last activity per trust
+    // Last activity per trust (date, type, and school name)
     const allActivities = allCompanyIds.length > 0
       ? await db
-          .select({ companyId: activities.companyId, createdAt: activities.createdAt })
+          .select({ companyId: activities.companyId, createdAt: activities.createdAt, type: activities.type })
           .from(activities)
           .where(inArray(activities.companyId, allCompanyIds))
           .orderBy(desc(activities.createdAt))
       : [];
 
+    // Build company name map for trust companies
+    const companyNameMap = new Map(allCompanies.map(c => [c.id, '']));
+    if (allCompanies.length > 0) {
+      const companyDetails = await db
+        .select({ id: companies.id, name: companies.name })
+        .from(companies)
+        .where(inArray(companies.id, allCompanyIds));
+      for (const c of companyDetails) companyNameMap.set(c.id, c.name);
+    }
+
     const lastActivityMap = new Map<string, Date>();
+    const lastActivityTypeMap = new Map<string, string>();
+    const lastActivitySchoolNameMap = new Map<string, string>();
     for (const a of allActivities) {
       const tId = companyToTrust.get(a.companyId);
       if (tId && !lastActivityMap.has(tId)) {
         lastActivityMap.set(tId, a.createdAt);
+        lastActivityTypeMap.set(tId, a.type);
+        lastActivitySchoolNameMap.set(tId, companyNameMap.get(a.companyId) || '');
       }
     }
 
@@ -1324,6 +1363,8 @@ export class DatabaseStorage implements IStorage {
       schoolCount: schoolCountMap.get(t.id) || 0,
       totalPipelineValue: pipelineMap.get(t.id) || 0,
       lastActivityDate: lastActivityMap.get(t.id) || null,
+      lastActivityType: lastActivityTypeMap.get(t.id) || null,
+      lastActivitySchoolName: lastActivitySchoolNameMap.get(t.id) || null,
     }));
   }
 

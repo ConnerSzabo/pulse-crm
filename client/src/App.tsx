@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { Switch, Route, useLocation, useParams } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -26,22 +26,9 @@ const CallQueue = lazy(() => import("@/pages/call-queue"));
 const CallHistory = lazy(() => import("@/pages/call-history"));
 const CallAnalytics = lazy(() => import("@/pages/call-analytics"));
 const IntelPage = lazy(() => import("@/pages/intel"));
+const TrustsPage = lazy(() => import("@/pages/trusts"));
+const TrustDetail = lazy(() => import("@/pages/trust-detail"));
 const NotFound = lazy(() => import("@/pages/not-found"));
-
-// Redirect /trusts → /companies?type=trusts
-function TrustsRedirect() {
-  const [, navigate] = useLocation();
-  useEffect(() => { navigate("/companies?type=trusts", { replace: true }); }, [navigate]);
-  return null;
-}
-
-// Redirect /trusts/:id → /company/:id
-function TrustDetailRedirect() {
-  const params = useParams<{ id: string }>();
-  const [, navigate] = useLocation();
-  useEffect(() => { if (params.id) navigate(`/company/${params.id}`, { replace: true }); }, [navigate, params.id]);
-  return null;
-}
 
 function PageLoader() {
   return (
@@ -70,8 +57,8 @@ function Router() {
         <Route path="/call-history" component={CallHistory} />
         <Route path="/call-analytics" component={CallAnalytics} />
         <Route path="/intel" component={IntelPage} />
-        <Route path="/trusts" component={TrustsRedirect} />
-        <Route path="/trusts/:id" component={TrustDetailRedirect} />
+        <Route path="/trusts" component={TrustsPage} />
+        <Route path="/trust/:id" component={TrustDetail} />
         <Route path="/import" component={ImportCSV} />
         <Route component={NotFound} />
       </Switch>
