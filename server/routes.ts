@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName, normalizeLocation, normalizePhone, normalizeWebsite } from "./storage";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { activities, companies, contacts, callNotes, tasks, users } from "@shared/schema";
 import { insertCompanySchema, insertContactSchema, insertCallNoteSchema, insertTaskSchema, insertActivitySchema, insertDealSchema, insertTrustSchema, insertCompanyRelationshipSchema } from "@shared/schema";
 import { z } from "zod";
@@ -1057,7 +1057,28 @@ export function registerRoutes(
       // Sort by priority descending
       queue.sort((a, b) => b.priority - a.priority);
 
-      res.json(queue.slice(0, 100)); // Cap at 100 items
+      const capped = queue.slice(0, 100);
+
+      // Batch-fetch the most recent call activity for each queued company
+      const queuedIds = capped.map((item) => item.company.id);
+      const lastCallMap = new Map<string, typeof activities.$inferSelect>();
+      if (queuedIds.length > 0) {
+        const recentCalls = await db
+          .select()
+          .from(activities)
+          .where(and(inArray(activities.companyId, queuedIds), eq(activities.type, "call")))
+          .orderBy(desc(activities.createdAt));
+        for (const call of recentCalls) {
+          if (!lastCallMap.has(call.companyId)) {
+            lastCallMap.set(call.companyId, call);
+          }
+        }
+      }
+
+      res.json(capped.map((item) => ({
+        ...item,
+        lastCallActivity: lastCallMap.get(item.company.id) ?? null,
+      })));
     } catch (error) {
       console.error("Call queue error:", error);
       res.status(500).json({ error: "Failed to generate call queue" });

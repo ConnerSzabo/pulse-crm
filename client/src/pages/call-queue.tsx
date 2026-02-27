@@ -37,15 +37,18 @@ import {
   PhoneOff,
   RefreshCw,
   Filter,
+  MessageSquare,
+  User,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
-import type { Company, PipelineStage, Trust } from "@shared/schema";
+import type { Company, PipelineStage, Trust, Activity, CompanyWithRelations } from "@shared/schema";
 
 type QueueItem = {
   company: Company & { stage?: PipelineStage; trust?: Trust };
   priority: number;
   reason: string;
+  lastCallActivity?: Activity | null;
 };
 
 const LEAD_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -97,13 +100,20 @@ export default function CallQueue() {
 
   const logCallMutation = useMutation({
     mutationFn: async ({ companyId, note, outcome }: { companyId: string; note: string; outcome: string }) => {
-      return apiRequest("POST", `/api/companies/${companyId}/activities`, {
+      const res = await apiRequest("POST", `/api/companies/${companyId}/activities`, {
         type: "call",
         note,
         outcome,
       });
+      return res.json() as Promise<Activity>;
     },
-    onSuccess: () => {
+    onSuccess: (newActivity, { companyId }) => {
+      // Write the new activity directly into the company's cached data so the
+      // school detail page shows it immediately without waiting for a refetch.
+      queryClient.setQueryData<CompanyWithRelations>(
+        ["/api/companies", companyId],
+        (old) => old ? { ...old, activities: [newActivity, ...old.activities] } : old,
+      );
       queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       toast({ title: "Call logged", description: "Activity recorded successfully" });
@@ -307,44 +317,77 @@ export default function CallQueue() {
               </div>
             </div>
 
-            {/* Additional info */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm">
-              {currentItem.company.decisionMakerName && (
-                <div>
-                  <span className="text-muted-foreground dark:text-[#64748b]">Decision Maker: </span>
-                  <span className="dark:text-white">{currentItem.company.decisionMakerName}</span>
+            {/* Key contacts + meta row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+              {/* IT Manager — highlighted */}
+              {currentItem.company.itManagerName ? (
+                <div className="md:col-span-2 flex items-start gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <User className="h-4 w-4 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-green-400 mb-0.5">IT Manager</p>
+                    <p className="dark:text-white font-medium">{currentItem.company.itManagerName}</p>
+                    {currentItem.company.itManagerEmail && (
+                      <a
+                        href={`mailto:${currentItem.company.itManagerEmail}`}
+                        className="text-[#0091AE] hover:underline text-xs truncate block"
+                      >
+                        {currentItem.company.itManagerEmail}
+                      </a>
+                    )}
+                  </div>
                 </div>
-              )}
-              {currentItem.company.itManagerName && (
-                <div>
-                  <span className="text-muted-foreground dark:text-[#64748b]">IT Manager: </span>
-                  <span className="dark:text-white">{currentItem.company.itManagerName}</span>
+              ) : currentItem.company.decisionMakerName ? (
+                <div className="md:col-span-2 flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <User className="h-4 w-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-400 mb-0.5">Decision Maker</p>
+                    <p className="dark:text-white font-medium">{currentItem.company.decisionMakerName}</p>
+                  </div>
                 </div>
-              )}
-              {currentItem.company.lastContactDate && (
-                <div className="flex items-center gap-1">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground dark:text-[#64748b]" />
-                  <span className="text-muted-foreground dark:text-[#64748b]">Last contact: </span>
-                  <span className="dark:text-white">
+              ) : null}
+              {/* Last contact / quote meta */}
+              <div className="flex flex-col gap-1 text-xs text-muted-foreground dark:text-[#64748b]">
+                {currentItem.company.lastContactDate && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
                     {formatDistanceToNow(new Date(currentItem.company.lastContactDate), { addSuffix: true })}
                   </span>
-                </div>
-              )}
-              {currentItem.company.lastQuoteValue && (
-                <div>
-                  <span className="text-muted-foreground dark:text-[#64748b]">Last Quote: </span>
-                  <span className="dark:text-white font-medium">
-                    £{Number(currentItem.company.lastQuoteValue).toLocaleString()}
+                )}
+                {currentItem.company.lastQuoteValue && (
+                  <span>Last quote: <span className="dark:text-white font-medium">£{Number(currentItem.company.lastQuoteValue).toLocaleString()}</span></span>
+                )}
+                {currentItem.company.notes && (
+                  <span className="italic line-clamp-2 dark:text-[#94a3b8]">{currentItem.company.notes}</span>
+                )}
+              </div>
+            </div>
+
+            {/* Last call notes */}
+            {currentItem.lastCallActivity ? (
+              <div className="mb-4 p-4 rounded-lg border-l-4 border-[#0091AE] bg-gray-50 dark:bg-[#1a1d29]">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-[#0091AE]" />
+                    <span className="text-sm font-medium dark:text-white">Last Call</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground dark:text-[#64748b]">
+                    {format(new Date(currentItem.lastCallActivity.createdAt), "d MMM yyyy")}
                   </span>
                 </div>
-              )}
-              {currentItem.company.notes && (
-                <div className="md:col-span-3">
-                  <span className="text-muted-foreground dark:text-[#64748b]">Notes: </span>
-                  <span className="dark:text-[#94a3b8]">{currentItem.company.notes}</span>
-                </div>
-              )}
-            </div>
+                {currentItem.lastCallActivity.outcome && (
+                  <Badge variant="secondary" className="mb-2 dark:bg-[#3d4254] dark:text-[#94a3b8] text-xs">
+                    {currentItem.lastCallActivity.outcome}
+                  </Badge>
+                )}
+                {currentItem.lastCallActivity.note && (
+                  <p className="text-sm dark:text-[#94a3b8] line-clamp-3">{currentItem.lastCallActivity.note}</p>
+                )}
+              </div>
+            ) : !currentItem.company.lastContactDate && (
+              <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-sm text-amber-600 dark:text-amber-400">
+                First contact with this school — no previous call history
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-[#3d4254]">
@@ -400,17 +443,23 @@ export default function CallQueue() {
                   key={item.company.id}
                   className="flex items-center justify-between py-2 px-2 rounded-md hover:bg-gray-50 dark:hover:bg-[#2d3142] transition-colors"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-xs text-muted-foreground dark:text-[#64748b] w-5 text-right">{idx + 2}</span>
-                    <span className="text-sm font-medium dark:text-white truncate">{item.company.name}</span>
-                    <Badge
-                      variant="secondary"
-                      className="text-[10px] dark:bg-[#3d4254] dark:text-[#94a3b8]"
-                    >
-                      {item.reason}
-                    </Badge>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className="text-xs text-muted-foreground dark:text-[#64748b] w-5 text-right flex-shrink-0">{idx + 2}</span>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-medium dark:text-white truncate block">{item.company.name}</span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {item.company.itManagerName && (
+                          <span className="text-[10px] text-green-500 truncate">{item.company.itManagerName}</span>
+                        )}
+                        {item.lastCallActivity && (
+                          <span className="text-[10px] text-muted-foreground dark:text-[#64748b]">
+                            {format(new Date(item.lastCallActivity.createdAt), "d MMM")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground dark:text-[#64748b]">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground dark:text-[#64748b] flex-shrink-0">
                     {item.company.location && <span>{item.company.location}</span>}
                     <ChevronRight className="h-3 w-3" />
                   </div>
