@@ -36,6 +36,7 @@ import {
   PhoneCall,
   PhoneOff,
   RefreshCw,
+  Filter,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
@@ -62,8 +63,23 @@ const CALL_OUTCOMES = [
   { value: "Connected to DM", label: "Connected to DM" },
 ];
 
+const FILTER_TABS = [
+  { value: "all", label: "All with Phone #" },
+  { value: "contacted", label: "Previously Contacted" },
+  { value: "needs_followup", label: "Needs Follow-Up" },
+  { value: "uncontacted", label: "Never Contacted" },
+] as const;
+
+const FILTER_DESCRIPTIONS: Record<string, string> = {
+  all: "Showing all schools with valid phone numbers (trusts excluded)",
+  contacted: "Showing only schools you've contacted before with valid phone numbers",
+  uncontacted: "Showing schools with phone numbers that have never been contacted",
+  needs_followup: "Showing schools not contacted in the last 7 days",
+};
+
 export default function CallQueue() {
   const { toast } = useToast();
+  const [filter, setFilter] = useState("all");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
@@ -72,9 +88,9 @@ export default function CallQueue() {
   const [callOutcome, setCallOutcome] = useState("");
 
   const { data: queue, isLoading } = useQuery<QueueItem[]>({
-    queryKey: ["/api/call-queue"],
+    queryKey: ["/api/call-queue", filter],
     queryFn: async () => {
-      const res = await apiRequest("GET", "/api/call-queue");
+      const res = await apiRequest("GET", `/api/call-queue?filter=${filter}`);
       return res.json();
     },
   });
@@ -150,6 +166,13 @@ export default function CallQueue() {
     queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
   };
 
+  const handleFilterChange = (newFilter: string) => {
+    setFilter(newFilter);
+    setCompletedIds(new Set());
+    setSkippedIds(new Set());
+    setCurrentIndex(0);
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 space-y-6">
@@ -174,6 +197,29 @@ export default function CallQueue() {
           <RefreshCw className="h-4 w-4 mr-2" />
           Reset Queue
         </Button>
+      </div>
+
+      {/* Filter Tabs */}
+      <div className="flex gap-1 bg-gray-100 dark:bg-[#252936] p-1 rounded-lg inline-flex flex-wrap">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            onClick={() => handleFilterChange(tab.value)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              filter === tab.value
+                ? "bg-white dark:bg-[#0091AE] text-gray-900 dark:text-white shadow-sm"
+                : "text-gray-600 dark:text-[#94a3b8] hover:text-gray-900 dark:hover:text-white"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Info Banner */}
+      <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-lg text-sm">
+        <Filter className="h-4 w-4 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+        <p className="text-blue-700 dark:text-blue-300">{FILTER_DESCRIPTIONS[filter]}</p>
       </div>
 
       {/* Progress Bar */}
@@ -323,9 +369,13 @@ export default function CallQueue() {
         <Card className="dark:bg-[#252936] dark:border-[#3d4254]">
           <CardContent className="py-12 text-center">
             <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold dark:text-white mb-2">Queue Complete!</h3>
+            <h3 className="text-lg font-semibold dark:text-white mb-2">
+              {totalItems === 0 ? "No Schools in Queue" : "Queue Complete!"}
+            </h3>
             <p className="text-muted-foreground dark:text-[#94a3b8]">
-              You've worked through all {totalItems} schools. {completedIds.size} calls logged, {skippedIds.size} skipped.
+              {totalItems === 0
+                ? FILTER_DESCRIPTIONS[filter]
+                : `You've worked through all ${totalItems} schools. ${completedIds.size} calls logged, ${skippedIds.size} skipped.`}
             </p>
             <Button onClick={handleReset} variant="outline" className="mt-4 dark:border-[#3d4254]">
               <RefreshCw className="h-4 w-4 mr-2" />

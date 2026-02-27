@@ -958,6 +958,7 @@ export function registerRoutes(
   // Call Queue endpoint - get prioritized list of companies to call
   app.get("/api/call-queue", isAuthenticated, async (req, res) => {
     try {
+      const filter = (req.query.filter as string) || "all";
       const allCompanies = await storage.getCompanies();
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -966,44 +967,88 @@ export function registerRoutes(
       const queue: { company: typeof allCompanies[0]; priority: number; reason: string }[] = [];
 
       for (const company of allCompanies) {
+        // Exclude trusts
+        if (company.isTrust) continue;
+
+        // Exclude companies without a valid phone number
+        const phone = company.phone?.trim();
+        if (!phone || phone === "N/A" || phone === "Unknown") continue;
+
         // Skip closed won/lost (account-active or quoted-lost)
         if (company.budgetStatus === "4-account-active" || company.budgetStatus === "3b-quoted-lost") continue;
-
-        let priority = 0;
-        let reason = "";
 
         const lastContact = company.lastContactDate ? new Date(company.lastContactDate) : null;
         const daysSinceContact = lastContact
           ? Math.floor((today.getTime() - lastContact.getTime()) / (1000 * 60 * 60 * 24))
           : 999;
 
-        // Priority 1: Quoted but no follow-up (3-quote-presented with no contact in 3+ days)
-        if (company.budgetStatus === "3-quote-presented" && daysSinceContact >= 3) {
-          priority = 100 + daysSinceContact;
-          reason = "Quote follow-up needed";
-        }
-        // Priority 2: Intent leads not contacted in 5+ days
-        else if (company.budgetStatus === "2-intent" && daysSinceContact >= 5) {
-          priority = 80 + daysSinceContact;
-          reason = "Intent lead - needs contact";
-        }
-        // Priority 3: Qualified leads not contacted in 7+ days
-        else if (company.budgetStatus === "1-qualified" && daysSinceContact >= 7) {
-          priority = 60 + daysSinceContact;
-          reason = "Qualified lead - overdue";
-        }
-        // Priority 4: Unqualified with no contact in 14+ days
-        else if (company.budgetStatus === "0-unqualified" && daysSinceContact >= 14) {
-          priority = 40 + Math.min(daysSinceContact, 60);
-          reason = "Needs qualification";
-        }
-        // Priority 5: Any company never contacted
-        else if (!lastContact) {
-          priority = 50;
-          reason = "Never contacted";
-        }
-        else {
-          continue; // Skip - recently contacted
+        let priority = 0;
+        let reason = "";
+
+        if (filter === "needs_followup") {
+          // Previously contacted, not contacted in 7+ days
+          if (!lastContact || daysSinceContact < 7) continue;
+          if (company.budgetStatus === "3-quote-presented") {
+            priority = 100 + daysSinceContact;
+            reason = "Quote follow-up needed";
+          } else if (company.budgetStatus === "2-intent") {
+            priority = 80 + daysSinceContact;
+            reason = "Intent lead - needs contact";
+          } else if (company.budgetStatus === "1-qualified") {
+            priority = 60 + daysSinceContact;
+            reason = "Qualified lead - overdue";
+          } else {
+            priority = 40 + Math.min(daysSinceContact, 60);
+            reason = "Needs follow-up";
+          }
+        } else if (filter === "uncontacted") {
+          // Only never-contacted companies
+          if (lastContact) continue;
+          if (company.budgetStatus === "3-quote-presented") {
+            priority = 100;
+            reason = "Never contacted";
+          } else if (company.budgetStatus === "2-intent") {
+            priority = 80;
+            reason = "Never contacted";
+          } else if (company.budgetStatus === "1-qualified") {
+            priority = 60;
+            reason = "Never contacted";
+          } else {
+            priority = 50;
+            reason = "Never contacted";
+          }
+        } else {
+          // 'all' and 'contacted' use the standard priority thresholds
+          if (filter === "contacted" && !lastContact) continue;
+
+          // Priority 1: Quoted but no follow-up (3-quote-presented with no contact in 3+ days)
+          if (company.budgetStatus === "3-quote-presented" && daysSinceContact >= 3) {
+            priority = 100 + daysSinceContact;
+            reason = "Quote follow-up needed";
+          }
+          // Priority 2: Intent leads not contacted in 5+ days
+          else if (company.budgetStatus === "2-intent" && daysSinceContact >= 5) {
+            priority = 80 + daysSinceContact;
+            reason = "Intent lead - needs contact";
+          }
+          // Priority 3: Qualified leads not contacted in 7+ days
+          else if (company.budgetStatus === "1-qualified" && daysSinceContact >= 7) {
+            priority = 60 + daysSinceContact;
+            reason = "Qualified lead - overdue";
+          }
+          // Priority 4: Unqualified with no contact in 14+ days
+          else if (company.budgetStatus === "0-unqualified" && daysSinceContact >= 14) {
+            priority = 40 + Math.min(daysSinceContact, 60);
+            reason = "Needs qualification";
+          }
+          // Priority 5: Any company never contacted
+          else if (!lastContact) {
+            priority = 50;
+            reason = "Never contacted";
+          }
+          else {
+            continue; // Skip - recently contacted, within threshold
+          }
         }
 
         queue.push({ company, priority, reason });
