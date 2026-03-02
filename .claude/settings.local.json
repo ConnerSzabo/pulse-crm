@@ -24,7 +24,8 @@
       "Bash(npm run build:*)",
       "Bash(git log:*)",
       "Bash(node:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(npm run:*)"
     ]
   }
 }
