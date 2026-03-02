@@ -39,7 +39,10 @@ import {
   Filter,
   MessageSquare,
   User,
+  CheckSquare,
+  Mail,
 } from "lucide-react";
+import QuickTaskModal from "@/components/QuickTaskModal";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
 import type { Company, PipelineStage, Trust, Activity, CompanyWithRelations } from "@shared/schema";
@@ -89,6 +92,7 @@ export default function CallQueue() {
   const [logCallOpen, setLogCallOpen] = useState(false);
   const [callNote, setCallNote] = useState("");
   const [callOutcome, setCallOutcome] = useState("");
+  const [showTaskModal, setShowTaskModal] = useState(false);
 
   const { data: queue, isLoading } = useQuery<QueueItem[]>({
     queryKey: ["/api/call-queue", filter],
@@ -283,8 +287,30 @@ export default function CallQueue() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* Click-to-Call — main phone */}
+            {currentItem.company.phone && (
+              <div className="mb-4 p-3 rounded-lg bg-[#0091AE]/10 border border-[#0091AE]/30 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#0091AE] mb-0.5">Main Phone</p>
+                  <p className="text-base font-bold dark:text-white">
+                    {currentItem.company.phone}
+                    {currentItem.company.ext && (
+                      <span className="text-sm font-normal dark:text-[#94a3b8] ml-1">ext. {currentItem.company.ext}</span>
+                    )}
+                  </p>
+                </div>
+                <a
+                  href={`tel:${currentItem.company.phone}`}
+                  className="px-4 py-2 bg-[#0091AE] hover:bg-[#007a94] text-white rounded-lg font-medium flex items-center gap-2 transition-colors text-sm flex-shrink-0"
+                >
+                  <Phone className="h-4 w-4" />
+                  Call Now
+                </a>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              {/* Phone */}
+              {/* Phone (compact repeat for the grid) */}
               <div className="flex items-center gap-2 text-sm">
                 <Phone className="h-4 w-4 text-muted-foreground dark:text-[#64748b]" />
                 <span className="dark:text-white font-medium">
@@ -390,11 +416,30 @@ export default function CallQueue() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-[#3d4254]">
+            <div className="flex items-center flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-[#3d4254]">
               <Button onClick={handleLogCall} className="bg-[#0091AE] hover:bg-[#007a94]">
                 <PhoneCall className="h-4 w-4 mr-2" />
                 Log Call
               </Button>
+              <Button
+                onClick={() => setShowTaskModal(true)}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                <CheckSquare className="h-4 w-4 mr-2" />
+                Create Task
+              </Button>
+              {currentItem.company.itManagerEmail && (
+                <Button
+                  variant="outline"
+                  asChild
+                  className="dark:border-[#3d4254] dark:text-[#94a3b8]"
+                >
+                  <a href={`mailto:${currentItem.company.itManagerEmail}?subject=IT Equipment Quote`}>
+                    <Mail className="h-4 w-4 mr-2" />
+                    Email IT Manager
+                  </a>
+                </Button>
+              )}
               <Button variant="outline" onClick={handleSkip} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
                 <SkipForward className="h-4 w-4 mr-2" />
                 Skip
@@ -473,6 +518,14 @@ export default function CallQueue() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Quick Task Modal */}
+      {showTaskModal && currentItem && (
+        <QuickTaskModal
+          company={currentItem.company}
+          onClose={() => setShowTaskModal(false)}
+        />
       )}
 
       {/* Log Call Dialog */}
