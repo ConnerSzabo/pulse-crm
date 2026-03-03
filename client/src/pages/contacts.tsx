@@ -58,6 +58,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ExportContactsModal } from "@/components/export-contacts-modal";
+import { formatPhone } from "@/lib/utils";
 
 const addContactSchema = z.object({
   name: z.string().min(1, "Contact name is required"),
@@ -729,11 +730,11 @@ export default function Contacts() {
                     <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       {contact.phone ? (
                         <a
-                          href={`tel:${contact.phone}`}
+                          href={`tel:${formatPhone(contact.phone)}`}
                           className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {contact.phone}
+                          {formatPhone(contact.phone)}
                         </a>
                       ) : (
                         <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>

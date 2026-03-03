@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format } from "date-fns";
+import { formatPhone } from "@/lib/utils";
 
 const addTrustSchema = z.object({
   name: z.string().min(1, "Trust name is required"),
@@ -361,12 +362,12 @@ export default function Trusts() {
                     <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                       {trust.phone ? (
                         <a
-                          href={`tel:${trust.phone}`}
+                          href={`tel:${formatPhone(trust.phone)}`}
                           className="flex items-center gap-1.5 text-sm text-[#0091AE] hover:underline font-medium"
                           onClick={e => e.stopPropagation()}
                         >
                           <Phone className="h-3.5 w-3.5" />
-                          {trust.phone}
+                          {formatPhone(trust.phone)}
                         </a>
                       ) : (
                         <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>

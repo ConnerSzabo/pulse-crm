@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
+import { formatPhone } from "@/lib/utils";
 
 const logCallSchema = z.object({
   note: z.string().optional(),
@@ -573,8 +574,8 @@ export default function ContactDetail() {
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-[0.5px] text-[#64748b]">Phone</p>
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 min-w-0">
-                          <Phone className="h-3.5 w-3.5 flex-shrink-0" /><span className="truncate">{contact.phone}</span>
+                        <a href={`tel:${formatPhone(contact.phone)}`} className="text-[14px] font-medium text-[#0091AE] hover:underline flex items-center gap-1 min-w-0">
+                          <Phone className="h-3.5 w-3.5 flex-shrink-0" /><span className="truncate">{formatPhone(contact.phone)}</span>
                         </a>
                       ) : (
                         <p className="text-[14px] text-muted-foreground">--</p>
@@ -701,7 +702,7 @@ export default function ContactDetail() {
                     <div>
                       <p className="text-xs text-[#64748b] mb-1">Phone Number</p>
                       {contact.phone ? (
-                        <a href={`tel:${contact.phone}`} className="text-sm font-medium text-[#0091AE] hover:underline">{contact.phone}</a>
+                        <a href={`tel:${formatPhone(contact.phone)}`} className="text-sm font-medium text-[#0091AE] hover:underline">{formatPhone(contact.phone)}</a>
                       ) : (
                         <p className="text-sm text-gray-500 dark:text-[#64748b]">--</p>
                       )}

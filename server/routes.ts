@@ -244,6 +244,7 @@ export function registerRoutes(
   app.post("/api/contacts", isAuthenticated, async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
+      if (data.phone) data.phone = normalizePhone(data.phone) || null;
       const contact = await storage.createContact(data);
       res.status(201).json(contact);
     } catch (error) {
@@ -257,6 +258,7 @@ export function registerRoutes(
   app.patch("/api/contacts/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertContactSchema.partial().parse(req.body);
+      if (data.phone) data.phone = normalizePhone(data.phone) || null;
       const contact = await storage.updateContact(req.params.id as string, data);
       if (!contact) {
         return res.status(404).json({ error: "Contact not found" });
@@ -276,6 +278,7 @@ export function registerRoutes(
         ...req.body,
         companyId: req.params.id as string,
       });
+      if (data.phone) data.phone = normalizePhone(data.phone) || null;
       const contact = await storage.createContact(data);
       res.status(201).json(contact);
     } catch (error) {
@@ -1544,6 +1547,8 @@ export function registerRoutes(
   app.post("/api/trusts", isAuthenticated, async (req, res) => {
     try {
       const data = insertTrustSchema.parse(req.body);
+      if (data.phone) data.phone = normalizePhone(data.phone) || null;
+      if (data.decisionMakerPhone) data.decisionMakerPhone = normalizePhone(data.decisionMakerPhone) || null;
       const trust = await storage.createTrust(data);
       res.status(201).json(trust);
     } catch (error) {
@@ -1557,6 +1562,8 @@ export function registerRoutes(
   app.patch("/api/trusts/:id", isAuthenticated, async (req, res) => {
     try {
       const data = insertTrustSchema.partial().parse(req.body);
+      if (data.phone) data.phone = normalizePhone(data.phone) || null;
+      if (data.decisionMakerPhone) data.decisionMakerPhone = normalizePhone(data.decisionMakerPhone) || null;
       const trust = await storage.updateTrust(req.params.id as string, data);
       if (!trust) {
         return res.status(404).json({ error: "Trust not found" });

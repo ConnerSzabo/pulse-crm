@@ -69,6 +69,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ExportContactsModal } from "@/components/export-contacts-modal";
+import { formatPhone } from "@/lib/utils";
 
 const addCompanySchema = z.object({
   name: z.string().min(1, "Company name is required"),
@@ -1207,11 +1208,11 @@ export default function Companies() {
                       <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                         {company.phone ? (
                           <a
-                            href={`tel:${company.phone}`}
+                            href={`tel:${formatPhone(company.phone)}`}
                             className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {company.phone}
+                            {formatPhone(company.phone)}
                           </a>
                         ) : (
                           <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>
@@ -1358,11 +1359,11 @@ export default function Companies() {
                       <td className="px-4 py-3.5 border-r border-gray-100 dark:border-[#3d4254]">
                         {company.phone ? (
                           <a
-                            href={`tel:${company.phone}`}
+                            href={`tel:${formatPhone(company.phone)}`}
                             className="text-sm text-[#0091AE] hover:text-[#06b6d4] hover:underline font-medium"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {company.phone}
+                            {formatPhone(company.phone)}
                           </a>
                         ) : (
                           <span className="text-sm text-gray-400 dark:text-[#64748b]">--</span>

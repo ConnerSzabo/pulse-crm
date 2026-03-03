@@ -51,7 +51,11 @@ import {
 export function normalizePhone(phone: string | null | undefined): string {
   if (!phone) return "";
   let digits = phone.replace(/\D/g, "");
-  if (digits.length === 10) digits = "0" + digits;
+  // Strip international UK prefix: 0044XXXXXXXXXX or 44XXXXXXXXXX → 0XXXXXXXXXX
+  if (digits.startsWith("0044") && digits.length === 14) digits = "0" + digits.slice(4);
+  else if (digits.startsWith("44") && digits.length === 12) digits = "0" + digits.slice(2);
+  // Add leading zero to any number that doesn't already start with one
+  if (digits.length > 0 && !digits.startsWith("0")) digits = "0" + digits;
   return digits;
 }
 

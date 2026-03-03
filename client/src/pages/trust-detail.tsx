@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow, format } from "date-fns";
+import { formatPhone } from "@/lib/utils";
 
 type SchoolWithContacts = Company & {
   stage?: PipelineStage;
@@ -326,8 +327,8 @@ export default function TrustDetail() {
               </div>
               <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-[#94a3b8] mt-2">
                 {trust.phone && (
-                  <a href={`tel:${trust.phone}`} className="flex items-center gap-1.5 hover:text-[#0091AE]">
-                    <Phone className="h-3.5 w-3.5" />{trust.phone}
+                  <a href={`tel:${formatPhone(trust.phone)}`} className="flex items-center gap-1.5 hover:text-[#0091AE]">
+                    <Phone className="h-3.5 w-3.5" />{formatPhone(trust.phone)}
                   </a>
                 )}
                 {trust.email && (
@@ -519,7 +520,7 @@ export default function TrustDetail() {
                         <div className="flex flex-wrap items-center gap-3 mt-1">
                           {school.phone && (
                             <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-[#64748b]">
-                              <Phone className="h-3 w-3" />{school.phone}
+                              <Phone className="h-3 w-3" />{formatPhone(school.phone)}
                             </span>
                           )}
                           {school.location && (
@@ -563,7 +564,7 @@ export default function TrustDetail() {
                           </p>
                           <div className="space-y-2">
                             {school.phone && (
-                              <ContactRow icon={Phone} label="Phone" value={school.phone} href={`tel:${school.phone}`} isPhone />
+                              <ContactRow icon={Phone} label="Phone" value={formatPhone(school.phone)} href={`tel:${formatPhone(school.phone)}`} isPhone />
                             )}
                             {school.website && (
                               <div className="flex items-center gap-2 group">
@@ -685,7 +686,7 @@ export default function TrustDetail() {
                                         )}
                                         <div className="space-y-1">
                                           {contact.phone && (
-                                            <ContactRow icon={Phone} label="Phone" value={contact.phone} isPhone />
+                                            <ContactRow icon={Phone} label="Phone" value={formatPhone(contact.phone)} isPhone />
                                           )}
                                           {contact.email && (
                                             <ContactRow icon={Mail} label="Email" value={contact.email} href={`mailto:${contact.email}`} isEmail />
@@ -717,7 +718,7 @@ export default function TrustDetail() {
                           </Button>
                         </Link>
                         {school.phone && (
-                          <a href={`tel:${school.phone}`}>
+                          <a href={`tel:${formatPhone(school.phone)}`}>
                             <Button variant="ghost" size="sm" className="dark:text-[#94a3b8] dark:hover:bg-[#2d3142]">
                               <Phone className="h-3.5 w-3.5 mr-1.5" />
                               Call School

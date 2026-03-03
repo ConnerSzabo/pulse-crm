@@ -59,6 +59,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
+import { formatPhone } from "@/lib/utils";
 
 const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Rev", "Prof"];
 
@@ -1015,7 +1016,7 @@ export default function CompanyDetail() {
                     <EditableField label="Phone" field="phone" value={company.phone} />
                     {company.phone && (
                       <a
-                        href={`tel:${company.phone}`}
+                        href={`tel:${formatPhone(company.phone)}`}
                         className="text-[11px] text-[#0091AE] hover:underline flex items-center gap-1 mt-0.5 transition-all duration-200"
                       >
                         Click to call
@@ -1238,7 +1239,7 @@ export default function CompanyDetail() {
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Phone</p>
-                    <p className="font-medium">{company.phone || "--"}</p>
+                    <p className="font-medium">{company.phone ? formatPhone(company.phone) : "--"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Website</p>
@@ -1731,11 +1732,11 @@ export default function CompanyDetail() {
                       </a>
                       {contact.phone && (
                         <a
-                          href={`tel:${contact.phone}`}
+                          href={`tel:${formatPhone(contact.phone)}`}
                           className="text-xs text-blue-600 hover:underline flex items-center gap-1 min-w-0"
                         >
                           <Phone className="h-3 w-3 flex-shrink-0" />
-                          <span className="truncate">{contact.phone}</span>
+                          <span className="truncate">{formatPhone(contact.phone)}</span>
                         </a>
                       )}
                     </div>
