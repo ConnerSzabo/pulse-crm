@@ -54,7 +54,7 @@ import {
   ThumbsUp, ThumbsDown, Pencil, X, Save, StickyNote, Briefcase,
   ChevronDown, ChevronRight, MoreHorizontal, Video, Search,
   Users, Ticket, Paperclip, Building, CheckCircle2,
-  MapPin, Globe, Hash, Landmark, Tag
+  MapPin, Globe, Hash, Landmark, Tag, Pin
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
@@ -519,6 +519,16 @@ export default function CompanyDetail() {
     },
   });
 
+  const pinActivityMutation = useMutation({
+    mutationFn: async ({ id, isPinned }: { id: string; isPinned: boolean }) => {
+      return apiRequest("PATCH", `/api/activities/${id}`, { isPinned });
+    },
+    onSuccess: (_data, { isPinned }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
+      toast({ title: isPinned ? "Note pinned" : "Note unpinned" });
+    },
+  });
+
   const openEditActivity = (activity: Activity) => {
     setEditingActivity(activity);
     setEditActivityNote(activity.note || "");
@@ -674,10 +684,12 @@ export default function CompanyDetail() {
       );
     }
 
-    // Sort by date (newest first)
-    return filtered.sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    // Sort: pinned notes first, then by date (newest first)
+    return filtered.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
   }, [company?.activities, activityFilter, activitySearch]);
 
   if (isLoading) {
@@ -1314,7 +1326,7 @@ export default function CompanyDetail() {
             </div>
 
             {/* Activity Timeline */}
-            <ScrollArea className="flex-1">
+            <div className="flex-1 overflow-y-auto">
               <div className="p-6 space-y-6">
 
                 {/* ── TASKS (always visible at top) ── */}
@@ -1396,6 +1408,12 @@ export default function CompanyDetail() {
                     <Badge variant="secondary" className="text-xs dark:bg-[#3d4254] dark:text-[#94a3b8]">
                       {filteredActivities.length}
                     </Badge>
+                    {filteredActivities.filter(a => a.isPinned).length > 0 && (
+                      <Badge className="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/20 flex items-center gap-1">
+                        <Pin className="h-2.5 w-2.5" />
+                        {filteredActivities.filter(a => a.isPinned).length} pinned
+                      </Badge>
+                    )}
                   </div>
 
                   {filteredActivities.length === 0 ? (
@@ -1417,7 +1435,7 @@ export default function CompanyDetail() {
                           <div className={`absolute left-2 top-5 h-5 w-5 rounded-full ${getActivityColor(activity.type)} flex items-center justify-center ring-4 ring-white dark:ring-[#1a1d29] shadow-sm`}>
                             <span className="text-white scale-75">{getActivityIcon(activity.type)}</span>
                           </div>
-                          <Card className="group/activity hover:shadow-lg hover:shadow-black/10 hover:border-[#4d5264] transition-all duration-200 ease-in-out dark:bg-[#252936] dark:border-[#3d4254] rounded-xl">
+                          <Card className={`group/activity hover:shadow-lg hover:shadow-black/10 transition-all duration-200 ease-in-out dark:bg-[#252936] rounded-xl ${activity.isPinned ? "border-yellow-500/40 dark:border-yellow-500/40 bg-yellow-500/5 dark:bg-yellow-500/5" : "hover:border-[#4d5264] dark:border-[#3d4254]"}`}>
                             <CardContent className="p-4 px-5">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="flex-1">
@@ -1508,6 +1526,17 @@ export default function CompanyDetail() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1">
+                                  {activity.type === "follow_up" && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className={`h-8 w-8 transition-all duration-200 ease-in-out ${activity.isPinned ? "text-yellow-400 opacity-100" : "text-muted-foreground opacity-20 group-hover/activity:opacity-100 hover:text-yellow-400"}`}
+                                      onClick={() => pinActivityMutation.mutate({ id: activity.id, isPinned: !activity.isPinned })}
+                                      title={activity.isPinned ? "Unpin note" : "Pin note"}
+                                    >
+                                      <Pin className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
                                   {(activity.type === "call" || activity.type === "follow_up" || activity.type === "email" || activity.type === "meeting") && (
                                     <Button
                                       size="icon"
@@ -1539,7 +1568,7 @@ export default function CompanyDetail() {
                 </div>{/* end Activity Feed section */}
 
               </div>
-            </ScrollArea>
+            </div>
           </TabsContent>
 
           {/* Revenue Tab */}

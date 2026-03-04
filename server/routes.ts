@@ -1373,13 +1373,17 @@ export function registerRoutes(
         note: z.string().optional(),
         outcome: z.string().optional(),
         createdAt: z.string().optional(),
+        isPinned: z.boolean().optional(),
       }).strict();
 
       const parsed = activityUpdateSchema.parse(req.body);
-      const updateData: Record<string, unknown> = { editedAt: new Date() };
+      const updateData: Record<string, unknown> = {};
+      const hasContentChange = parsed.note !== undefined || parsed.outcome !== undefined || parsed.createdAt !== undefined;
+      if (hasContentChange) updateData.editedAt = new Date();
       if (parsed.note !== undefined) updateData.note = parsed.note;
       if (parsed.outcome !== undefined) updateData.outcome = parsed.outcome;
       if (parsed.createdAt !== undefined) updateData.createdAt = new Date(parsed.createdAt);
+      if (parsed.isPinned !== undefined) updateData.isPinned = parsed.isPinned;
 
       const activity = await storage.updateActivity(req.params.id as string, updateData);
       if (!activity) {

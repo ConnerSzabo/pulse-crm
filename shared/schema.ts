@@ -174,6 +174,7 @@ export const activities = pgTable("activities", {
   quoteValue: numeric("quote_value", { precision: 12, scale: 2 }), // For quotes
   grossProfit: numeric("gross_profit", { precision: 12, scale: 2 }), // For deals
   loggedBy: text("logged_by"),
+  isPinned: boolean("is_pinned").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   editedAt: timestamp("edited_at"),
 });
