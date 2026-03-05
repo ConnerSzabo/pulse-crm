@@ -490,6 +490,8 @@ export default function CallQueue() {
           setLogCallOpen(false);
           setCallNote("");
           setCallOutcome("");
+          // Refetch queue so server-side 21-day exclusion applies on next render
+          queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
           const remaining = activeQueue.length - 1;
           toast({
             title: "Call logged — moving to next school",

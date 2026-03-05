@@ -1011,17 +1011,17 @@ export function registerRoutes(
         }
       }
 
-      // Compute days-since values
+      // Compute days-since values (clamped to 0 so same-day calls = 0, not negative)
       for (const a of Array.from(analyticsMap.values())) {
         if (a.lastCallDate) {
-          a.daysSinceLastCall = Math.floor(
+          a.daysSinceLastCall = Math.max(0, Math.floor(
             (today.getTime() - a.lastCallDate.getTime()) / (1000 * 60 * 60 * 24)
-          );
+          ));
         }
         if (a.lastDmContact) {
-          a.daysSinceDmContact = Math.floor(
+          a.daysSinceDmContact = Math.max(0, Math.floor(
             (today.getTime() - a.lastDmContact.getTime()) / (1000 * 60 * 60 * 24)
-          );
+          ));
         }
       }
 
@@ -1053,6 +1053,10 @@ export function registerRoutes(
 
         const analytics = analyticsMap.get(company.id) ?? emptyAnalytics;
         const { totalCalls, lastCallDate, hasDmContact, daysSinceLastCall, daysSinceDmContact } = analytics;
+
+        // Universal rule: exclude ANY school contacted within the last 21 days from ALL filters
+        // This ensures a school called today never appears in the queue, regardless of filter
+        if (lastCallDate && daysSinceLastCall < 21) continue;
 
         const statusBoost =
           company.budgetStatus === "3-quote-presented" ? 300 :
@@ -1101,21 +1105,16 @@ export function registerRoutes(
           reason = "Never contacted";
 
         } else {
-          // "contacted" and "all"
+          // "contacted" and "all" (recently-contacted already excluded above)
           if (filter === "contacted" && !lastCallDate) continue;
 
-          // 21-day minimum: apply heavy penalty for recently-contacted companies
           priority =
             (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 30 ? 3000 : 0) +
             (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21 ? 2000 : 0) +
             (daysSinceLastCall >= 28 ? 1000 : 0) +
             (daysSinceLastCall >= 21 ? 500 : 0) +
             (totalCalls * 10) +
-            statusBoost -
-            (lastCallDate && daysSinceLastCall < 21 ? 10000 : 0);
-
-          // Exclude companies contacted within 21 days from all/contacted views
-          if (priority < 0) continue;
+            statusBoost;
 
           reason =
             hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21
