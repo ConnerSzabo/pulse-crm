@@ -1063,19 +1063,35 @@ export function registerRoutes(
         let reason: string;
 
         if (filter === "hot_leads") {
-          if (!hasDmContact || daysSinceDmContact === null || daysSinceDmContact < 7) continue;
-          priority = 1000 + (daysSinceDmContact * 10) + (totalCalls * 10) + statusBoost;
+          // DM-contacted schools not followed up in 21+ days
+          if (!hasDmContact || daysSinceDmContact === null || daysSinceDmContact < 21) continue;
+          priority =
+            (daysSinceDmContact >= 30 ? 3000 : 2000) +
+            (daysSinceDmContact * 10) +
+            (totalCalls * 10) +
+            statusBoost;
           reason = `DM contact — ${daysSinceDmContact} days ago`;
 
-        } else if (filter === "needs_followup") {
-          if (!lastCallDate || daysSinceLastCall < 7) continue;
+        } else if (filter === "high_priority") {
+          // Any contact 30+ days ago
+          if (!lastCallDate || daysSinceLastCall < 30) continue;
           priority =
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7 ? 1000 : 0) +
-            (daysSinceLastCall >= 14 ? 500 : 0) +
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 30 ? 3000 : 0) +
+            1000 +
+            (totalCalls * 10) +
+            statusBoost;
+          reason = `${daysSinceLastCall} days since last contact — overdue`;
+
+        } else if (filter === "needs_followup") {
+          // Previously contacted, 21+ days ago
+          if (!lastCallDate || daysSinceLastCall < 21) continue;
+          priority =
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21 ? 2000 : 0) +
+            (daysSinceLastCall >= 28 ? 1000 : 500) +
             (totalCalls * 10) +
             statusBoost;
           reason =
-            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7
+            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21
               ? `DM contact — ${daysSinceDmContact} days ago`
               : `${daysSinceLastCall} days since last contact`;
 
@@ -1088,24 +1104,27 @@ export function registerRoutes(
           // "contacted" and "all"
           if (filter === "contacted" && !lastCallDate) continue;
 
+          // 21-day minimum: apply heavy penalty for recently-contacted companies
           priority =
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7 ? 1000 : 0) +
-            (daysSinceLastCall >= 14 ? 500 : 0) +
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 30 ? 3000 : 0) +
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21 ? 2000 : 0) +
+            (daysSinceLastCall >= 28 ? 1000 : 0) +
+            (daysSinceLastCall >= 21 ? 500 : 0) +
             (totalCalls * 10) +
             statusBoost -
-            (lastCallDate && daysSinceLastCall < 3 ? 1000 : 0);
+            (lastCallDate && daysSinceLastCall < 21 ? 10000 : 0);
 
-          // For "all" filter, skip recently-called companies with no special importance
-          if (filter === "all" && priority < 0) continue;
+          // Exclude companies contacted within 21 days from all/contacted views
+          if (priority < 0) continue;
 
           reason =
-            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7
+            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21
               ? `DM contact — ${daysSinceDmContact} days ago`
               : !lastCallDate
               ? "Never contacted"
-              : daysSinceLastCall >= 14
-              ? `${daysSinceLastCall} days since last contact`
-              : "Needs follow-up";
+              : daysSinceLastCall >= 28
+              ? `${daysSinceLastCall} days since last contact — overdue`
+              : `${daysSinceLastCall} days since last contact`;
         }
 
         queue.push({ company, priority, reason, analytics });

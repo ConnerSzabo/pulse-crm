@@ -116,9 +116,9 @@ const CALL_OUTCOME_GROUPS = [
 
 const FILTER_TABS = [
   { value: "hot_leads", label: "Hot Leads" },
-  { value: "all", label: "All" },
-  { value: "contacted", label: "Contacted" },
+  { value: "high_priority", label: "Urgent" },
   { value: "needs_followup", label: "Follow-Up" },
+  { value: "contacted", label: "Contacted" },
   { value: "uncontacted", label: "New" },
 ] as const;
 
@@ -659,28 +659,28 @@ export default function CallQueue() {
               <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-red-500/20">
                 <p className="text-[10px] dark:text-[#64748b]">Hot Leads</p>
                 <p className="text-sm font-bold text-red-400">
-                  {queue.filter((s) => s.hasDmContact && (s.daysSinceDmContact ?? 0) >= 7).length}
+                  {queue.filter((s) => s.hasDmContact && (s.daysSinceDmContact ?? 0) >= 21).length}
                 </p>
-                <p className="text-[9px] text-red-400/70">DM + 7d</p>
+                <p className="text-[9px] text-red-400/70">DM + 21d</p>
+              </div>
+              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-orange-500/20">
+                <p className="text-[10px] dark:text-[#64748b]">Urgent</p>
+                <p className="text-sm font-bold text-orange-400">
+                  {queue.filter((s) => s.daysSinceLastCall >= 30).length}
+                </p>
+                <p className="text-[9px] text-orange-400/70">30+ days</p>
               </div>
               <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-yellow-500/20">
                 <p className="text-[10px] dark:text-[#64748b]">Follow-Up</p>
                 <p className="text-sm font-bold text-yellow-400">
-                  {queue.filter((s) => s.daysSinceLastCall >= 7).length}
+                  {queue.filter((s) => s.daysSinceLastCall >= 21 && s.daysSinceLastCall < 30).length}
                 </p>
-                <p className="text-[9px] text-yellow-400/70">7+ days</p>
-              </div>
-              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-purple-500/20">
-                <p className="text-[10px] dark:text-[#64748b]">DM Contacted</p>
-                <p className="text-sm font-bold text-purple-400">
-                  {queue.filter((s) => s.hasDmContact).length}
-                </p>
-                <p className="text-[9px] text-purple-400/70">ever</p>
+                <p className="text-[9px] text-yellow-400/70">21–29 days</p>
               </div>
               <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-cyan-500/20">
                 <p className="text-[10px] dark:text-[#64748b]">In Queue</p>
                 <p className="text-sm font-bold text-cyan-400">{queue.length}</p>
-                <p className="text-[9px] text-cyan-400/70">total</p>
+                <p className="text-[9px] text-cyan-400/70">21d+ only</p>
               </div>
             </div>
           )}
@@ -695,11 +695,15 @@ export default function CallQueue() {
                   filter === tab.value
                     ? tab.value === "hot_leads"
                       ? "bg-red-500 text-white shadow-sm"
+                      : tab.value === "high_priority"
+                      ? "bg-orange-500 text-white shadow-sm"
                       : "bg-white dark:bg-[#0091AE] text-gray-900 dark:text-white shadow-sm"
                     : "text-gray-600 dark:text-[#94a3b8] hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
-                {tab.value === "hot_leads" ? "🔥 Hot" : tab.label}
+                {tab.value === "hot_leads" ? "🔥 Hot"
+                  : tab.value === "high_priority" ? "🚨 Urgent"
+                  : tab.label}
               </button>
             ))}
           </div>
@@ -708,7 +712,7 @@ export default function CallQueue() {
           <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
             <AlertCircle className="h-3.5 w-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
             <p className="text-[10px] text-blue-300/80 leading-relaxed">
-              Smart queue active — DM contacts 7d+ appear first, recently called drop to bottom.
+              21-day minimum — only schools not contacted in 3+ weeks. 🚨 Urgent = 30d+, 🔥 Hot = DM + 21d.
             </p>
           </div>
 
@@ -731,7 +735,18 @@ export default function CallQueue() {
               </div>
 
               {/* Priority badge */}
-              {currentItem.priority >= 1000 && (
+              {currentItem.priority >= 3000 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-500/15 border border-orange-500/30 rounded-lg">
+                  <TrendingUp className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-wider">Urgent — Overdue</p>
+                    <p className="text-[10px] text-gray-400 truncate">
+                      {currentItem.daysSinceLastCall < 999 ? `${currentItem.daysSinceLastCall} days since last contact` : "Never contacted"}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {currentItem.priority >= 2000 && currentItem.priority < 3000 && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/15 border border-red-500/30 rounded-lg">
                   <TrendingUp className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
                   <div className="min-w-0">
@@ -742,11 +757,11 @@ export default function CallQueue() {
                   </div>
                 </div>
               )}
-              {currentItem.priority >= 500 && currentItem.priority < 1000 && (
+              {currentItem.priority >= 500 && currentItem.priority < 2000 && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/15 border border-yellow-500/30 rounded-lg">
                   <Clock className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wider">Medium Priority</p>
+                    <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wider">Ready for Follow-Up</p>
                     <p className="text-[10px] text-gray-400 truncate">
                       {currentItem.daysSinceLastCall < 999 ? `${currentItem.daysSinceLastCall} days since last contact` : "Never contacted"}
                     </p>
@@ -1054,7 +1069,9 @@ export default function CallQueue() {
                     className="flex items-center gap-2 py-1.5 px-1.5 rounded hover:dark:bg-[#2d3142] transition-colors"
                   >
                     <span className="text-[10px] dark:text-[#64748b] w-4 text-right flex-shrink-0">{idx + 2}</span>
-                    {item.priority >= 1000 ? (
+                    {item.priority >= 3000 ? (
+                      <div className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse flex-shrink-0" />
+                    ) : item.priority >= 2000 ? (
                       <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
                     ) : item.priority >= 500 ? (
                       <div className="h-1.5 w-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
