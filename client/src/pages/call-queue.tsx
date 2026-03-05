@@ -226,6 +226,9 @@ export default function CallQueue() {
   const [editingLeadStatus, setEditingLeadStatus] = useState(false);
   const [newLeadStatus, setNewLeadStatus] = useState("");
 
+  // Skip confirmation
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+
   // ── Queries ──────────────────────────────────────────────────────────────
 
   const { data: queue, isLoading } = useQuery<QueueItem[]>({
@@ -286,7 +289,6 @@ export default function CallQueue() {
       );
       queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
-      toast({ title: "Call logged" });
     },
   });
 
@@ -450,8 +452,19 @@ export default function CallQueue() {
 
   const handleSkip = () => {
     if (!currentItem) return;
+    setShowSkipConfirm(true);
+  };
+
+  const confirmSkip = () => {
+    if (!currentItem) return;
     setSkippedIds((prev) => new Set(prev).add(currentItem.company.id));
     skipMutation.mutate(currentItem.company.id);
+    setShowSkipConfirm(false);
+    const remaining = activeQueue.length - 1;
+    toast({
+      title: "School skipped",
+      description: remaining > 0 ? `${remaining} school${remaining !== 1 ? "s" : ""} remaining` : "Queue complete!",
+    });
   };
 
   const handleReset = () => {
@@ -468,14 +481,20 @@ export default function CallQueue() {
 
   const handleSubmitCall = () => {
     if (!currentItem || !callOutcome) return;
+    const companyId = currentItem.company.id;
     logCallMutation.mutate(
-      { companyId: currentItem.company.id, note: callNote, outcome: callOutcome },
+      { companyId, note: callNote, outcome: callOutcome },
       {
         onSuccess: () => {
-          setCompletedIds((prev) => new Set(prev).add(currentItem.company.id));
+          setCompletedIds((prev) => new Set(prev).add(companyId));
           setLogCallOpen(false);
           setCallNote("");
           setCallOutcome("");
+          const remaining = activeQueue.length - 1;
+          toast({
+            title: "Call logged — moving to next school",
+            description: remaining > 0 ? `${remaining} school${remaining !== 1 ? "s" : ""} remaining in queue` : "🎉 Queue complete!",
+          });
         },
       }
     );
@@ -1036,19 +1055,35 @@ export default function CallQueue() {
             </>
           ) : (
             /* Empty queue state */
-            <div className="text-center py-8">
-              <CheckCircle2 className="h-10 w-10 text-green-500 mx-auto mb-3" />
-              <p className="text-sm font-semibold dark:text-white mb-1">
-                {totalItems === 0 ? "Queue Empty" : "Queue Complete!"}
-              </p>
-              <p className="text-xs dark:text-[#64748b]">
-                {totalItems > 0 ? `${completedIds.size} called · ${skippedIds.size} skipped` : "No schools match this filter"}
-              </p>
+            <div className="text-center py-8 px-2">
+              {totalItems === 0 ? (
+                <>
+                  <Building2 className="h-10 w-10 dark:text-[#3d4254] mx-auto mb-3" />
+                  <p className="text-sm font-semibold dark:text-white mb-1">Queue Empty</p>
+                  <p className="text-xs dark:text-[#64748b]">No schools match this filter</p>
+                </>
+              ) : (
+                <>
+                  <div className="text-3xl mb-2">🎉</div>
+                  <p className="text-sm font-semibold dark:text-white mb-1">Queue Complete!</p>
+                  <p className="text-xs dark:text-[#64748b] mb-3">Great work today</p>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-green-500/20">
+                      <p className="text-lg font-bold text-green-400">{completedIds.size}</p>
+                      <p className="text-[10px] dark:text-[#64748b]">Called</p>
+                    </div>
+                    <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-amber-500/20">
+                      <p className="text-lg font-bold text-amber-400">{skippedIds.size}</p>
+                      <p className="text-[10px] dark:text-[#64748b]">Skipped</p>
+                    </div>
+                  </div>
+                </>
+              )}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleReset}
-                className="mt-3 dark:border-[#3d4254] dark:text-[#94a3b8] text-xs"
+                className="dark:border-[#3d4254] dark:text-[#94a3b8] text-xs"
               >
                 <RefreshCw className="h-3 w-3 mr-1" />
                 Start Over
@@ -1389,6 +1424,9 @@ export default function CallQueue() {
               />
             </div>
           </div>
+          <div className="text-[11px] text-center dark:text-[#64748b] -mt-1 px-1">
+            This school will be marked as contacted and removed from today's queue.
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setLogCallOpen(false)} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
               Cancel
@@ -1398,7 +1436,7 @@ export default function CallQueue() {
               disabled={!callOutcome || logCallMutation.isPending}
               className="bg-[#0091AE] hover:bg-[#007a94]"
             >
-              {logCallMutation.isPending ? "Logging..." : "Log Call"}
+              {logCallMutation.isPending ? "Logging..." : "Log Call & Next School"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1630,6 +1668,30 @@ export default function CallQueue() {
           onClose={() => setShowTaskModal(false)}
         />
       )}
+
+      {/* Skip Confirmation */}
+      <Dialog open={showSkipConfirm} onOpenChange={setShowSkipConfirm}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254] max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">Skip this school?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm dark:text-[#94a3b8]">
+            This will remove <span className="font-semibold dark:text-white">{currentItem?.company.name}</span> from today's queue. It will appear again in 21+ days.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSkipConfirm(false)} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
+              Keep in Queue
+            </Button>
+            <Button
+              onClick={confirmSkip}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <SkipForward className="h-4 w-4 mr-1.5" />
+              Skip School
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
