@@ -52,6 +52,7 @@ import {
   Tag,
   ChevronRight,
   AlertCircle,
+  TrendingUp,
 } from "lucide-react";
 import QuickTaskModal from "@/components/QuickTaskModal";
 import { useToast } from "@/hooks/use-toast";
@@ -73,6 +74,11 @@ type QueueItem = {
   priority: number;
   reason: string;
   lastCallActivity?: Activity | null;
+  totalCalls: number;
+  hasDmContact: boolean;
+  lastDmContact: string | null;
+  daysSinceLastCall: number;
+  daysSinceDmContact: number | null;
 };
 
 const LEAD_STATUS_OPTIONS = [
@@ -84,13 +90,32 @@ const LEAD_STATUS_OPTIONS = [
   { value: "4-account-active", label: "4 - Account Active", badgeColor: "bg-green-500" },
 ];
 
-const CALL_OUTCOMES = [
-  { value: "Reception / Voicemail", label: "Reception / Voicemail" },
-  { value: "Decision Maker Details", label: "Decision Maker Details" },
-  { value: "Connected to DM", label: "Connected to DM" },
+const CALL_OUTCOME_GROUPS = [
+  {
+    label: "Decision Maker Contact",
+    outcomes: [
+      { value: "Connected to DM - Interested", label: "Connected to DM - Interested" },
+      { value: "Connected to DM - Needs Follow-up", label: "Connected to DM - Needs Follow-up" },
+      { value: "Decision Maker Details", label: "Decision Maker Details" },
+      { value: "Meeting Scheduled with DM", label: "Meeting Scheduled with DM" },
+    ],
+  },
+  {
+    label: "General Outcomes",
+    outcomes: [
+      { value: "Connected - Interested", label: "Connected - Interested" },
+      { value: "Connected - Not Interested", label: "Connected - Not Interested" },
+      { value: "Connected - Callback Requested", label: "Connected - Callback Requested" },
+      { value: "Reception / Voicemail", label: "Reception / Voicemail" },
+      { value: "Voicemail Left", label: "Voicemail Left" },
+      { value: "No Answer", label: "No Answer" },
+      { value: "Gatekeeper", label: "Gatekeeper" },
+    ],
+  },
 ];
 
 const FILTER_TABS = [
+  { value: "hot_leads", label: "Hot Leads" },
   { value: "all", label: "All" },
   { value: "contacted", label: "Contacted" },
   { value: "needs_followup", label: "Follow-Up" },
@@ -628,21 +653,63 @@ export default function CallQueue() {
             </div>
           </div>
 
+          {/* Queue analytics summary */}
+          {queue && queue.length > 0 && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-red-500/20">
+                <p className="text-[10px] dark:text-[#64748b]">Hot Leads</p>
+                <p className="text-sm font-bold text-red-400">
+                  {queue.filter((s) => s.hasDmContact && (s.daysSinceDmContact ?? 0) >= 7).length}
+                </p>
+                <p className="text-[9px] text-red-400/70">DM + 7d</p>
+              </div>
+              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-yellow-500/20">
+                <p className="text-[10px] dark:text-[#64748b]">Follow-Up</p>
+                <p className="text-sm font-bold text-yellow-400">
+                  {queue.filter((s) => s.daysSinceLastCall >= 7).length}
+                </p>
+                <p className="text-[9px] text-yellow-400/70">7+ days</p>
+              </div>
+              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-purple-500/20">
+                <p className="text-[10px] dark:text-[#64748b]">DM Contacted</p>
+                <p className="text-sm font-bold text-purple-400">
+                  {queue.filter((s) => s.hasDmContact).length}
+                </p>
+                <p className="text-[9px] text-purple-400/70">ever</p>
+              </div>
+              <div className="dark:bg-[#1a1d29] rounded-lg p-2 border border-cyan-500/20">
+                <p className="text-[10px] dark:text-[#64748b]">In Queue</p>
+                <p className="text-sm font-bold text-cyan-400">{queue.length}</p>
+                <p className="text-[9px] text-cyan-400/70">total</p>
+              </div>
+            </div>
+          )}
+
           {/* Filter tabs */}
-          <div className="flex gap-1 bg-gray-100 dark:bg-[#1a1d29] p-1 rounded-lg">
+          <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-[#1a1d29] p-1 rounded-lg">
             {FILTER_TABS.map((tab) => (
               <button
                 key={tab.value}
                 onClick={() => handleFilterChange(tab.value)}
                 className={`flex-1 py-1 rounded-md text-[11px] font-medium transition-colors ${
                   filter === tab.value
-                    ? "bg-white dark:bg-[#0091AE] text-gray-900 dark:text-white shadow-sm"
+                    ? tab.value === "hot_leads"
+                      ? "bg-red-500 text-white shadow-sm"
+                      : "bg-white dark:bg-[#0091AE] text-gray-900 dark:text-white shadow-sm"
                     : "text-gray-600 dark:text-[#94a3b8] hover:text-gray-900 dark:hover:text-white"
                 }`}
               >
-                {tab.label}
+                {tab.value === "hot_leads" ? "🔥 Hot" : tab.label}
               </button>
             ))}
+          </div>
+
+          {/* Smart Queue info */}
+          <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <AlertCircle className="h-3.5 w-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-blue-300/80 leading-relaxed">
+              Smart queue active — DM contacts 7d+ appear first, recently called drop to bottom.
+            </p>
           </div>
 
           {/* ── Current school ─────────────────────────────────────────── */}
@@ -662,6 +729,30 @@ export default function CallQueue() {
                   </button>
                 </Link>
               </div>
+
+              {/* Priority badge */}
+              {currentItem.priority >= 1000 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/15 border border-red-500/30 rounded-lg">
+                  <TrendingUp className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wider">High Priority</p>
+                    <p className="text-[10px] text-gray-400 truncate">
+                      DM contact — {currentItem.daysSinceDmContact} days ago
+                    </p>
+                  </div>
+                </div>
+              )}
+              {currentItem.priority >= 500 && currentItem.priority < 1000 && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/15 border border-yellow-500/30 rounded-lg">
+                  <Clock className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold text-yellow-400 uppercase tracking-wider">Medium Priority</p>
+                    <p className="text-[10px] text-gray-400 truncate">
+                      {currentItem.daysSinceLastCall < 999 ? `${currentItem.daysSinceLastCall} days since last contact` : "Never contacted"}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Lead status */}
               <div>
@@ -712,6 +803,23 @@ export default function CallQueue() {
                     {getLeadStatusBadge(company?.budgetStatus ?? currentItem.company.budgetStatus)}
                     <Pencil className="h-3 w-3 text-[#64748b] opacity-0 group-hover:opacity-70 ml-auto" />
                   </button>
+                )}
+              </div>
+
+              {/* Call count + DM badges */}
+              <div className="flex flex-wrap gap-1.5">
+                {currentItem.totalCalls > 0 && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/15 text-cyan-400 text-[10px] rounded-full">
+                    <Phone className="h-2.5 w-2.5" />
+                    {currentItem.totalCalls}x contacted
+                  </span>
+                )}
+                {currentItem.hasDmContact && (
+                  <span className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/15 text-purple-400 text-[10px] rounded-full">
+                    <User className="h-2.5 w-2.5" />
+                    DM contact
+                    {currentItem.daysSinceDmContact !== null && ` · ${currentItem.daysSinceDmContact}d ago`}
+                  </span>
                 )}
               </div>
 
@@ -946,8 +1054,26 @@ export default function CallQueue() {
                     className="flex items-center gap-2 py-1.5 px-1.5 rounded hover:dark:bg-[#2d3142] transition-colors"
                   >
                     <span className="text-[10px] dark:text-[#64748b] w-4 text-right flex-shrink-0">{idx + 2}</span>
+                    {item.priority >= 1000 ? (
+                      <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                    ) : item.priority >= 500 ? (
+                      <div className="h-1.5 w-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
+                    ) : (
+                      <div className="h-1.5 w-1.5 rounded-full bg-slate-600 flex-shrink-0" />
+                    )}
                     <div className="min-w-0 flex-1">
                       <p className="text-xs dark:text-[#94a3b8] truncate">{item.company.name}</p>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {item.hasDmContact && (
+                          <span className="text-[9px] text-purple-400">DM</span>
+                        )}
+                        {item.totalCalls > 0 && (
+                          <span className="text-[9px] text-cyan-400">{item.totalCalls}x</span>
+                        )}
+                        {item.daysSinceLastCall < 999 && (
+                          <span className="text-[9px] dark:text-[#64748b]">{item.daysSinceLastCall}d</span>
+                        )}
+                      </div>
                     </div>
                     <ChevronRight className="h-3 w-3 dark:text-[#64748b] flex-shrink-0" />
                   </div>
@@ -1220,10 +1346,17 @@ export default function CallQueue() {
                   <SelectValue placeholder="Select outcome..." />
                 </SelectTrigger>
                 <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
-                  {CALL_OUTCOMES.map((o) => (
-                    <SelectItem key={o.value} value={o.value} className="dark:text-white dark:focus:bg-[#3d4254]">
-                      {o.label}
-                    </SelectItem>
+                  {CALL_OUTCOME_GROUPS.map((group) => (
+                    <div key={group.label}>
+                      <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider dark:text-[#64748b]">
+                        {group.label}
+                      </div>
+                      {group.outcomes.map((o) => (
+                        <SelectItem key={o.value} value={o.value} className="dark:text-white dark:focus:bg-[#3d4254]">
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </div>
                   ))}
                 </SelectContent>
               </Select>

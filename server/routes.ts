@@ -966,103 +966,162 @@ export function registerRoutes(
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // Filter and score companies for call queue
-      const queue: { company: typeof allCompanies[0]; priority: number; reason: string }[] = [];
+      // Batch-fetch all call activities for DM analytics (sorted DESC = most recent first)
+      const allCallActivities = await db
+        .select()
+        .from(activities)
+        .where(eq(activities.type, "call"))
+        .orderBy(desc(activities.createdAt));
+
+      // Build per-company call analytics
+      type CallAnalytics = {
+        totalCalls: number;
+        lastCallDate: Date | null;
+        lastDmContact: Date | null;
+        hasDmContact: boolean;
+        daysSinceLastCall: number;
+        daysSinceDmContact: number | null;
+      };
+
+      const analyticsMap = new Map<string, CallAnalytics>();
+      for (const act of allCallActivities) {
+        const actDate = new Date(act.createdAt);
+        const isDm =
+          !!act.outcome &&
+          (act.outcome.toLowerCase().includes("decision maker") ||
+            act.outcome.toLowerCase().includes("connected to dm") ||
+            act.outcome.toLowerCase().includes("meeting scheduled with dm"));
+
+        const existing = analyticsMap.get(act.companyId);
+        if (!existing) {
+          analyticsMap.set(act.companyId, {
+            totalCalls: 1,
+            lastCallDate: actDate, // first = most recent (sorted DESC)
+            lastDmContact: isDm ? actDate : null,
+            hasDmContact: isDm,
+            daysSinceLastCall: 0,
+            daysSinceDmContact: null,
+          });
+        } else {
+          existing.totalCalls += 1;
+          if (isDm && !existing.hasDmContact) {
+            existing.lastDmContact = actDate; // first DM seen = most recent
+            existing.hasDmContact = true;
+          }
+        }
+      }
+
+      // Compute days-since values
+      for (const a of Array.from(analyticsMap.values())) {
+        if (a.lastCallDate) {
+          a.daysSinceLastCall = Math.floor(
+            (today.getTime() - a.lastCallDate.getTime()) / (1000 * 60 * 60 * 24)
+          );
+        }
+        if (a.lastDmContact) {
+          a.daysSinceDmContact = Math.floor(
+            (today.getTime() - a.lastDmContact.getTime()) / (1000 * 60 * 60 * 24)
+          );
+        }
+      }
+
+      const emptyAnalytics: CallAnalytics = {
+        totalCalls: 0,
+        lastCallDate: null,
+        lastDmContact: null,
+        hasDmContact: false,
+        daysSinceLastCall: 999,
+        daysSinceDmContact: null,
+      };
+
+      type QueueEntry = {
+        company: typeof allCompanies[0];
+        priority: number;
+        reason: string;
+        analytics: CallAnalytics;
+      };
+
+      const queue: QueueEntry[] = [];
 
       for (const company of allCompanies) {
-        // Exclude trusts
         if (company.isTrust) continue;
 
-        // Exclude companies without a valid phone number
         const phone = company.phone?.trim();
         if (!phone || phone === "N/A" || phone === "Unknown") continue;
 
-        // Skip closed won/lost (account-active or quoted-lost)
         if (company.budgetStatus === "4-account-active" || company.budgetStatus === "3b-quoted-lost") continue;
 
-        const lastContact = company.lastContactDate ? new Date(company.lastContactDate) : null;
-        const daysSinceContact = lastContact
-          ? Math.floor((today.getTime() - lastContact.getTime()) / (1000 * 60 * 60 * 24))
-          : 999;
+        const analytics = analyticsMap.get(company.id) ?? emptyAnalytics;
+        const { totalCalls, lastCallDate, hasDmContact, daysSinceLastCall, daysSinceDmContact } = analytics;
 
-        let priority = 0;
-        let reason = "";
+        const statusBoost =
+          company.budgetStatus === "3-quote-presented" ? 300 :
+          company.budgetStatus === "2-intent" ? 200 :
+          company.budgetStatus === "1-qualified" ? 150 : 0;
 
-        if (filter === "needs_followup") {
-          // Previously contacted, not contacted in 7+ days
-          if (!lastContact || daysSinceContact < 7) continue;
-          if (company.budgetStatus === "3-quote-presented") {
-            priority = 100 + daysSinceContact;
-            reason = "Quote follow-up needed";
-          } else if (company.budgetStatus === "2-intent") {
-            priority = 80 + daysSinceContact;
-            reason = "Intent lead - needs contact";
-          } else if (company.budgetStatus === "1-qualified") {
-            priority = 60 + daysSinceContact;
-            reason = "Qualified lead - overdue";
-          } else {
-            priority = 40 + Math.min(daysSinceContact, 60);
-            reason = "Needs follow-up";
-          }
+        let priority: number;
+        let reason: string;
+
+        if (filter === "hot_leads") {
+          if (!hasDmContact || daysSinceDmContact === null || daysSinceDmContact < 7) continue;
+          priority = 1000 + (daysSinceDmContact * 10) + (totalCalls * 10) + statusBoost;
+          reason = `DM contact — ${daysSinceDmContact} days ago`;
+
+        } else if (filter === "needs_followup") {
+          if (!lastCallDate || daysSinceLastCall < 7) continue;
+          priority =
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7 ? 1000 : 0) +
+            (daysSinceLastCall >= 14 ? 500 : 0) +
+            (totalCalls * 10) +
+            statusBoost;
+          reason =
+            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7
+              ? `DM contact — ${daysSinceDmContact} days ago`
+              : `${daysSinceLastCall} days since last contact`;
+
         } else if (filter === "uncontacted") {
-          // Only never-contacted companies
-          if (lastContact) continue;
-          if (company.budgetStatus === "3-quote-presented") {
-            priority = 100;
-            reason = "Never contacted";
-          } else if (company.budgetStatus === "2-intent") {
-            priority = 80;
-            reason = "Never contacted";
-          } else if (company.budgetStatus === "1-qualified") {
-            priority = 60;
-            reason = "Never contacted";
-          } else {
-            priority = 50;
-            reason = "Never contacted";
-          }
-        } else {
-          // 'all' and 'contacted' use the standard priority thresholds
-          if (filter === "contacted" && !lastContact) continue;
+          if (lastCallDate) continue;
+          priority = 500 + statusBoost;
+          reason = "Never contacted";
 
-          // Priority 1: Quoted but no follow-up (3-quote-presented with no contact in 3+ days)
-          if (company.budgetStatus === "3-quote-presented" && daysSinceContact >= 3) {
-            priority = 100 + daysSinceContact;
-            reason = "Quote follow-up needed";
-          }
-          // Priority 2: Intent leads not contacted in 5+ days
-          else if (company.budgetStatus === "2-intent" && daysSinceContact >= 5) {
-            priority = 80 + daysSinceContact;
-            reason = "Intent lead - needs contact";
-          }
-          // Priority 3: Qualified leads not contacted in 7+ days
-          else if (company.budgetStatus === "1-qualified" && daysSinceContact >= 7) {
-            priority = 60 + daysSinceContact;
-            reason = "Qualified lead - overdue";
-          }
-          // Priority 4: Unqualified with no contact in 14+ days
-          else if (company.budgetStatus === "0-unqualified" && daysSinceContact >= 14) {
-            priority = 40 + Math.min(daysSinceContact, 60);
-            reason = "Needs qualification";
-          }
-          // Priority 5: Any company never contacted
-          else if (!lastContact) {
-            priority = 50;
-            reason = "Never contacted";
-          }
-          else {
-            continue; // Skip - recently contacted, within threshold
-          }
+        } else {
+          // "contacted" and "all"
+          if (filter === "contacted" && !lastCallDate) continue;
+
+          priority =
+            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7 ? 1000 : 0) +
+            (daysSinceLastCall >= 14 ? 500 : 0) +
+            (totalCalls * 10) +
+            statusBoost -
+            (lastCallDate && daysSinceLastCall < 3 ? 1000 : 0);
+
+          // For "all" filter, skip recently-called companies with no special importance
+          if (filter === "all" && priority < 0) continue;
+
+          reason =
+            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 7
+              ? `DM contact — ${daysSinceDmContact} days ago`
+              : !lastCallDate
+              ? "Never contacted"
+              : daysSinceLastCall >= 14
+              ? `${daysSinceLastCall} days since last contact`
+              : "Needs follow-up";
         }
 
-        queue.push({ company, priority, reason });
+        queue.push({ company, priority, reason, analytics });
       }
 
-      // Sort by priority descending
-      queue.sort((a, b) => b.priority - a.priority);
+      // Sort by priority descending, oldest contact as tiebreaker
+      queue.sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        const aMs = a.analytics.lastCallDate?.getTime() ?? 0;
+        const bMs = b.analytics.lastCallDate?.getTime() ?? 0;
+        return aMs - bMs;
+      });
 
-      const capped = queue.slice(0, 100);
+      const capped = queue.slice(0, 200);
 
-      // Batch-fetch the most recent call activity for each queued company
+      // Batch-fetch the most recent call activity per company for the card display
       const queuedIds = capped.map((item) => item.company.id);
       const lastCallMap = new Map<string, typeof activities.$inferSelect>();
       if (queuedIds.length > 0) {
@@ -1078,10 +1137,19 @@ export function registerRoutes(
         }
       }
 
-      res.json(capped.map((item) => ({
-        ...item,
-        lastCallActivity: lastCallMap.get(item.company.id) ?? null,
-      })));
+      res.json(
+        capped.map((item) => ({
+          company: item.company,
+          priority: item.priority,
+          reason: item.reason,
+          totalCalls: item.analytics.totalCalls,
+          hasDmContact: item.analytics.hasDmContact,
+          lastDmContact: item.analytics.lastDmContact?.toISOString() ?? null,
+          daysSinceLastCall: item.analytics.daysSinceLastCall,
+          daysSinceDmContact: item.analytics.daysSinceDmContact,
+          lastCallActivity: lastCallMap.get(item.company.id) ?? null,
+        }))
+      );
     } catch (error) {
       console.error("Call queue error:", error);
       res.status(500).json({ error: "Failed to generate call queue" });
