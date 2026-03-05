@@ -253,7 +253,7 @@ export default function CompanyDetail() {
 
   const taskForm = useForm<z.infer<typeof addTaskSchema>>({
     resolver: zodResolver(addTaskSchema),
-    defaultValues: { name: "", dueDate: "", priority: "medium", taskType: "general" },
+    defaultValues: { name: "", dueDate: format(new Date(), "yyyy-MM-dd"), priority: "medium", taskType: "general" },
   });
 
   const logCallForm = useForm<z.infer<typeof logCallSchema>>({
@@ -330,7 +330,7 @@ export default function CompanyDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
-      taskForm.reset();
+      taskForm.reset({ name: "", dueDate: format(new Date(), "yyyy-MM-dd"), priority: "medium", taskType: "general" });
       setShowAddTaskDialog(false);
       toast({ title: "Task added" });
     },
@@ -933,12 +933,12 @@ export default function CompanyDetail() {
 
         {/* Company name and quick actions - Optimized spacing */}
         <div className="px-4 pt-3 pb-4 border-b dark:border-[#3d4254] flex-shrink-0">
-          <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-xl font-bold text-white" data-testid="text-company-detail-name">
+          <div className="flex items-start gap-2 mb-2">
+            <h1 className="text-xl font-bold text-white break-words-force min-w-0 flex-1" data-testid="text-company-detail-name">
               {company.name}
             </h1>
             {(company.relationships?.some(r => r.relationshipType === "Part of Trust") || company.isTrust) && (
-              <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[10px] px-2 py-0.5">
+              <Badge className="bg-purple-600 hover:bg-purple-600 text-white text-[10px] px-2 py-0.5 flex-shrink-0 mt-1">
                 Trust
               </Badge>
             )}
@@ -2001,9 +2001,9 @@ export default function CompanyDetail() {
 
       {/* Add Task Dialog */}
       <Dialog open={showAddTaskDialog} onOpenChange={setShowAddTaskDialog}>
-        <DialogContent>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
           <DialogHeader>
-            <DialogTitle>Add Task</DialogTitle>
+            <DialogTitle className="dark:text-white">Add Task</DialogTitle>
           </DialogHeader>
           <Form {...taskForm}>
             <form onSubmit={taskForm.handleSubmit((data) => addTaskMutation.mutate(data))} className="space-y-4">
@@ -2012,9 +2012,9 @@ export default function CompanyDetail() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Task Description</FormLabel>
+                    <FormLabel className="dark:text-[#94a3b8]">Task Description</FormLabel>
                     <FormControl>
-                      <Input placeholder="What needs to be done?" data-testid="input-task-name" {...field} />
+                      <Input placeholder="What needs to be done?" data-testid="input-task-name" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -2026,9 +2026,9 @@ export default function CompanyDetail() {
                   name="dueDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Due Date</FormLabel>
+                      <FormLabel className="dark:text-[#94a3b8]">Due Date</FormLabel>
                       <FormControl>
-                        <Input type="date" data-testid="input-task-due-date" {...field} />
+                        <Input type="date" data-testid="input-task-due-date" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
                       </FormControl>
                     </FormItem>
                   )}
@@ -2038,17 +2038,17 @@ export default function CompanyDetail() {
                   name="priority"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Priority</FormLabel>
+                      <FormLabel className="dark:text-[#94a3b8]">Priority</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-task-priority">
+                          <SelectTrigger data-testid="select-task-priority" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
                             <SelectValue placeholder="Select priority" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="low">Low</SelectItem>
+                        <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                          <SelectItem value="high" className="dark:text-white dark:focus:bg-[#2d3142]">High</SelectItem>
+                          <SelectItem value="medium" className="dark:text-white dark:focus:bg-[#2d3142]">Medium</SelectItem>
+                          <SelectItem value="low" className="dark:text-white dark:focus:bg-[#2d3142]">Low</SelectItem>
                         </SelectContent>
                       </Select>
                     </FormItem>
@@ -2056,11 +2056,11 @@ export default function CompanyDetail() {
                 />
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowAddTaskDialog(false)}>
+                <Button type="button" variant="outline" onClick={() => setShowAddTaskDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
                   Cancel
                 </Button>
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={addTaskMutation.isPending}>
-                  Add Task
+                  {addTaskMutation.isPending ? "Adding..." : "Add Task"}
                 </Button>
               </DialogFooter>
             </form>
@@ -2105,24 +2105,19 @@ export default function CompanyDetail() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
-                        <SelectItem value="Reception / Voicemail" className="dark:text-white dark:focus:bg-[#2d3142]">
-                          <span className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
-                            Reception / Voicemail
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="Decision Maker Details" className="dark:text-white dark:focus:bg-[#2d3142]">
-                          <span className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-[#0091AE]" />
-                            Decision Maker Details
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="Connected to DM" className="dark:text-white dark:focus:bg-[#2d3142]">
-                          <span className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-[#10b981]" />
-                            Connected to DM
-                          </span>
-                        </SelectItem>
+                        <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Decision Maker Contact</div>
+                        <SelectItem value="Connected to DM - Interested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM - Interested</SelectItem>
+                        <SelectItem value="Connected to DM - Needs Follow-up" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM - Needs Follow-up</SelectItem>
+                        <SelectItem value="Decision Maker Details" className="dark:text-white dark:focus:bg-[#2d3142]">Decision Maker Details</SelectItem>
+                        <SelectItem value="Meeting Scheduled with DM" className="dark:text-white dark:focus:bg-[#2d3142]">Meeting Scheduled with DM</SelectItem>
+                        <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#64748b] mt-1">General Outcomes</div>
+                        <SelectItem value="Connected - Interested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected - Interested</SelectItem>
+                        <SelectItem value="Connected - Not Interested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected - Not Interested</SelectItem>
+                        <SelectItem value="Connected - Callback Requested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected - Callback Requested</SelectItem>
+                        <SelectItem value="Reception / Voicemail" className="dark:text-white dark:focus:bg-[#2d3142]">Reception / Voicemail</SelectItem>
+                        <SelectItem value="Voicemail Left" className="dark:text-white dark:focus:bg-[#2d3142]">Voicemail Left</SelectItem>
+                        <SelectItem value="No Answer" className="dark:text-white dark:focus:bg-[#2d3142]">No Answer</SelectItem>
+                        <SelectItem value="Gatekeeper" className="dark:text-white dark:focus:bg-[#2d3142]">Gatekeeper</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormItem>
@@ -2160,13 +2155,13 @@ export default function CompanyDetail() {
 
       {/* Add Note Dialog */}
       <Dialog open={showAddNoteDialog} onOpenChange={setShowAddNoteDialog}>
-        <DialogContent>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
           <DialogHeader>
-            <DialogTitle>Add Note</DialogTitle>
+            <DialogTitle className="dark:text-white">Add Note</DialogTitle>
           </DialogHeader>
           <Form {...addNoteForm}>
             <form onSubmit={addNoteForm.handleSubmit((data) => addNoteMutation.mutate(data))} className="space-y-4">
-              <div className="text-sm text-muted-foreground bg-gray-50 dark:bg-muted p-3 rounded-md">
+              <div className="text-sm text-muted-foreground dark:text-[#94a3b8] bg-gray-50 dark:bg-[#1a1d29] p-3 rounded-md border dark:border-[#3d4254]">
                 <Clock className="inline h-4 w-4 mr-1" />
                 {format(new Date(), "MMM d, yyyy 'at' h:mm a")}
               </div>
@@ -2175,11 +2170,11 @@ export default function CompanyDetail() {
                 name="note"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Note</FormLabel>
+                    <FormLabel className="dark:text-[#94a3b8]">Note</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Add your note..."
-                        className="min-h-[120px]"
+                        className="min-h-[120px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
                         data-testid="input-note-content"
                         {...field}
                       />
@@ -2189,11 +2184,11 @@ export default function CompanyDetail() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowAddNoteDialog(false)}>
+                <Button type="button" variant="outline" onClick={() => setShowAddNoteDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
                   Cancel
                 </Button>
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700" disabled={addNoteMutation.isPending}>
-                  Add Note
+                  {addNoteMutation.isPending ? "Saving..." : "Add Note"}
                 </Button>
               </DialogFooter>
             </form>

@@ -23,7 +23,7 @@ export default function QuickTaskModal({ company, onClose }: Props) {
   const [formData, setFormData] = useState({
     name: "",
     taskType: "general",
-    dueDate: "",
+    dueDate: new Date().toISOString().split("T")[0],
     priority: "medium",
   });
 

@@ -600,4 +600,17 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  /* URL and email wrapping - use on <a> and long strings */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  /* Force word wrap for long school/company names */
+  .break-words-force {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
 }
