@@ -82,6 +82,23 @@ const logCallSchema = z.object({
   note: z.string().optional(),
   outcome: z.string().optional(),
   callDate: z.string().optional(),
+  leadStatus: z.string().optional(),
+  createContact: z.boolean().default(false),
+  contactEmail: z.string().optional(),
+  contactTitle: z.string().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  contactRole: z.string().optional(),
+  createTask: z.boolean().default(false),
+  taskName: z.string().optional(),
+  taskDueDate: z.string().optional(),
+  taskPriority: z.string().optional(),
+}).refine((data) => !data.createContact || (data.contactEmail && data.contactEmail.includes("@")), {
+  message: "Valid email is required when creating a contact",
+  path: ["contactEmail"],
+}).refine((data) => !data.createTask || (data.taskName && data.taskName.trim().length > 0), {
+  message: "Task description is required when creating a task",
+  path: ["taskName"],
 });
 
 const addNoteSchema = z.object({
@@ -258,7 +275,7 @@ export default function CompanyDetail() {
 
   const logCallForm = useForm<z.infer<typeof logCallSchema>>({
     resolver: zodResolver(logCallSchema),
-    defaultValues: { note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm") },
+    defaultValues: { note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"), leadStatus: "", createContact: false, contactEmail: "", contactTitle: "", contactName: "", contactPhone: "", contactRole: "", createTask: false, taskName: "", taskDueDate: format(new Date(), "yyyy-MM-dd"), taskPriority: "medium" },
   });
 
   const addNoteForm = useForm<z.infer<typeof addNoteSchema>>({
@@ -375,24 +392,66 @@ export default function CompanyDetail() {
     },
   });
 
+  const logCallDefaults = { note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"), leadStatus: "", createContact: false, contactEmail: "", contactTitle: "", contactName: "", contactPhone: "", contactRole: "", createTask: false, taskName: "", taskDueDate: format(new Date(), "yyyy-MM-dd"), taskPriority: "medium" };
+
+  const closeLogCallDialog = () => {
+    logCallForm.reset(logCallDefaults);
+    setShowLogCallDialog(false);
+  };
+
   const logCallMutation = useMutation({
     mutationFn: async (data: z.infer<typeof logCallSchema>) => {
-      return apiRequest("POST", `/api/companies/${params.id}/activities`, {
+      await apiRequest("POST", `/api/companies/${params.id}/activities`, {
         companyId: params.id,
         type: "call",
         note: data.note || null,
         outcome: data.outcome || null,
         createdAt: data.callDate ? new Date(data.callDate).toISOString() : undefined,
       });
+      const secondary: { label: string; promise: Promise<any> }[] = [];
+      if (data.leadStatus) {
+        secondary.push({ label: "lead status", promise: apiRequest("PATCH", `/api/companies/${params.id}`, { leadStatus: data.leadStatus }) });
+      }
+      if (data.createContact && data.contactEmail) {
+        secondary.push({ label: "contact", promise: apiRequest("POST", `/api/companies/${params.id}/contacts`, {
+          companyId: params.id,
+          email: data.contactEmail,
+          title: data.contactTitle && data.contactTitle !== "none" ? data.contactTitle : null,
+          name: data.contactName || null,
+          phone: data.contactPhone || null,
+          role: data.contactRole || null,
+        }) });
+      }
+      if (data.createTask && data.taskName) {
+        secondary.push({ label: "task", promise: apiRequest("POST", `/api/companies/${params.id}/tasks`, {
+          companyId: params.id,
+          name: data.taskName,
+          dueDate: data.taskDueDate ? new Date(data.taskDueDate).toISOString() : null,
+          priority: data.taskPriority || "medium",
+          status: "todo",
+        }) });
+      }
+      if (secondary.length > 0) {
+        const results = await Promise.allSettled(secondary.map(s => s.promise));
+        const failed = results.map((r, i) => r.status === "rejected" ? secondary[i].label : null).filter(Boolean);
+        if (failed.length > 0) {
+          return { partialFailures: failed };
+        }
+      }
+      return { partialFailures: [] };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats/today"] });
-      logCallForm.reset({ note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm") });
-      setShowLogCallDialog(false);
-      toast({ title: "Call logged" });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      closeLogCallDialog();
+      if (result?.partialFailures?.length) {
+        toast({ title: "Call logged", description: `Failed to create: ${(result.partialFailures as string[]).join(", ")}`, variant: "destructive" });
+      } else {
+        toast({ title: "Call logged" });
+      }
     },
   });
 
@@ -2071,8 +2130,8 @@ export default function CompanyDetail() {
       </Dialog>
 
       {/* Log Call Dialog */}
-      <Dialog open={showLogCallDialog} onOpenChange={setShowLogCallDialog}>
-        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+      <Dialog open={showLogCallDialog} onOpenChange={(open) => { if (!open) return; setShowLogCallDialog(open); }}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254] max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="dark:text-white">Log Call</DialogTitle>
           </DialogHeader>
@@ -2127,6 +2186,29 @@ export default function CompanyDetail() {
               />
               <FormField
                 control={logCallForm.control}
+                name="leadStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Lead Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-call-lead-status" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                          <SelectValue placeholder="No change" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        {leadStatusOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={logCallForm.control}
                 name="note"
                 render={({ field }) => (
                   <FormItem>
@@ -2134,7 +2216,7 @@ export default function CompanyDetail() {
                     <FormControl>
                       <Textarea
                         placeholder="Call notes and details..."
-                        className="min-h-[120px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
+                        className="min-h-[100px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
                         data-testid="input-call-note"
                         {...field}
                       />
@@ -2142,11 +2224,166 @@ export default function CompanyDetail() {
                   </FormItem>
                 )}
               />
+
+              <div className="border border-[#3d4254] rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium dark:text-white dark:bg-[#2d3142] hover:dark:bg-[#353a50] transition-colors"
+                  onClick={() => logCallForm.setValue("createContact", !logCallForm.watch("createContact"))}
+                  data-testid="toggle-create-contact"
+                >
+                  <span className="flex items-center gap-2"><Users className="h-4 w-4 text-[#0091AE]" /> Create Contact</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${logCallForm.watch("createContact") ? "rotate-180" : ""}`} />
+                </button>
+                {logCallForm.watch("createContact") && (
+                  <div className="px-4 py-3 space-y-3 dark:bg-[#1e2130] border-t border-[#3d4254]">
+                    <FormField
+                      control={logCallForm.control}
+                      name="contactEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="dark:text-[#94a3b8] text-xs">Email *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="email@example.com" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-contact-email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactTitle"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Title</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9">
+                                  <SelectValue placeholder="Title" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                                {TITLE_OPTIONS.map((t) => (
+                                  <SelectItem key={t} value={t} className="dark:text-white dark:focus:bg-[#2d3142]">{t}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Name</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Full name" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-contact-name" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactPhone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Phone</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Phone number" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-contact-phone" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactRole"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Role</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Job title" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-contact-role" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-[#3d4254] rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium dark:text-white dark:bg-[#2d3142] hover:dark:bg-[#353a50] transition-colors"
+                  onClick={() => logCallForm.setValue("createTask", !logCallForm.watch("createTask"))}
+                  data-testid="toggle-create-task"
+                >
+                  <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#0091AE]" /> Create Task</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${logCallForm.watch("createTask") ? "rotate-180" : ""}`} />
+                </button>
+                {logCallForm.watch("createTask") && (
+                  <div className="px-4 py-3 space-y-3 dark:bg-[#1e2130] border-t border-[#3d4254]">
+                    <FormField
+                      control={logCallForm.control}
+                      name="taskName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="dark:text-[#94a3b8] text-xs">Task Description *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g. Follow up on quote" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-task-name" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="taskDueDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Due Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="input-call-task-date" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="taskPriority"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Priority</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" data-testid="select-call-task-priority">
+                                  <SelectValue placeholder="Priority" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                                <SelectItem value="high" className="dark:text-white dark:focus:bg-[#2d3142]">High</SelectItem>
+                                <SelectItem value="medium" className="dark:text-white dark:focus:bg-[#2d3142]">Medium</SelectItem>
+                                <SelectItem value="low" className="dark:text-white dark:focus:bg-[#2d3142]">Low</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowLogCallDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+                <Button type="button" variant="outline" onClick={closeLogCallDialog} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={logCallMutation.isPending}>
+                <Button type="submit" className="bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={logCallMutation.isPending} data-testid="button-save-call-log">
                   {logCallMutation.isPending ? "Saving..." : "Save Call Log"}
                 </Button>
               </DialogFooter>
