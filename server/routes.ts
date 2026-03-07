@@ -1420,6 +1420,20 @@ export function registerRoutes(
           companyUpdate.grossProfit = data.grossProfit;
         }
 
+        if (data.type === 'call' && data.outcome) {
+          const outcomeToLeadStatus: Record<string, string> = {
+            "Decision Maker Details": "0.5-dm-details",
+            "Connected to DM - Interested": "2-intent",
+            "Connected to DM - Needs Follow-up": "2-intent",
+            "Connected to DM - Not Interested": "6-time-waste",
+          };
+          const autoStatus = outcomeToLeadStatus[data.outcome];
+          if (autoStatus) {
+            companyUpdate.budgetStatus = autoStatus;
+            console.log(`[activity] Auto-setting lead status to "${autoStatus}" based on outcome "${data.outcome}"`);
+          }
+        }
+
         const [updatedCompany] = await tx.update(companies).set(companyUpdate).where(eq(companies.id, companyId)).returning();
         console.log(`[activity] Company ${companyId} lastContactDate updated to ${updatedCompany?.lastContactDate}`);
 
@@ -1915,6 +1929,42 @@ export function registerRoutes(
       console.error("Intel RSS fetch error:", error.message);
       if (rssCache) return res.json({ ...rssCache, cached: true, stale: true });
       return res.status(500).json({ error: "Failed to fetch RSS feeds", details: error.message });
+    }
+  });
+
+  app.post("/api/admin/backfill-lead-status", isAuthenticated, async (req, res) => {
+    try {
+      const outcomeToLeadStatus: Record<string, string> = {
+        "Decision Maker Details": "0.5-dm-details",
+        "Connected to DM - Interested": "2-intent",
+        "Connected to DM - Needs Follow-up": "2-intent",
+        "Connected to DM - Not Interested": "6-time-waste",
+      };
+
+      const allCompanies = await db.select({ id: companies.id }).from(companies);
+      let updated = 0;
+
+      for (const company of allCompanies) {
+        const latestCall = await db.select()
+          .from(activities)
+          .where(and(eq(activities.companyId, company.id), eq(activities.type, "call")))
+          .orderBy(desc(activities.createdAt))
+          .limit(1);
+
+        if (latestCall.length > 0 && latestCall[0].outcome) {
+          const autoStatus = outcomeToLeadStatus[latestCall[0].outcome];
+          if (autoStatus) {
+            await db.update(companies).set({ budgetStatus: autoStatus }).where(eq(companies.id, company.id));
+            updated++;
+          }
+        }
+      }
+
+      console.log(`[backfill] Updated lead status for ${updated} companies based on most recent call outcome`);
+      res.json({ message: `Updated lead status for ${updated} companies`, total: allCompanies.length, updated });
+    } catch (error) {
+      console.error("Backfill error:", error);
+      res.status(500).json({ error: "Failed to backfill lead statuses" });
     }
   });
 

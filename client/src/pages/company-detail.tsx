@@ -828,6 +828,7 @@ export default function CompanyDetail() {
   // Lead Status options with colors
   const leadStatusOptions = [
     { value: "0-unqualified", label: "0 - Unqualified", color: "bg-gray-100 text-gray-700", badgeColor: "bg-[#6b7280]" },
+    { value: "0.5-dm-details", label: "0.5 - Decision Maker Details", color: "bg-teal-100 text-teal-700", badgeColor: "bg-[#14b8a6]" },
     { value: "1-qualified", label: "1 - Qualified", color: "bg-blue-100 text-blue-700", badgeColor: "bg-[#3b82f6]" },
     { value: "2-intent", label: "2 - Intent", color: "bg-purple-100 text-purple-700", badgeColor: "bg-[#8b5cf6]" },
     { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-amber-100 text-amber-700", badgeColor: "bg-[#f59e0b]" },
@@ -2169,6 +2170,7 @@ export default function CompanyDetail() {
                         <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">Decision Maker Contact</div>
                         <SelectItem value="Connected to DM - Interested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM - Interested</SelectItem>
                         <SelectItem value="Connected to DM - Needs Follow-up" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM - Needs Follow-up</SelectItem>
+                        <SelectItem value="Connected to DM - Not Interested" className="dark:text-white dark:focus:bg-[#2d3142]">Connected to DM - Not Interested</SelectItem>
                         <SelectItem value="Decision Maker Details" className="dark:text-white dark:focus:bg-[#2d3142]">Decision Maker Details</SelectItem>
                         <SelectItem value="Meeting Scheduled with DM" className="dark:text-white dark:focus:bg-[#2d3142]">Meeting Scheduled with DM</SelectItem>
                         <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#64748b] mt-1">General Outcomes</div>

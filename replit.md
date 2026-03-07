@@ -172,6 +172,13 @@ The CRM uses a custom username/password authentication system:
 
 ## Recent Changes
 
+- Mar 7, 2026: Lead status enhancements
+  - Added lead statuses: "0.5 - Decision Maker Details", "5 - Outsourced", "6 - Time Waste"
+  - Auto-status updates on call logging: "Decision Maker Details" → 0.5-dm-details, "Connected to DM - Interested/Needs Follow-up" → 2-intent, "Connected to DM - Not Interested" → 6-time-waste
+  - Added "Connected to DM - Not Interested" as call outcome option
+  - Enhanced Log Call dialog: lead status selector, inline create contact, inline create task, modal stays open until saved
+  - Backfill endpoint: POST /api/admin/backfill-lead-status
+
 - Jan 30, 2026: Wave Systems customization
   - Renamed to Wave Systems CRM
   - Added business intelligence dashboard widgets (Pipeline Value, GP This Month, Calls Today, Deals Needing Follow-up)

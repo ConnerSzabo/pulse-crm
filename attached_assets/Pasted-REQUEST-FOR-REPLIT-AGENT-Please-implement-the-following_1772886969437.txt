@@ -1,0 +1,59 @@
+REQUEST FOR REPLIT AGENT
+Please implement the following changes to the CRM:
+
+1. Add New Lead Status to Database
+Add a new lead status option called "0.5 - Decision Maker Details" to the system.
+Database update needed:
+sql-- Add the new lead status value
+-- Current lead statuses: cold, warm, hot, qualified, unqualified
+-- Add: dm_details (or similar identifier for "0.5 - Decision Maker Details")
+
+2. Automatic Lead Status Updates When Logging Calls
+Implement automatic lead status changes based on call outcomes:
+Rule 1: When call outcome = "Decision Maker Details"
+
+Automatically set lead_status = "0.5 - Decision Maker Details"
+
+Rule 2: When call outcome = "Connected to DM - Interested" OR "Connected to DM - Needs Follow-up"
+
+Automatically set lead_status = "Intent"
+
+Rule 3: When call outcome = "Connected to DM - Not Interested"
+
+Automatically set lead_status = "6 - Time Waste"
+
+Where to implement: In the POST /api/calls endpoint, add logic to update the company's lead_status based on the call outcome before saving.
+
+3. Update All Existing Call Logs
+Run a one-time script to go through ALL existing calls in the database and update company lead statuses based on their most recent call outcome using the rules above.
+Logic:
+
+For each company, find their most recent call
+Apply the outcome → lead_status mapping rules
+Update the company's lead_status accordingly
+
+
+4. Update UI Components
+Update these components to show the new lead status:
+
+Call queue filters
+Company detail page lead status badge
+Call log modal outcome dropdown (if "Decision Maker Details" outcome doesn't exist, add it)
+Any other places where lead status is displayed
+
+
+Expected Behavior:
+
+User logs a call with outcome "Decision Maker Details" → Lead status automatically changes to "0.5 - Decision Maker Details"
+User logs a call with outcome "Connected to DM - Interested" → Lead status automatically changes to "Intent"
+User logs a call with outcome "Connected to DM - Not Interested" → Lead status automatically changes to "6 - Time Waste"
+All existing historical calls are analyzed and companies are updated with the correct lead status based on their most recent call
+
+
+Files Likely Needing Changes:
+
+server.js or wherever POST /api/calls is defined
+Database migration script for new lead status
+Call log modal component
+Company detail page component
+Any lead status filter/display components

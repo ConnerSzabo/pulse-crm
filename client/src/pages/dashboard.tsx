@@ -42,6 +42,7 @@ type SortDirection = "asc" | "desc";
 
 const LEAD_STATUS_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "0-unqualified", label: "Unqualified", color: "bg-gray-500" },
+  { value: "0.5-dm-details", label: "DM Details", color: "bg-teal-500" },
   { value: "1-qualified", label: "Qualified", color: "bg-blue-500" },
   { value: "2-intent", label: "Intent", color: "bg-purple-500" },
   { value: "3-quote-presented", label: "Quote Presented", color: "bg-amber-500" },

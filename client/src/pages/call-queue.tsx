@@ -83,6 +83,7 @@ type QueueItem = {
 
 const LEAD_STATUS_OPTIONS = [
   { value: "0-unqualified", label: "0 - Unqualified", badgeColor: "bg-gray-500" },
+  { value: "0.5-dm-details", label: "0.5 - Decision Maker Details", badgeColor: "bg-teal-500" },
   { value: "1-qualified", label: "1 - Qualified", badgeColor: "bg-blue-500" },
   { value: "2-intent", label: "2 - Intent", badgeColor: "bg-purple-500" },
   { value: "3-quote-presented", label: "3 - Quote Presented", badgeColor: "bg-amber-500" },
@@ -98,6 +99,7 @@ const CALL_OUTCOME_GROUPS = [
     outcomes: [
       { value: "Connected to DM - Interested", label: "Connected to DM - Interested" },
       { value: "Connected to DM - Needs Follow-up", label: "Connected to DM - Needs Follow-up" },
+      { value: "Connected to DM - Not Interested", label: "Connected to DM - Not Interested" },
       { value: "Decision Maker Details", label: "Decision Maker Details" },
       { value: "Meeting Scheduled with DM", label: "Meeting Scheduled with DM" },
     ],

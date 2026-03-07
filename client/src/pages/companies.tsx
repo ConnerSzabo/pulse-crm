@@ -107,6 +107,7 @@ type SortDirection = "asc" | "desc";
 // Lead Status options with colors - dark mode uses solid colored backgrounds with white text
 const leadStatusOptions = [
   { value: "0-unqualified", label: "0 - Unqualified", color: "bg-gray-200 text-gray-700 border-gray-300 dark:bg-gray-600 dark:text-white dark:border-gray-500", dotColor: "bg-gray-500 dark:bg-gray-300" },
+  { value: "0.5-dm-details", label: "0.5 - Decision Maker Details", color: "bg-teal-200 text-teal-900 border-teal-300 dark:bg-teal-700 dark:text-white dark:border-teal-600", dotColor: "bg-teal-600 dark:bg-white" },
   { value: "1-qualified", label: "1 - Qualified", color: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-[#0091AE] dark:text-white dark:border-[#0091AE]", dotColor: "bg-blue-500 dark:bg-white" },
   { value: "2-intent", label: "2 - Intent", color: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-[#f59e0b] dark:text-white dark:border-[#f59e0b]", dotColor: "bg-orange-500 dark:bg-white" },
   { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-green-100 text-green-800 border-green-200 dark:bg-[#10b981] dark:text-white dark:border-[#10b981]", dotColor: "bg-green-500 dark:bg-white" },

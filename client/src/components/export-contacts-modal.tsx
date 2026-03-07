@@ -33,6 +33,7 @@ const escapeCSV = (value: string | null | undefined): string => {
 
 const leadStatusLabels: Record<string, string> = {
   "0-unqualified": "0 - Unqualified",
+  "0.5-dm-details": "0.5 - Decision Maker Details",
   "1-qualified": "1 - Qualified",
   "2-intent": "2 - Intent",
   "3-quote-presented": "3 - Quote Presented",
