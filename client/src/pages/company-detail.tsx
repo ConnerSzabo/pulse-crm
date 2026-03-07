@@ -410,7 +410,7 @@ export default function CompanyDetail() {
       });
       const secondary: { label: string; promise: Promise<any> }[] = [];
       if (data.leadStatus) {
-        secondary.push({ label: "lead status", promise: apiRequest("PATCH", `/api/companies/${params.id}`, { leadStatus: data.leadStatus }) });
+        secondary.push({ label: "lead status", promise: apiRequest("PATCH", `/api/companies/${params.id}`, { budgetStatus: data.leadStatus }) });
       }
       if (data.createContact && data.contactEmail) {
         secondary.push({ label: "contact", promise: apiRequest("POST", `/api/companies/${params.id}/contacts`, {
