@@ -88,6 +88,8 @@ const LEAD_STATUS_OPTIONS = [
   { value: "3-quote-presented", label: "3 - Quote Presented", badgeColor: "bg-amber-500" },
   { value: "3b-quoted-lost", label: "3b - Quoted Lost", badgeColor: "bg-red-500" },
   { value: "4-account-active", label: "4 - Account Active", badgeColor: "bg-green-500" },
+  { value: "5-outsourced", label: "5 - Outsourced", badgeColor: "bg-cyan-500" },
+  { value: "6-time-waste", label: "6 - Time Waste", badgeColor: "bg-rose-500" },
 ];
 
 const CALL_OUTCOME_GROUPS = [

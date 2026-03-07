@@ -38,6 +38,8 @@ const leadStatusLabels: Record<string, string> = {
   "3-quote-presented": "3 - Quote Presented",
   "3b-quoted-lost": "3b - Quoted Lost",
   "4-account-active": "4 - Account Active",
+  "5-outsourced": "5 - Outsourced",
+  "6-time-waste": "6 - Time Waste",
 };
 
 export function ExportContactsModal({

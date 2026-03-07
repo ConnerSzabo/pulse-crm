@@ -47,6 +47,8 @@ const LEAD_STATUS_OPTIONS: { value: string; label: string; color: string }[] = [
   { value: "3-quote-presented", label: "Quote Presented", color: "bg-amber-500" },
   { value: "3b-quoted-lost", label: "Quoted Lost", color: "bg-red-500" },
   { value: "4-account-active", label: "Account Active", color: "bg-green-500" },
+  { value: "5-outsourced", label: "Outsourced", color: "bg-cyan-500" },
+  { value: "6-time-waste", label: "Time Waste", color: "bg-rose-500" },
 ];
 
 export default function Dashboard() {

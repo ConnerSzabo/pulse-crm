@@ -774,6 +774,8 @@ export default function CompanyDetail() {
     { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-amber-100 text-amber-700", badgeColor: "bg-[#f59e0b]" },
     { value: "3b-quoted-lost", label: "3b - Quoted Lost", color: "bg-red-100 text-red-700", badgeColor: "bg-[#ef4444]" },
     { value: "4-account-active", label: "4 - Account Active", color: "bg-green-100 text-green-700", badgeColor: "bg-[#10b981]" },
+    { value: "5-outsourced", label: "5 - Outsourced", color: "bg-cyan-100 text-cyan-700", badgeColor: "bg-[#06b6d4]" },
+    { value: "6-time-waste", label: "6 - Time Waste", color: "bg-rose-100 text-rose-700", badgeColor: "bg-[#e11d48]" },
   ];
 
   const getLeadStatusBadge = (status: string | null) => {

@@ -81,6 +81,8 @@ const leadStatusOptions = [
   { value: "3-quote-presented", label: "3 - Quote Presented", color: "bg-green-100 text-green-800 border-green-200 dark:bg-[#10b981] dark:text-white dark:border-[#10b981]", dotColor: "bg-green-500 dark:bg-white" },
   { value: "3b-quoted-lost", label: "3b - Quoted Lost", color: "bg-red-100 text-red-800 border-red-200 dark:bg-[#ef4444] dark:text-white dark:border-[#ef4444]", dotColor: "bg-red-500 dark:bg-white" },
   { value: "4-account-active", label: "4 - Account Active", color: "bg-emerald-200 text-emerald-900 border-emerald-300 dark:bg-emerald-700 dark:text-white dark:border-emerald-600", dotColor: "bg-emerald-600 dark:bg-white" },
+  { value: "5-outsourced", label: "5 - Outsourced", color: "bg-cyan-200 text-cyan-900 border-cyan-300 dark:bg-cyan-700 dark:text-white dark:border-cyan-600", dotColor: "bg-cyan-600 dark:bg-white" },
+  { value: "6-time-waste", label: "6 - Time Waste", color: "bg-rose-200 text-rose-900 border-rose-300 dark:bg-rose-700 dark:text-white dark:border-rose-600", dotColor: "bg-rose-600 dark:bg-white" },
 ];
 
 function getInitials(name: string | null | undefined): string {
