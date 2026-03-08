@@ -419,9 +419,9 @@ export default function ContactDetail() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
+    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29] overflow-hidden">
       {/* LEFT SIDEBAR */}
-      <div className="w-64 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col">
+      <div className="w-64 shrink-0 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col overflow-hidden">
         {/* Back button */}
         <div className="p-4 border-b dark:border-[#3d4254]">
           <Button variant="ghost" size="sm" onClick={() => navigate("/contacts")}
@@ -921,7 +921,7 @@ export default function ContactDetail() {
       </div>
 
       {/* RIGHT SIDEBAR */}
-      <div className="w-[350px] bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] overflow-auto">
+      <div className="w-72 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] overflow-auto">
         <CollapsibleSection title="Companies" count={contact.companyId ? 1 : 0} icon={Building2}>
           {contact.companyId && contact.companyName ? (
             <Link href={`/company/${contact.companyId}`}

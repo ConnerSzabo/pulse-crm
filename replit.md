@@ -172,6 +172,12 @@ The CRM uses a custom username/password authentication system:
 
 ## Recent Changes
 
+- Mar 8, 2026: Sidebar layout fixes
+  - Fixed sidebar overflow preventing "+Add" button clicks on company-detail and contact-detail pages
+  - Standardized sidebar widths: left sidebar w-64 (256px), right sidebar w-72 (288px) with shrink-0 on both
+  - Added overflow-hidden to outer flex containers to prevent horizontal overflow
+  - contact-detail right sidebar reduced from w-[350px] to w-72 for consistency
+
 - Mar 7, 2026: Lead status enhancements
   - Added lead statuses: "0.5 - Decision Maker Details", "5 - Outsourced", "6 - Time Waste"
   - Auto-status updates on call logging: "Decision Maker Details" → 0.5-dm-details, "Connected to DM - Interested/Needs Follow-up" → 2-intent, "Connected to DM - Not Interested" → 6-time-waste

@@ -976,9 +976,9 @@ export default function CompanyDetail() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29]">
+    <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29] overflow-hidden">
       {/* LEFT SIDEBAR - Full height with scrolling */}
-      <div className="w-72 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
+      <div className="w-64 shrink-0 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
         {/* Back button - Compact spacing */}
         <div className="px-4 py-2 border-b dark:border-[#3d4254] flex-shrink-0">
           <Button
@@ -1773,7 +1773,7 @@ export default function CompanyDetail() {
       </div>
 
       {/* RIGHT SIDEBAR */}
-      <div className="w-80 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] flex flex-col overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.05)]">
+      <div className="w-72 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] flex flex-col overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.05)]">
         <ScrollArea className="flex-1">
           {/* Contacts Section */}
           <CollapsibleSection
