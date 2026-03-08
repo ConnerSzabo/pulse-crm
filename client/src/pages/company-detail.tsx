@@ -1269,7 +1269,7 @@ export default function CompanyDetail() {
       {/* CENTER AREA - Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Tabs */}
-        <Tabs defaultValue="activities" className="flex-1 flex flex-col">
+        <Tabs defaultValue="activities" className="flex-1 flex flex-col min-h-0">
           <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6">
             <TabsList className="h-12 bg-transparent border-0 p-0 gap-6">
               <TabsTrigger
@@ -1348,7 +1348,7 @@ export default function CompanyDetail() {
           </TabsContent>
 
           {/* Activities Tab */}
-          <TabsContent value="activities" className="flex-1 flex flex-col overflow-hidden m-0">
+          <TabsContent value="activities" className="flex-1 flex flex-col overflow-hidden m-0 min-h-0">
             {/* Search and filters */}
             <div className="bg-white dark:bg-[#252936] border-b dark:border-[#3d4254] px-6 py-3">
               <div className="flex items-center gap-4">
@@ -1388,7 +1388,7 @@ export default function CompanyDetail() {
             </div>
 
             {/* Activity Timeline */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-h-0">
               <div className="p-6 space-y-6">
 
                 {/* ── TASKS (always visible at top) ── */}
