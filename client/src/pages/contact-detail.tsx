@@ -921,7 +921,7 @@ export default function ContactDetail() {
       </div>
 
       {/* RIGHT SIDEBAR */}
-      <div className="w-72 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] overflow-auto">
+      <div className="w-80 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] overflow-auto">
         <CollapsibleSection title="Companies" count={contact.companyId ? 1 : 0} icon={Building2}>
           {contact.companyId && contact.companyName ? (
             <Link href={`/company/${contact.companyId}`}

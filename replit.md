@@ -174,9 +174,10 @@ The CRM uses a custom username/password authentication system:
 
 - Mar 8, 2026: Sidebar layout fixes
   - Fixed sidebar overflow preventing "+Add" button clicks on company-detail and contact-detail pages
-  - Standardized sidebar widths: left sidebar w-64 (256px), right sidebar w-72 (288px) with shrink-0 on both
+  - Sidebar widths: left sidebar w-72 (288px), right sidebar w-80 (320px) with shrink-0 on both to prevent flex shrinkage
   - Added overflow-hidden to outer flex containers to prevent horizontal overflow
-  - contact-detail right sidebar reduced from w-[350px] to w-72 for consistency
+  - Changed truncated text to break-words for trust/company names in sidebars
+  - contact-detail right sidebar standardized to w-80 with shrink-0
 
 - Mar 7, 2026: Lead status enhancements
   - Added lead statuses: "0.5 - Decision Maker Details", "5 - Outsourced", "6 - Time Waste"

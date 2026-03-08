@@ -978,7 +978,7 @@ export default function CompanyDetail() {
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#1a1d29] overflow-hidden">
       {/* LEFT SIDEBAR - Full height with scrolling */}
-      <div className="w-64 shrink-0 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
+      <div className="w-72 shrink-0 bg-white dark:bg-[#252936] border-r dark:border-[#3d4254] flex flex-col h-screen overflow-hidden">
         {/* Back button - Compact spacing */}
         <div className="px-4 py-2 border-b dark:border-[#3d4254] flex-shrink-0">
           <Button
@@ -1171,7 +1171,7 @@ export default function CompanyDetail() {
                       if (trustCompanyLink) {
                         return (
                           <div className="flex items-center gap-2">
-                            <Link href={`/company/${trustCompanyLink.id}`} className="text-sm text-[#0091AE] hover:underline font-medium truncate">
+                            <Link href={`/company/${trustCompanyLink.id}`} className="text-sm text-[#0091AE] hover:underline font-medium break-words">
                               {trustCompanyLink.name}
                             </Link>
                           </div>
@@ -1773,7 +1773,7 @@ export default function CompanyDetail() {
       </div>
 
       {/* RIGHT SIDEBAR */}
-      <div className="w-72 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] flex flex-col overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.05)]">
+      <div className="w-80 shrink-0 bg-white dark:bg-[#252936] border-l dark:border-[#3d4254] flex flex-col overflow-hidden shadow-[-2px_0_8px_rgba(0,0,0,0.05)]">
         <ScrollArea className="flex-1">
           {/* Contacts Section */}
           <CollapsibleSection
@@ -1860,7 +1860,7 @@ export default function CompanyDetail() {
                           <Building className="h-4 w-4 text-purple-500" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium text-sm text-[#0091AE] hover:underline truncate" title={rel.relatedCompany.name}>{rel.relatedCompany.name}</p>
+                          <p className="font-medium text-sm text-[#0091AE] hover:underline break-words" title={rel.relatedCompany.name}>{rel.relatedCompany.name}</p>
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 mt-0.5 dark:bg-[#3d4254]">{rel.relationshipType}</Badge>
                         </div>
                       </Link>
