@@ -48,6 +48,41 @@ export function registerRoutes(
   httpServer: Server,
   app: Express
 ): Server {
+  // SEO: robots.txt and sitemap.xml (public, no auth required)
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send(
+      `User-agent: *\nAllow: /\n\nSitemap: https://wavesystems.co.uk/sitemap.xml\n`
+    );
+  });
+
+  app.get("/sitemap.xml", (_req, res) => {
+    const baseUrl = "https://wavesystems.co.uk";
+    const routes = [
+      { loc: "/", priority: "1.0", changefreq: "daily" },
+      { loc: "/companies", priority: "0.8", changefreq: "daily" },
+      { loc: "/contacts", priority: "0.8", changefreq: "daily" },
+      { loc: "/pipeline", priority: "0.8", changefreq: "daily" },
+      { loc: "/tasks", priority: "0.7", changefreq: "daily" },
+      { loc: "/call-queue", priority: "0.7", changefreq: "daily" },
+      { loc: "/call-history", priority: "0.6", changefreq: "weekly" },
+      { loc: "/call-analytics", priority: "0.6", changefreq: "weekly" },
+      { loc: "/intel", priority: "0.7", changefreq: "daily" },
+      { loc: "/trusts", priority: "0.7", changefreq: "weekly" },
+      { loc: "/import", priority: "0.5", changefreq: "monthly" },
+    ];
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${routes.map(r => `  <url>
+    <loc>${baseUrl}${r.loc}</loc>
+    <changefreq>${r.changefreq}</changefreq>
+    <priority>${r.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
+
+    res.type("application/xml").send(xml);
+  });
+
   // Auth routes (not protected)
   app.post("/api/login", loginLimiter, async (req, res) => {
     try {
