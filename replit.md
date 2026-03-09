@@ -172,11 +172,6 @@ The CRM uses a custom username/password authentication system:
 
 ## Recent Changes
 
-- Mar 9, 2026: Added SEO files (sitemap.xml and robots.txt)
-  - GET /robots.txt - allows all crawlers, references sitemap at https://wavesystems.co.uk/sitemap.xml
-  - GET /sitemap.xml - lists all public routes with priority and changefreq
-  - Both served from Express routes before auth middleware (publicly accessible)
-
 - Mar 8, 2026: Sidebar layout fixes
   - Fixed sidebar overflow preventing "+Add" button clicks on company-detail and contact-detail pages
   - Sidebar widths: left sidebar w-72 (288px), right sidebar w-80 (320px) with shrink-0 on both to prevent flex shrinkage
