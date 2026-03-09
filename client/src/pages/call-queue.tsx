@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import {
   Phone,
   SkipForward,
@@ -36,6 +37,7 @@ import {
   Filter,
   MessageSquare,
   User,
+  Users,
   CheckSquare,
   Mail,
   Plus,
@@ -51,11 +53,15 @@ import {
   Pencil,
   Tag,
   ChevronRight,
+  ChevronDown,
   AlertCircle,
   TrendingUp,
 } from "lucide-react";
 import QuickTaskModal from "@/components/QuickTaskModal";
 import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { format, formatDistanceToNow } from "date-fns";
 import type {
   Company,
@@ -92,6 +98,31 @@ const LEAD_STATUS_OPTIONS = [
   { value: "5-outsourced", label: "5 - Outsourced", badgeColor: "bg-cyan-500" },
   { value: "6-time-waste", label: "6 - Time Waste", badgeColor: "bg-rose-500" },
 ];
+
+const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Rev", "Prof"];
+
+const logCallSchema = z.object({
+  note: z.string().optional(),
+  outcome: z.string().optional(),
+  callDate: z.string().optional(),
+  leadStatus: z.string().optional(),
+  createContact: z.boolean().default(false),
+  contactEmail: z.string().optional(),
+  contactTitle: z.string().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  contactRole: z.string().optional(),
+  createTask: z.boolean().default(false),
+  taskName: z.string().optional(),
+  taskDueDate: z.string().optional(),
+  taskPriority: z.string().optional(),
+}).refine((data) => !data.createContact || (data.contactEmail && data.contactEmail.includes("@")), {
+  message: "Valid email is required when creating a contact",
+  path: ["contactEmail"],
+}).refine((data) => !data.createTask || (data.taskName && data.taskName.trim().length > 0), {
+  message: "Task description is required when creating a task",
+  path: ["taskName"],
+});
 
 const CALL_OUTCOME_GROUPS = [
   {
@@ -202,8 +233,11 @@ export default function CallQueue() {
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
 
   // Log call form
-  const [callNote, setCallNote] = useState("");
-  const [callOutcome, setCallOutcome] = useState("");
+  const logCallDefaults = { note: "", outcome: "", callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"), leadStatus: "", createContact: false, contactEmail: "", contactTitle: "", contactName: "", contactPhone: "", contactRole: "", createTask: false, taskName: "", taskDueDate: format(new Date(), "yyyy-MM-dd"), taskPriority: "medium" };
+  const logCallForm = useForm<z.infer<typeof logCallSchema>>({
+    resolver: zodResolver(logCallSchema),
+    defaultValues: logCallDefaults,
+  });
 
   // Add note form
   const [noteText, setNoteText] = useState("");
@@ -270,29 +304,65 @@ export default function CallQueue() {
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const logCallMutation = useMutation({
-    mutationFn: async ({
-      companyId,
-      note,
-      outcome,
-    }: {
-      companyId: string;
-      note: string;
-      outcome: string;
-    }) => {
-      const res = await apiRequest("POST", `/api/companies/${companyId}/activities`, {
+    mutationFn: async ({ companyId, data }: { companyId: string; data: z.infer<typeof logCallSchema> }) => {
+      await apiRequest("POST", `/api/companies/${companyId}/activities`, {
         type: "call",
-        note,
-        outcome,
+        note: data.note || null,
+        outcome: data.outcome || null,
+        createdAt: data.callDate ? new Date(data.callDate).toISOString() : undefined,
       });
-      return res.json() as Promise<Activity>;
+      const secondary: { label: string; promise: Promise<any> }[] = [];
+      if (data.leadStatus) {
+        secondary.push({ label: "lead status", promise: apiRequest("PATCH", `/api/companies/${companyId}`, { budgetStatus: data.leadStatus }) });
+      }
+      if (data.createContact && data.contactEmail) {
+        secondary.push({ label: "contact", promise: apiRequest("POST", `/api/companies/${companyId}/contacts`, {
+          companyId,
+          email: data.contactEmail,
+          title: data.contactTitle && data.contactTitle !== "none" ? data.contactTitle : null,
+          name: data.contactName || null,
+          phone: data.contactPhone || null,
+          role: data.contactRole || null,
+        }) });
+      }
+      if (data.createTask && data.taskName) {
+        secondary.push({ label: "task", promise: apiRequest("POST", `/api/companies/${companyId}/tasks`, {
+          companyId,
+          name: data.taskName,
+          dueDate: data.taskDueDate ? new Date(data.taskDueDate).toISOString() : null,
+          priority: data.taskPriority || "medium",
+          status: "todo",
+        }) });
+      }
+      if (secondary.length > 0) {
+        const results = await Promise.allSettled(secondary.map(s => s.promise));
+        const failed = results.map((r, i) => r.status === "rejected" ? secondary[i].label : null).filter(Boolean);
+        if (failed.length > 0) return { partialFailures: failed };
+      }
+      return { partialFailures: [] };
     },
-    onSuccess: (newActivity, { companyId }) => {
-      queryClient.setQueryData<CompanyWithRelations>(
-        ["/api/companies", companyId],
-        (old) => (old ? { ...old, activities: [newActivity, ...old.activities] } : old)
-      );
+    onSuccess: (result, { companyId }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies", companyId] });
       queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      setCompletedIds((prev) => new Set(prev).add(companyId));
+      setLogCallOpen(false);
+      logCallForm.reset(logCallDefaults);
+      const remaining = activeQueue.length - 1;
+      if (result?.partialFailures?.length) {
+        toast({ title: "Call logged", description: `Failed to create: ${(result.partialFailures as string[]).join(", ")}`, variant: "destructive" });
+      } else {
+        toast({
+          title: "Call logged — moving to next school",
+          description: remaining > 0 ? `${remaining} school${remaining !== 1 ? "s" : ""} remaining in queue` : "Queue complete!",
+        });
+      }
+    },
+    onError: () => {
+      toast({ title: "Failed to log call", description: "Please try again", variant: "destructive" });
     },
   });
 
@@ -483,27 +553,15 @@ export default function CallQueue() {
     setSkippedIds(new Set());
   };
 
-  const handleSubmitCall = () => {
-    if (!currentItem || !callOutcome) return;
+  const handleSubmitCall = (data: z.infer<typeof logCallSchema>) => {
+    if (!currentItem) return;
     const companyId = currentItem.company.id;
-    logCallMutation.mutate(
-      { companyId, note: callNote, outcome: callOutcome },
-      {
-        onSuccess: () => {
-          setCompletedIds((prev) => new Set(prev).add(companyId));
-          setLogCallOpen(false);
-          setCallNote("");
-          setCallOutcome("");
-          // Refetch queue so server-side 21-day exclusion applies on next render
-          queryClient.invalidateQueries({ queryKey: ["/api/call-queue"] });
-          const remaining = activeQueue.length - 1;
-          toast({
-            title: "Call logged — moving to next school",
-            description: remaining > 0 ? `${remaining} school${remaining !== 1 ? "s" : ""} remaining in queue` : "🎉 Queue complete!",
-          });
-        },
-      }
-    );
+    logCallMutation.mutate({ companyId, data });
+  };
+
+  const closeLogCallDialog = () => {
+    logCallForm.reset(logCallDefaults);
+    setLogCallOpen(false);
   };
 
   const handleSubmitNote = () => {
@@ -1013,7 +1071,7 @@ export default function CallQueue() {
               {/* Quick action buttons */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => { setLogCallOpen(true); setCallNote(""); setCallOutcome(""); }}
+                  onClick={() => { logCallForm.reset({ ...logCallDefaults, callDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"), taskDueDate: format(new Date(), "yyyy-MM-dd") }); setLogCallOpen(true); }}
                   className="flex items-center justify-center gap-1.5 py-2.5 bg-[#0091AE] hover:bg-[#007a94] text-white rounded-lg text-xs font-medium transition-colors"
                 >
                   <PhoneCall className="h-3.5 w-3.5" />
@@ -1389,62 +1447,263 @@ export default function CallQueue() {
       {/* ── MODALS ───────────────────────────────────────────────────────── */}
 
       {/* Log Call */}
-      <Dialog open={logCallOpen} onOpenChange={setLogCallOpen}>
-        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254] max-w-md">
+      <Dialog open={logCallOpen} onOpenChange={(open) => { if (!open) return; setLogCallOpen(open); }}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254] max-h-[90vh] overflow-y-auto" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="dark:text-white">
               Log Call — {currentItem?.company.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium dark:text-[#94a3b8]">Outcome *</label>
-              <Select value={callOutcome} onValueChange={setCallOutcome}>
-                <SelectTrigger className="mt-1 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
-                  <SelectValue placeholder="Select outcome..." />
-                </SelectTrigger>
-                <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
-                  {CALL_OUTCOME_GROUPS.map((group) => (
-                    <div key={group.label}>
-                      <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider dark:text-[#64748b]">
-                        {group.label}
-                      </div>
-                      {group.outcomes.map((o) => (
-                        <SelectItem key={o.value} value={o.value} className="dark:text-white dark:focus:bg-[#3d4254]">
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </div>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium dark:text-[#94a3b8]">Notes</label>
-              <Textarea
-                value={callNote}
-                onChange={(e) => setCallNote(e.target.value)}
-                placeholder="What happened on the call..."
-                className="mt-1 dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder:text-[#64748b]"
-                rows={3}
+          <Form {...logCallForm}>
+            <form onSubmit={logCallForm.handleSubmit(handleSubmitCall)} className="space-y-4">
+              <FormField
+                control={logCallForm.control}
+                name="callDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Date / Time</FormLabel>
+                    <FormControl>
+                      <Input type="datetime-local" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
               />
-            </div>
-          </div>
-          <div className="text-[11px] text-center dark:text-[#64748b] -mt-1 px-1">
-            This school will be marked as contacted and removed from today's queue.
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLogCallOpen(false)} className="dark:border-[#3d4254] dark:text-[#94a3b8]">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmitCall}
-              disabled={!callOutcome || logCallMutation.isPending}
-              className="bg-[#0091AE] hover:bg-[#007a94]"
-            >
-              {logCallMutation.isPending ? "Logging..." : "Log Call & Next School"}
-            </Button>
-          </DialogFooter>
+              <FormField
+                control={logCallForm.control}
+                name="outcome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Outcome</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                          <SelectValue placeholder="Select outcome" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        {CALL_OUTCOME_GROUPS.map((group) => (
+                          <div key={group.label}>
+                            <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#64748b]">
+                              {group.label}
+                            </div>
+                            {group.outcomes.map((o) => (
+                              <SelectItem key={o.value} value={o.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={logCallForm.control}
+                name="leadStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Lead Status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                          <SelectValue placeholder="No change" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                        {LEAD_STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={logCallForm.control}
+                name="note"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="dark:text-[#94a3b8]">Notes</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Call notes and details..."
+                        className="min-h-[100px] dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white dark:placeholder-[#64748b]"
+                        {...field}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <div className="border border-[#3d4254] rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium dark:text-white dark:bg-[#2d3142] hover:dark:bg-[#353a50] transition-colors"
+                  onClick={() => logCallForm.setValue("createContact", !logCallForm.watch("createContact"))}
+                >
+                  <span className="flex items-center gap-2"><Users className="h-4 w-4 text-[#0091AE]" /> Create Contact</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${logCallForm.watch("createContact") ? "rotate-180" : ""}`} />
+                </button>
+                {logCallForm.watch("createContact") && (
+                  <div className="px-4 py-3 space-y-3 dark:bg-[#1e2130] border-t border-[#3d4254]">
+                    <FormField
+                      control={logCallForm.control}
+                      name="contactEmail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="dark:text-[#94a3b8] text-xs">Email *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="email@example.com" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactTitle"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Title</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9">
+                                  <SelectValue placeholder="Title" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                                {TITLE_OPTIONS.map((t) => (
+                                  <SelectItem key={t} value={t} className="dark:text-white dark:focus:bg-[#2d3142]">{t}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Name</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Full name" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactPhone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Phone</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Phone number" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="contactRole"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Role</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Job title" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-[#3d4254] rounded-lg overflow-hidden">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium dark:text-white dark:bg-[#2d3142] hover:dark:bg-[#353a50] transition-colors"
+                  onClick={() => logCallForm.setValue("createTask", !logCallForm.watch("createTask"))}
+                >
+                  <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-[#0091AE]" /> Create Task</span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${logCallForm.watch("createTask") ? "rotate-180" : ""}`} />
+                </button>
+                {logCallForm.watch("createTask") && (
+                  <div className="px-4 py-3 space-y-3 dark:bg-[#1e2130] border-t border-[#3d4254]">
+                    <FormField
+                      control={logCallForm.control}
+                      name="taskName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="dark:text-[#94a3b8] text-xs">Task Description *</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g. Follow up on quote" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={logCallForm.control}
+                        name="taskDueDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Due Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={logCallForm.control}
+                        name="taskPriority"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="dark:text-[#94a3b8] text-xs">Priority</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white h-9">
+                                  <SelectValue placeholder="Priority" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                                <SelectItem value="high" className="dark:text-white dark:focus:bg-[#2d3142]">High</SelectItem>
+                                <SelectItem value="medium" className="dark:text-white dark:focus:bg-[#2d3142]">Medium</SelectItem>
+                                <SelectItem value="low" className="dark:text-white dark:focus:bg-[#2d3142]">Low</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-[11px] text-center dark:text-[#64748b] px-1">
+                This school will be marked as contacted and removed from today's queue.
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeLogCallDialog} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-[#0091AE] hover:bg-[#007a94] text-white" disabled={logCallMutation.isPending}>
+                  {logCallMutation.isPending ? "Saving..." : "Save Call Log"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
