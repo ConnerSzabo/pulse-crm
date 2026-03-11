@@ -172,6 +172,13 @@ The CRM uses a custom username/password authentication system:
 
 ## Recent Changes
 
+- Mar 11, 2026: Bulk actions on companies list
+  - Bulk delete: select multiple companies, click Delete, confirm to permanently remove all selected
+  - Bulk lead status change: select multiple companies, click Change Lead Status, pick a status, apply to all selected
+  - Bulk action bar appears above table when companies are selected, showing count + action buttons + Clear Selection
+  - Page-scoped select-all checkbox: toggles all companies on current page without clearing selections on other pages
+  - API endpoints: POST /api/companies/bulk-delete, POST /api/companies/bulk-update-status
+
 - Mar 8, 2026: Sidebar layout fixes
   - Fixed sidebar overflow preventing "+Add" button clicks on company-detail and contact-detail pages
   - Sidebar widths: left sidebar w-72 (288px), right sidebar w-80 (320px) with shrink-0 on both to prevent flex shrinkage

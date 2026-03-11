@@ -65,6 +65,7 @@ import {
   AlertTriangle,
   Download,
   Users,
+  Tag,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -278,6 +279,44 @@ export default function Companies() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
       toast({ title: "Company deleted" });
+    },
+  });
+
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [showBulkStatusDialog, setShowBulkStatusDialog] = useState(false);
+  const [bulkNewStatus, setBulkNewStatus] = useState("");
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/companies/bulk-delete", { ids });
+      return res.json() as Promise<{ deleted: number }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      toast({ title: `${result.deleted} compan${result.deleted === 1 ? "y" : "ies"} deleted` });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete companies", variant: "destructive" });
+    },
+  });
+
+  const bulkUpdateStatusMutation = useMutation({
+    mutationFn: async ({ ids, budgetStatus }: { ids: string[]; budgetStatus: string }) => {
+      const res = await apiRequest("POST", "/api/companies/bulk-update-status", { ids, budgetStatus });
+      return res.json() as Promise<{ updated: number }>;
+    },
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      setSelectedIds(new Set());
+      setShowBulkStatusDialog(false);
+      setBulkNewStatus("");
+      const statusLabel = leadStatusOptions.find(o => o.value === variables.budgetStatus)?.label || variables.budgetStatus;
+      toast({ title: `${result.updated} compan${result.updated === 1 ? "y" : "ies"} updated to "${statusLabel}"` });
+    },
+    onError: () => {
+      toast({ title: "Failed to update status", variant: "destructive" });
     },
   });
 
@@ -513,12 +552,17 @@ export default function Companies() {
     }
   };
 
+  const pageIds = paginatedCompanies.map((c) => c.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id));
+
   const handleSelectAll = () => {
-    if (selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0) {
-      setSelectedIds(new Set());
+    const newSelected = new Set(selectedIds);
+    if (allPageSelected) {
+      pageIds.forEach((id) => newSelected.delete(id));
     } else {
-      setSelectedIds(new Set(paginatedCompanies.map((c) => c.id)));
+      pageIds.forEach((id) => newSelected.add(id));
     }
+    setSelectedIds(newSelected);
   };
 
   const handleSelectOne = (id: string) => {
@@ -1037,6 +1081,44 @@ export default function Companies() {
         </div>
       </div>
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-[#0091AE]/10 dark:bg-[#0091AE]/15 border-b border-[#0091AE]/20 px-6 py-2.5 flex items-center gap-3">
+          <span className="text-sm font-medium dark:text-white">
+            {selectedIds.size} selected
+          </span>
+          <div className="h-4 w-px bg-gray-300 dark:bg-[#3d4254]" />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs dark:border-[#3d4254] dark:bg-[#252936] dark:text-white dark:hover:bg-[#2d3142]"
+            onClick={() => { setBulkNewStatus(""); setShowBulkStatusDialog(true); }}
+            data-testid="button-bulk-update-status"
+          >
+            <Tag className="h-3.5 w-3.5 mr-1.5" />
+            Change Lead Status
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-900/20 dark:bg-[#252936]"
+            onClick={() => setShowBulkDeleteConfirm(true)}
+            data-testid="button-bulk-delete"
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Delete
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs dark:text-[#94a3b8] dark:hover:text-white"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear Selection
+          </Button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="flex-1 overflow-auto">
         {loadingCompanies ? (
@@ -1143,7 +1225,7 @@ export default function Companies() {
                   <tr>
                     <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
                       <Checkbox
-                        checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
+                        checked={allPageSelected}
                         onCheckedChange={handleSelectAll}
                       />
                     </th>
@@ -1262,7 +1344,7 @@ export default function Companies() {
                   <tr>
                     <th className="w-12 px-4 py-3 border-r border-gray-100 dark:border-[#3d4254]">
                       <Checkbox
-                        checked={selectedIds.size === paginatedCompanies.length && paginatedCompanies.length > 0}
+                        checked={allPageSelected}
                         onCheckedChange={handleSelectAll}
                       />
                     </th>
@@ -1579,6 +1661,73 @@ export default function Companies() {
           </div>
         </div>
       )}
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <AlertDialogContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 dark:text-white">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Delete {selectedIds.size} Compan{selectedIds.size === 1 ? "y" : "ies"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="dark:text-[#94a3b8]">
+              This will permanently delete {selectedIds.size} selected compan{selectedIds.size === 1 ? "y" : "ies"} and all associated contacts, activities, and tasks. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={bulkDeleteMutation.isPending}
+            >
+              {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${selectedIds.size} Compan${selectedIds.size === 1 ? "y" : "ies"}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Change Lead Status */}
+      <Dialog open={showBulkStatusDialog} onOpenChange={setShowBulkStatusDialog}>
+        <DialogContent className="dark:bg-[#252936] dark:border-[#3d4254] max-w-md">
+          <DialogHeader>
+            <DialogTitle className="dark:text-white">
+              Change Lead Status — {selectedIds.size} Compan{selectedIds.size === 1 ? "y" : "ies"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium dark:text-[#94a3b8] mb-2 block">New Lead Status</label>
+              <Select value={bulkNewStatus} onValueChange={setBulkNewStatus}>
+                <SelectTrigger className="dark:bg-[#1a1d29] dark:border-[#3d4254] dark:text-white">
+                  <SelectValue placeholder="Select status..." />
+                </SelectTrigger>
+                <SelectContent className="dark:bg-[#252936] dark:border-[#3d4254]">
+                  {leadStatusOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="dark:text-white dark:focus:bg-[#2d3142]">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setShowBulkStatusDialog(false)} className="dark:bg-[#2d3142] dark:border-[#3d4254] dark:text-white dark:hover:bg-[#3d4254]">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => bulkUpdateStatusMutation.mutate({ ids: Array.from(selectedIds), budgetStatus: bulkNewStatus })}
+              disabled={!bulkNewStatus || bulkUpdateStatusMutation.isPending}
+              className="bg-[#0091AE] hover:bg-[#007a94] text-white"
+            >
+              {bulkUpdateStatusMutation.isPending ? "Updating..." : `Update ${selectedIds.size} Compan${selectedIds.size === 1 ? "y" : "ies"}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <ExportContactsModal
         open={exportContactsOpen}

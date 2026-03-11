@@ -218,6 +218,44 @@ export function registerRoutes(
     }
   });
 
+  app.post("/api/companies/bulk-delete", isAuthenticated, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "ids array is required" });
+      }
+      let deleted = 0;
+      for (const id of ids) {
+        try {
+          await storage.deleteCompany(id);
+          deleted++;
+        } catch (e) {}
+      }
+      res.json({ deleted });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to bulk delete companies" });
+    }
+  });
+
+  app.post("/api/companies/bulk-update-status", isAuthenticated, async (req, res) => {
+    try {
+      const { ids, budgetStatus } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0 || !budgetStatus) {
+        return res.status(400).json({ error: "ids array and budgetStatus are required" });
+      }
+      let updated = 0;
+      for (const id of ids) {
+        try {
+          await storage.updateCompany(id, { budgetStatus });
+          updated++;
+        } catch (e) {}
+      }
+      res.json({ updated });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to bulk update status" });
+    }
+  });
+
   // Contacts (protected)
   app.get("/api/contacts", isAuthenticated, async (req, res) => {
     try {
