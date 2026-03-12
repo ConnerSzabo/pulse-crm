@@ -221,6 +221,7 @@ export default function CallQueue() {
 
   // Queue state
   const [filter, setFilter] = useState("all");
+  const [newSchoolType, setNewSchoolType] = useState<"all" | "independent">("all");
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
 
@@ -280,14 +281,18 @@ export default function CallQueue() {
     },
   });
 
-  const activeQueue = useMemo(
-    () =>
-      queue?.filter(
-        (item) =>
-          !completedIds.has(item.company.id) && !skippedIds.has(item.company.id)
-      ) ?? [],
-    [queue, completedIds, skippedIds]
-  );
+  const activeQueue = useMemo(() => {
+    const base = queue?.filter(
+      (item) =>
+        !completedIds.has(item.company.id) && !skippedIds.has(item.company.id)
+    ) ?? [];
+    if (filter === "uncontacted" && newSchoolType === "independent") {
+      return base.filter(
+        (item) => !item.company.academyTrustName || item.company.academyTrustName.trim() === ""
+      );
+    }
+    return base;
+  }, [queue, completedIds, skippedIds, filter, newSchoolType]);
 
   const currentItem = activeQueue[0] ?? null;
 
@@ -552,6 +557,7 @@ export default function CallQueue() {
 
   const handleFilterChange = (newFilter: string) => {
     setFilter(newFilter);
+    if (newFilter !== "uncontacted") setNewSchoolType("all");
     setCompletedIds(new Set());
     setSkippedIds(new Set());
   };
@@ -798,6 +804,32 @@ export default function CallQueue() {
               </button>
             ))}
           </div>
+
+          {/* New tab: Independent / All filter */}
+          {filter === "uncontacted" && (
+            <div className="flex items-center gap-1 bg-gray-100 dark:bg-[#1a1d29] p-1 rounded-lg">
+              <button
+                onClick={() => setNewSchoolType("all")}
+                className={`flex-1 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  newSchoolType === "all"
+                    ? "bg-cyan-600 text-white shadow-sm"
+                    : "text-gray-600 dark:text-[#94a3b8] hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                All Schools
+              </button>
+              <button
+                onClick={() => setNewSchoolType("independent")}
+                className={`flex-1 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  newSchoolType === "independent"
+                    ? "bg-cyan-600 text-white shadow-sm"
+                    : "text-gray-600 dark:text-[#94a3b8] hover:text-gray-900 dark:hover:text-white"
+                }`}
+              >
+                Independent Only
+              </button>
+            </div>
+          )}
 
           {/* Smart Queue info */}
           <div className="flex items-start gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-lg">
