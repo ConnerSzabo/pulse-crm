@@ -1004,7 +1004,7 @@ export function registerRoutes(
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-      // Batch-fetch all call activities for DM analytics (sorted DESC = most recent first)
+      // Batch-fetch all call activities (sorted DESC = most recent first)
       const allCallActivities = await db
         .select()
         .from(activities)
@@ -1015,41 +1015,52 @@ export function registerRoutes(
       type CallAnalytics = {
         totalCalls: number;
         lastCallDate: Date | null;
-        lastDmContact: Date | null;
+        lastCallOutcome: string | null;
         hasDmContact: boolean;
+        lastDmContact: Date | null;
+        hasDmDetails: boolean;     // any call with outcome "Decision Maker Details"
+        isHotOutcome: boolean;     // most recent call was "Connected to DM - Interested" or "Connected to DM - Needs Follow-up"
         daysSinceLastCall: number;
         daysSinceDmContact: number | null;
       };
 
+      const HOT_OUTCOMES = ["Connected to DM - Interested", "Connected to DM - Needs Follow-up"];
+      const DM_DETAILS_OUTCOME = "Decision Maker Details";
+
       const analyticsMap = new Map<string, CallAnalytics>();
       for (const act of allCallActivities) {
         const actDate = new Date(act.createdAt);
+        const outcome = act.outcome ?? null;
         const isDm =
-          !!act.outcome &&
-          (act.outcome.toLowerCase().includes("decision maker") ||
-            act.outcome.toLowerCase().includes("connected to dm") ||
-            act.outcome.toLowerCase().includes("meeting scheduled with dm"));
+          !!outcome &&
+          (outcome.toLowerCase().includes("connected to dm") ||
+            outcome.toLowerCase().includes("meeting scheduled with dm"));
+        const isDmDetails = outcome === DM_DETAILS_OUTCOME;
 
         const existing = analyticsMap.get(act.companyId);
         if (!existing) {
           analyticsMap.set(act.companyId, {
             totalCalls: 1,
-            lastCallDate: actDate, // first = most recent (sorted DESC)
-            lastDmContact: isDm ? actDate : null,
+            lastCallDate: actDate,
+            lastCallOutcome: outcome,
             hasDmContact: isDm,
+            lastDmContact: isDm ? actDate : null,
+            hasDmDetails: isDmDetails,
+            isHotOutcome: HOT_OUTCOMES.includes(outcome ?? ""),
             daysSinceLastCall: 0,
             daysSinceDmContact: null,
           });
         } else {
           existing.totalCalls += 1;
           if (isDm && !existing.hasDmContact) {
-            existing.lastDmContact = actDate; // first DM seen = most recent
             existing.hasDmContact = true;
+            existing.lastDmContact = actDate;
           }
+          if (isDmDetails) existing.hasDmDetails = true;
         }
       }
 
-      // Compute days-since values (clamped to 0 so same-day calls = 0, not negative)
+      // Compute days-since values
       for (const a of Array.from(analyticsMap.values())) {
         if (a.lastCallDate) {
           a.daysSinceLastCall = Math.max(0, Math.floor(
@@ -1066,16 +1077,44 @@ export function registerRoutes(
       const emptyAnalytics: CallAnalytics = {
         totalCalls: 0,
         lastCallDate: null,
-        lastDmContact: null,
+        lastCallOutcome: null,
         hasDmContact: false,
+        lastDmContact: null,
+        hasDmDetails: false,
+        isHotOutcome: false,
         daysSinceLastCall: 999,
         daysSinceDmContact: null,
+      };
+
+      // Queue category helpers
+      const getLeadStatusNum = (status: string | null | undefined): number => {
+        if (!status) return 0;
+        const prefix = status.split("-")[0];
+        return parseFloat(prefix) || 0;
+      };
+
+      type QueueCategory = "hot" | "urgent" | "followup" | "new";
+
+      const categorize = (
+        company: typeof allCompanies[0],
+        analytics: CallAnalytics
+      ): QueueCategory => {
+        const statusNum = getLeadStatusNum(company.budgetStatus);
+        // HOT: status > 0.5 OR hot call outcome on most recent call
+        if (statusNum > 0.5 || analytics.isHotOutcome) return "hot";
+        // URGENT: status = 0.5 OR any "Decision Maker Details" call
+        if (company.budgetStatus === "0.5-dm-details" || analytics.hasDmDetails) return "urgent";
+        // NEW: never contacted
+        if (analytics.totalCalls === 0) return "new";
+        // FOLLOW-UP: status = 0 (or null) with at least one call
+        return "followup";
       };
 
       type QueueEntry = {
         company: typeof allCompanies[0];
         priority: number;
         reason: string;
+        queueCategory: QueueCategory;
         analytics: CallAnalytics;
       };
 
@@ -1087,84 +1126,70 @@ export function registerRoutes(
         const phone = company.phone?.trim();
         if (!phone || phone === "N/A" || phone === "Unknown") continue;
 
+        // Exclude closed/lost accounts
         if (company.budgetStatus === "4-account-active" || company.budgetStatus === "3b-quoted-lost") continue;
 
         const analytics = analyticsMap.get(company.id) ?? emptyAnalytics;
-        const { totalCalls, lastCallDate, hasDmContact, daysSinceLastCall, daysSinceDmContact } = analytics;
+        const { totalCalls, lastCallDate, daysSinceLastCall } = analytics;
+        const category = categorize(company, analytics);
 
-        // Universal rule: exclude ANY school contacted within the last 21 days from ALL filters
-        // This ensures a school called today never appears in the queue, regardless of filter
-        if (lastCallDate && daysSinceLastCall < 21) continue;
+        // Per-category minimum day thresholds
+        const threshold = category === "hot" ? 14 : category === "new" ? 0 : 21;
+        if (lastCallDate && daysSinceLastCall < threshold) continue;
 
         const statusBoost =
           company.budgetStatus === "3-quote-presented" ? 300 :
           company.budgetStatus === "2-intent" ? 200 :
-          company.budgetStatus === "1-qualified" ? 150 : 0;
+          company.budgetStatus === "1-qualified" ? 150 :
+          company.budgetStatus === "0.5-dm-details" ? 100 : 0;
 
         let priority: number;
         let reason: string;
 
         if (filter === "hot_leads") {
-          // DM-contacted schools not followed up in 21+ days
-          if (!hasDmContact || daysSinceDmContact === null || daysSinceDmContact < 21) continue;
-          priority =
-            (daysSinceDmContact >= 30 ? 3000 : 2000) +
-            (daysSinceDmContact * 10) +
-            (totalCalls * 10) +
-            statusBoost;
-          reason = `DM contact — ${daysSinceDmContact} days ago`;
+          if (category !== "hot") continue;
+          priority = 3000 + (daysSinceLastCall * 10) + (totalCalls * 5) + statusBoost;
+          reason = analytics.isHotOutcome && !((getLeadStatusNum(company.budgetStatus) > 0.5))
+            ? `Hot call outcome — ${daysSinceLastCall} days since contact`
+            : `Status: ${company.budgetStatus ?? "0"} — ${daysSinceLastCall < 999 ? `${daysSinceLastCall} days since contact` : "not yet contacted"}`;
 
         } else if (filter === "high_priority") {
-          // Any contact 30+ days ago
-          if (!lastCallDate || daysSinceLastCall < 30) continue;
-          priority =
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 30 ? 3000 : 0) +
-            1000 +
-            (totalCalls * 10) +
-            statusBoost;
-          reason = `${daysSinceLastCall} days since last contact — overdue`;
+          if (category !== "urgent") continue;
+          priority = 2000 + (daysSinceLastCall * 10) + (totalCalls * 5) + statusBoost;
+          reason = analytics.hasDmDetails
+            ? `Decision Maker Details logged — ${daysSinceLastCall} days since contact`
+            : `DM details status — ${daysSinceLastCall} days since contact`;
 
         } else if (filter === "needs_followup") {
-          // Previously contacted, 21+ days ago
-          if (!lastCallDate || daysSinceLastCall < 21) continue;
-          priority =
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21 ? 2000 : 0) +
-            (daysSinceLastCall >= 28 ? 1000 : 500) +
-            (totalCalls * 10) +
-            statusBoost;
-          reason =
-            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21
-              ? `DM contact — ${daysSinceDmContact} days ago`
-              : `${daysSinceLastCall} days since last contact`;
+          if (category !== "followup") continue;
+          priority = 1000 + (daysSinceLastCall * 10) + (totalCalls * 5) + statusBoost;
+          reason = `${daysSinceLastCall} days since last contact`;
 
         } else if (filter === "uncontacted") {
-          if (lastCallDate) continue;
+          if (category !== "new") continue;
           priority = 500 + statusBoost;
           reason = "Never contacted";
 
         } else {
-          // "contacted" and "all" (recently-contacted already excluded above)
-          if (filter === "contacted" && !lastCallDate) continue;
-
-          priority =
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 30 ? 3000 : 0) +
-            (hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21 ? 2000 : 0) +
-            (daysSinceLastCall >= 28 ? 1000 : 0) +
-            (daysSinceLastCall >= 21 ? 500 : 0) +
-            (totalCalls * 10) +
-            statusBoost;
-
+          // "all" — include every category with its threshold applied
+          const catPriority =
+            category === "hot" ? 4000 :
+            category === "urgent" ? 3000 :
+            category === "followup" ? 2000 : 1000;
+          priority = catPriority + (daysSinceLastCall === 999 ? 0 : daysSinceLastCall * 10) + (totalCalls * 5) + statusBoost;
           reason =
-            hasDmContact && daysSinceDmContact !== null && daysSinceDmContact >= 21
-              ? `DM contact — ${daysSinceDmContact} days ago`
-              : !lastCallDate
+            category === "hot"
+              ? analytics.isHotOutcome
+                ? `Hot — ${daysSinceLastCall < 999 ? `${daysSinceLastCall} days since contact` : "not yet contacted"}`
+                : `HOT — status ${company.budgetStatus ?? ""} — ${daysSinceLastCall < 999 ? `${daysSinceLastCall}d` : "not contacted"}`
+              : category === "urgent"
+              ? `Urgent — ${daysSinceLastCall < 999 ? `${daysSinceLastCall} days since contact` : "not yet contacted"}`
+              : category === "new"
               ? "Never contacted"
-              : daysSinceLastCall >= 28
-              ? `${daysSinceLastCall} days since last contact — overdue`
               : `${daysSinceLastCall} days since last contact`;
         }
 
-        queue.push({ company, priority, reason, analytics });
+        queue.push({ company, priority, reason, queueCategory: category, analytics });
       }
 
       // Sort by priority descending, oldest contact as tiebreaker
@@ -1198,8 +1223,12 @@ export function registerRoutes(
           company: item.company,
           priority: item.priority,
           reason: item.reason,
+          queueCategory: item.queueCategory,
           totalCalls: item.analytics.totalCalls,
           hasDmContact: item.analytics.hasDmContact,
+          hasDmDetails: item.analytics.hasDmDetails,
+          isHotOutcome: item.analytics.isHotOutcome,
+          lastCallOutcome: item.analytics.lastCallOutcome,
           lastDmContact: item.analytics.lastDmContact?.toISOString() ?? null,
           daysSinceLastCall: item.analytics.daysSinceLastCall,
           daysSinceDmContact: item.analytics.daysSinceDmContact,
