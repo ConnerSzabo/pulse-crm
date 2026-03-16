@@ -176,31 +176,82 @@ export default function TsoDetail() {
           <Card>
             <CardHeader><CardTitle className="text-sm">Contact Info</CardTitle></CardHeader>
             <CardContent className="space-y-3">
+              <EditableField label="Main Contact" value={tso.mainContactName} onSave={v => updateMutation.mutate({ mainContactName: v })} />
+              {(tso as any).contactRole && <div><p className="text-xs text-muted-foreground mb-0.5">Role</p><p className="text-sm">{(tso as any).contactRole}</p></div>}
               <EditableField label="Phone" value={tso.phone} onSave={v => updateMutation.mutate({ phone: v })} />
+              {(tso as any).contactNumber && <div><p className="text-xs text-muted-foreground mb-0.5">Contact Number</p><p className="text-sm">{(tso as any).contactNumber}</p></div>}
               <EditableField label="Email" value={tso.email} onSave={v => updateMutation.mutate({ email: v })} />
               <EditableField label="Website" value={tso.website} onSave={v => updateMutation.mutate({ website: v })} />
               <EditableField label="City" value={tso.city} onSave={v => updateMutation.mutate({ city: v })} />
+              {(tso as any).igHandle && (
+                <div><p className="text-xs text-muted-foreground mb-0.5">Instagram</p>
+                  <a href={`https://instagram.com/${(tso as any).igHandle?.replace("@","")}`} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-[#e91e8c] hover:underline">{(tso as any).igHandle}</a>
+                </div>
+              )}
+              {(tso as any).linkedin && (
+                <div><p className="text-xs text-muted-foreground mb-0.5">LinkedIn</p>
+                  <a href={(tso as any).linkedin} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline truncate block">{(tso as any).linkedin}</a>
+                </div>
+              )}
+              {(tso as any).profileLink && (
+                <div><p className="text-xs text-muted-foreground mb-0.5">Profile / Website</p>
+                  <a href={(tso as any).profileLink} target="_blank" rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline truncate block">{(tso as any).profileLink}</a>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader><CardTitle className="text-sm">Partnership Info</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <EditableField label="Main Contact" value={tso.mainContactName} onSave={v => updateMutation.mutate({ mainContactName: v })} />
+              {(tso as any).sponsorInfo && <div><p className="text-xs text-muted-foreground mb-0.5">Sponsor Pricing</p><p className="text-sm">{(tso as any).sponsorInfo}</p></div>}
               <EditableField label="Promo Options" value={tso.promoOptions} onSave={v => updateMutation.mutate({ promoOptions: v })} />
               <EditableField label="Pricing Notes" value={tso.pricingNotes} onSave={v => updateMutation.mutate({ pricingNotes: v })} />
               <EditableField label="Next Step" value={tso.nextStep} onSave={v => updateMutation.mutate({ nextStep: v })} />
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Vendor Access:</span>
-                <button
-                  onClick={() => updateMutation.mutate({ vendorAccess: !tso.vendorAccess })}
-                  className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${tso.vendorAccess ? "bg-green-100 text-green-700 border-green-300" : "bg-gray-100 text-gray-500 border-gray-200"}`}
-                >
-                  {tso.vendorAccess ? "Yes" : "No"}
-                </button>
+              {(tso as any).estAnnualReach && <div><p className="text-xs text-muted-foreground mb-0.5">Est. Annual Reach</p><p className="text-sm font-medium">{(tso as any).estAnnualReach}</p></div>}
+              {(tso as any).showsPerYear && <div><p className="text-xs text-muted-foreground mb-0.5">Shows Per Year (2026)</p><p className="text-sm">{(tso as any).showsPerYear}</p></div>}
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Existing Account:</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${(tso as any).existingAccount ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    {(tso as any).existingAccount ? "Yes" : "No"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">Vendor Access:</span>
+                  <button onClick={() => updateMutation.mutate({ vendorAccess: !tso.vendorAccess })}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${tso.vendorAccess ? "bg-green-100 text-green-700 border-green-300" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                    {tso.vendorAccess ? "Yes" : "No"}
+                  </button>
+                </div>
               </div>
+              {(tso as any).tsoEventCodes && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Event Codes</p>
+                  <pre className="text-xs bg-muted/50 rounded p-2 whitespace-pre-wrap font-mono">{(tso as any).tsoEventCodes}</pre>
+                </div>
+              )}
+              {(tso as any).activitiesNotes && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Activities / Deliverables</p>
+                  <p className="text-sm">{(tso as any).activitiesNotes}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {((tso as any).followUpDate || (tso as any).nextShowDate) && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Dates</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {(tso as any).followUpDate && <div><p className="text-xs text-muted-foreground">Follow-up Date</p><p className="text-sm font-medium">{(tso as any).followUpDate}</p></div>}
+                {(tso as any).nextShowDate && <div><p className="text-xs text-muted-foreground">Next Show Date</p><p className="text-sm font-medium">{(tso as any).nextShowDate}</p></div>}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right: Tabs */}

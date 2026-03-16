@@ -584,5 +584,273 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
+  // ─── Import: TSOs from Outbound CRM CSV ──────────────────────────────────────
+
+  app.post("/api/import/tsos", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      let rows: Record<string, string>[];
+      try {
+        rows = csvParse(req.file.buffer, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          bom: true,
+        }) as Record<string, string>[];
+      } catch (e: any) {
+        return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
+      }
+
+      // Filter out blank rows
+      rows = rows.filter(r => (r["Vendor Name"] || "").trim());
+
+      const dryRun = req.body.dryRun === "true" || req.query.dryRun === "true";
+      const results: any[] = [];
+      let imported = 0, skipped = 0, updated = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const vendorName = (row["Vendor Name"] || "").trim();
+        if (!vendorName) continue;
+
+        try {
+          // Parse dates
+          const followUpDate = parseFlexibleDate(row["Follow up date"]);
+          const nextShowDate = parseFlexibleDate(row["Agreed / Next Show Date"]);
+
+          // Parse contact name/role — may be "Name — Role" or "Name" or "Name, Role"
+          const contactRaw = (row["Contact Name / Role"] || "").trim();
+
+          // Parse existing account boolean
+          const existingAccount = (row["Existing account or trial"] || "").trim().toUpperCase() === "Y";
+
+          // Parse shows per year — keep as text (has descriptive values like "4 (Feb, Apr XL, May, Nov)")
+          const showsPerYear = (row["Shows Per Year (2026)"] || "").trim() || undefined;
+
+          // Priority — keep P1/P2/P3 as-is
+          const priority = (row["Priority"] || "").trim() || undefined;
+
+          // Status — map to our relationship_status values
+          const statusRaw = (row["Status"] || "").trim();
+          const relationshipStatus = mapCsvStatus(statusRaw);
+
+          const tsoData = {
+            name: vendorName,
+            priority,
+            relationshipStatus,
+            notes: (row["Notes"] || "").trim() || undefined,
+            email: (row["Contact Email"] || "").trim() || undefined,
+            contactNumber: (row["Contact Number"] || "").trim() || undefined,
+            igHandle: (row["IG Handle"] || "").trim() || undefined,
+            linkedin: (row["Linkedin"] || "").trim() || undefined,
+            mainContactName: contactRaw || undefined,
+            sponsorInfo: (row["Sponsor Info"] || "").trim() || undefined,
+            estAnnualReach: (row["Est. Annual Reach"] || "").trim() || undefined,
+            profileLink: (row["Profile Link"] || "").trim() || undefined,
+            existingAccount,
+            showsPerYear,
+            tsoEventCodes: (row["TSO Event Codes"] || "").trim() || undefined,
+            activitiesNotes: (row["Activities"] || "").trim() || undefined,
+            followUpDate: followUpDate ? followUpDate.toISOString().split("T")[0] : undefined,
+            nextShowDate: nextShowDate ? nextShowDate.toISOString().split("T")[0] : undefined,
+          };
+
+          const existing = await storage.findTsoByName(vendorName);
+
+          results.push({
+            row: i + 2,
+            name: vendorName,
+            action: existing ? "update" : "create",
+            status: relationshipStatus,
+            priority,
+          });
+
+          if (!dryRun) {
+            if (existing) {
+              await storage.updateTso(existing.id, tsoData);
+              updated++;
+            } else {
+              await storage.createTso(tsoData);
+              imported++;
+            }
+          } else {
+            if (existing) updated++; else imported++;
+          }
+        } catch (rowErr: any) {
+          errors.push(`Row ${i + 2} (${vendorName}): ${rowErr.message}`);
+          skipped++;
+        }
+      }
+
+      res.json({
+        success: true,
+        dryRun,
+        imported,
+        updated,
+        skipped,
+        total: rows.length,
+        errors: errors.slice(0, 30),
+        preview: dryRun ? results : undefined,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: `Import failed: ${e.message}` });
+    }
+  });
+
+  // ─── Import: Preview TSOs CSV (returns first N rows without importing) ────────
+
+  app.post("/api/import/tsos/preview", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+      let rows: Record<string, string>[];
+      try {
+        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+      } catch (e: any) {
+        return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
+      }
+
+      rows = rows.filter(r => (r["Vendor Name"] || "").trim());
+      const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+      const preview = rows.slice(0, 8);
+
+      // Check which TSOs already exist
+      const previewWithStatus = await Promise.all(preview.map(async row => {
+        const name = (row["Vendor Name"] || "").trim();
+        const existing = name ? await storage.findTsoByName(name) : null;
+        return { ...row, _exists: !!existing, _existingId: existing?.id };
+      }));
+
+      res.json({
+        totalRows: rows.length,
+        headers,
+        preview: previewWithStatus,
+        columnMapping: {
+          "Vendor Name": "name",
+          "Priority": "priority",
+          "Status": "relationship_status",
+          "Contact Name / Role": "main_contact_name",
+          "Contact Email": "email",
+          "Contact Number": "contact_number",
+          "IG Handle": "ig_handle",
+          "Linkedin": "linkedin",
+          "Notes": "notes",
+          "Follow up date": "follow_up_date",
+          "Agreed / Next Show Date": "next_show_date",
+          "Sponsor Info": "sponsor_info",
+          "Est. Annual Reach": "est_annual_reach",
+          "Profile Link": "profile_link",
+          "Existing account or trial": "existing_account",
+          "Shows Per Year (2026)": "shows_per_year",
+          "TSO Event Codes": "tso_event_codes",
+          "Activities": "activities_notes",
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: `Preview failed: ${e.message}` });
+    }
+  });
+
+  // ─── Auto-import from bundled zip ────────────────────────────────────────────
+
+  app.post("/api/import/tsos/auto", isAuthenticated, async (req, res) => {
+    try {
+      const zipPath = require("path").join(process.cwd(), "TSOMASTEROUTBOUND.zip");
+      const fs = require("fs");
+      if (!fs.existsSync(zipPath)) {
+        return res.status(404).json({ message: "TSOMASTEROUTBOUND.zip not found in project root" });
+      }
+
+      const AdmZip = require("adm-zip");
+      const zip = new AdmZip(zipPath);
+      const innerZipBuf = zip.readFile("ExportBlock-75f77eaf-760c-44f4-88f3-a20ea7d1b998-Part-1.zip");
+      const zip2 = new AdmZip(innerZipBuf);
+      const csvName = "Private & Shared/Untitled 020c3b436e734aa4b8979b81b479d109_TSO Outbound CRM 439dc32017b7444eaf4b600f9d25963d.csv";
+      const csvBuffer = zip2.readFile(csvName);
+      if (!csvBuffer) return res.status(404).json({ message: "CSV not found inside zip" });
+
+      let rows: Record<string, string>[];
+      try {
+        rows = csvParse(csvBuffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+      } catch (e: any) {
+        return res.status(400).json({ message: `CSV parse error: ${e.message}` });
+      }
+
+      rows = rows.filter(r => (r["Vendor Name"] || "").trim());
+      let imported = 0, updated = 0, skipped = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const vendorName = (row["Vendor Name"] || "").trim();
+        if (!vendorName) continue;
+        try {
+          const followUpDate = parseFlexibleDate(row["Follow up date"]);
+          const nextShowDate = parseFlexibleDate(row["Agreed / Next Show Date"]);
+          const tsoData = {
+            name: vendorName,
+            priority: (row["Priority"] || "").trim() || undefined,
+            relationshipStatus: mapCsvStatus((row["Status"] || "").trim()),
+            notes: (row["Notes"] || "").trim() || undefined,
+            email: (row["Contact Email"] || "").trim() || undefined,
+            contactNumber: (row["Contact Number"] || "").trim() || undefined,
+            igHandle: (row["IG Handle"] || "").trim() || undefined,
+            linkedin: (row["Linkedin"] || "").trim() || undefined,
+            mainContactName: (row["Contact Name / Role"] || "").trim() || undefined,
+            sponsorInfo: (row["Sponsor Info"] || "").trim() || undefined,
+            estAnnualReach: (row["Est. Annual Reach"] || "").trim() || undefined,
+            profileLink: (row["Profile Link"] || "").trim() || undefined,
+            existingAccount: (row["Existing account or trial"] || "").trim().toUpperCase() === "Y",
+            showsPerYear: (row["Shows Per Year (2026)"] || "").trim() || undefined,
+            tsoEventCodes: (row["TSO Event Codes"] || "").trim() || undefined,
+            activitiesNotes: (row["Activities"] || "").trim() || undefined,
+            followUpDate: followUpDate ? followUpDate.toISOString().split("T")[0] : undefined,
+            nextShowDate: nextShowDate ? nextShowDate.toISOString().split("T")[0] : undefined,
+          };
+          const existing = await storage.findTsoByName(vendorName);
+          if (existing) { await storage.updateTso(existing.id, tsoData); updated++; }
+          else { await storage.createTso(tsoData); imported++; }
+        } catch (e: any) {
+          errors.push(`Row ${i + 2} (${vendorName}): ${e.message}`);
+          skipped++;
+        }
+      }
+
+      res.json({ success: true, imported, updated, skipped, total: rows.length, errors: errors.slice(0, 20) });
+    } catch (e: any) {
+      res.status(500).json({ message: `Auto-import failed: ${e.message}` });
+    }
+  });
+
   return httpServer;
+}
+
+// ─── Status mapping helper ────────────────────────────────────────────────────
+
+function mapCsvStatus(raw: string): string {
+  if (!raw) return "Cold Outreach";
+  const s = raw.trim();
+  // Direct matches first
+  const direct: Record<string, string> = {
+    "Confirmed": "Active Partner",
+    "Negotiating": "In Conversation",
+    "Details Received": "In Conversation",
+    "Initial Response": "Initial Contact",
+    "Info Requested": "Initial Contact",
+    "Needs Promo Codes": "Active Partner",
+    "Not Contacted": "Cold Outreach",
+    "Attempt 1: Initial Comms Sent": "Contacted",
+  };
+  if (direct[s]) return direct[s];
+  // Fuzzy
+  const sl = s.toLowerCase();
+  if (sl.includes("confirmed")) return "Active Partner";
+  if (sl.includes("negotiat")) return "In Conversation";
+  if (sl.includes("sponsoring")) return "Sponsoring";
+  if (sl.includes("initial")) return "Initial Contact";
+  if (sl.includes("attempt") || sl.includes("comms sent")) return "Contacted";
+  if (sl.includes("details") || sl.includes("info")) return "Initial Contact";
+  return s || "Cold Outreach";
 }

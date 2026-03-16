@@ -48,6 +48,10 @@ const priorityColor: Record<string, string> = {
   "high": "bg-red-100 text-red-700",
   "medium": "bg-yellow-100 text-yellow-700",
   "low": "bg-gray-100 text-gray-500",
+  "P1": "bg-red-100 text-red-700",
+  "P2": "bg-orange-100 text-orange-700",
+  "P3": "bg-yellow-100 text-yellow-700",
+  "DIR": "bg-purple-100 text-purple-700",
 };
 
 const addSchema = z.object({
