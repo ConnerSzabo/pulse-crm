@@ -31,7 +31,10 @@
       "Bash(find:*)",
       "Bash(unzip:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(timeout:*)",
+      "Bash(sed:*)",
+      "Bash(npm i:*)"
     ]
   }
 }

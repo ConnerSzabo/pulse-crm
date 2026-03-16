@@ -18,6 +18,9 @@ import { loginLimiter } from "./index";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { parse as csvParse } from "csv-parse/sync";
+import AdmZip from "adm-zip";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -904,14 +907,14 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     unlinkedShows: string[]; errors: string[];
     dryRun: boolean;
   }> {
-    const AdmZip = require("adm-zip");
+    
     const zip1 = new AdmZip(buf);
 
     // Detect inner zip or use directly
     let zip2: any = zip1;
     const innerZipEntry = zip1.getEntries().find((e: any) => e.entryName.endsWith(".zip"));
     if (innerZipEntry) {
-      zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName));
+      zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName) as Buffer);
     }
 
     const entries: any[] = zip2.getEntries();
@@ -1087,11 +1090,11 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   app.post("/api/import/shows-with-notes/preview", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-      const AdmZip = require("adm-zip");
+      
       const zip1 = new AdmZip(req.file.buffer);
       let zip2: any = zip1;
       const innerZipEntry = zip1.getEntries().find((e: any) => e.entryName.endsWith(".zip"));
-      if (innerZipEntry) zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName));
+      if (innerZipEntry) zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName) as Buffer);
       const entries: any[] = zip2.getEntries();
       let csvCount = 0, mdCount = 0, csvRows = 0;
       for (const entry of entries) {
@@ -1113,13 +1116,13 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
   app.post("/api/import/shows-with-notes/auto", isAuthenticated, async (req, res) => {
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const zipPath = path.join(process.cwd(), "TSO Shows new.zip");
-      if (!fs.existsSync(zipPath)) {
+      
+      
+      const zipPath = join(process.cwd(), "TSO Shows new.zip");
+      if (!existsSync(zipPath)) {
         return res.status(404).json({ message: "TSO Shows new.zip not found in project root" });
       }
-      const buf = fs.readFileSync(zipPath);
+      const buf = readFileSync(zipPath);
       const result = await processShowsZip(buf);
       await storage.createCsvImport({
         fileName: "TSO Shows new.zip (auto)",
@@ -1137,16 +1140,16 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
   app.post("/api/import/tsos/auto", isAuthenticated, async (req, res) => {
     try {
-      const zipPath = require("path").join(process.cwd(), "TSOMASTEROUTBOUND.zip");
-      const fs = require("fs");
-      if (!fs.existsSync(zipPath)) {
+      const zipPath = join(process.cwd(), "TSOMASTEROUTBOUND.zip");
+      
+      if (!existsSync(zipPath)) {
         return res.status(404).json({ message: "TSOMASTEROUTBOUND.zip not found in project root" });
       }
 
-      const AdmZip = require("adm-zip");
+      
       const zip = new AdmZip(zipPath);
       const innerZipBuf = zip.readFile("ExportBlock-75f77eaf-760c-44f4-88f3-a20ea7d1b998-Part-1.zip");
-      const zip2 = new AdmZip(innerZipBuf);
+      const zip2 = new AdmZip(innerZipBuf as Buffer);
       const csvName = "Private & Shared/Untitled 020c3b436e734aa4b8979b81b479d109_TSO Outbound CRM 439dc32017b7444eaf4b600f9d25963d.csv";
       const csvBuffer = zip2.readFile(csvName);
       if (!csvBuffer) return res.status(404).json({ message: "CSV not found inside zip" });
