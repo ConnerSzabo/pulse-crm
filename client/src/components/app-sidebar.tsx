@@ -1,81 +1,25 @@
 import {
-  Building2,
   LayoutDashboard,
   Users,
-  Briefcase,
   ListTodo,
   Upload,
-  Settings,
   HelpCircle,
-  ChevronDown,
-  Phone,
-  PhoneCall,
-  PhoneIncoming,
-  Landmark,
-  Newspaper,
+  CalendarDays,
+  Building2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
 const mainMenuItems = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Companies",
-    url: "/companies",
-    icon: Building2,
-  },
-  {
-    title: "Contacts",
-    url: "/contacts",
-    icon: Users,
-  },
-  {
-    title: "Deals",
-    url: "/pipeline",
-    icon: Briefcase,
-  },
-  {
-    title: "Tasks",
-    url: "/tasks",
-    icon: ListTodo,
-  },
-  {
-    title: "Call Queue",
-    url: "/call-queue",
-    icon: PhoneCall,
-  },
-  {
-    title: "Call History",
-    url: "/call-history",
-    icon: PhoneIncoming,
-  },
-  {
-    title: "Call Analytics",
-    url: "/call-analytics",
-    icon: Phone,
-  },
-  {
-    title: "Intel",
-    url: "/intel",
-    icon: Newspaper,
-  },
-  {
-    title: "Trusts",
-    url: "/trusts",
-    icon: Landmark,
-  },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "TSOs", url: "/tsos", icon: Building2 },
+  { title: "Shows", url: "/shows", icon: CalendarDays },
+  { title: "Contacts", url: "/contacts", icon: Users },
+  { title: "Tasks", url: "/tasks", icon: ListTodo },
 ];
 
 const toolsMenuItems = [
-  {
-    title: "Import Data",
-    url: "/import",
-    icon: Upload,
-  },
+  { title: "Import Data", url: "/import", icon: Upload },
 ];
 
 export function AppSidebar() {
@@ -83,32 +27,31 @@ export function AppSidebar() {
 
   const isActive = (url: string) => {
     if (url === "/") return location === "/";
-    if (url === "/trusts") {
-      return location === "/trusts" || location.startsWith("/trust/");
-    }
-    if (url === "/companies") {
-      return location === "/companies" || location.startsWith("/company/");
-    }
+    if (url === "/tsos") return location === "/tsos" || location.startsWith("/tso/");
+    if (url === "/shows") return location === "/shows" || location.startsWith("/show/");
     if (url === "/contacts") return location === "/contacts" || location.startsWith("/contact/");
     return location.startsWith(url);
   };
 
   return (
-    <aside className="w-[220px] bg-[#2d3142] flex flex-col h-screen flex-shrink-0">
+    <aside className="w-[220px] bg-[#1a1033] flex flex-col h-screen flex-shrink-0">
       {/* Logo */}
-      <div className="p-4 border-b border-[#3d4254]">
+      <div className="p-4 border-b border-[#2d2050]">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-[#0091AE] to-[#06b6d4] flex items-center justify-center shadow-lg">
-            <Building2 className="h-4 w-4 text-white" />
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-[#e91e8c] to-[#9b59b6] flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-sm">PP</span>
           </div>
-          <span className="font-semibold text-white text-lg">Wave CRM</span>
+          <span className="font-semibold text-white text-base leading-tight">
+            PokéPulse<br/>
+            <span className="text-[10px] font-normal text-[#9b6dcc]">Partnerships CRM</span>
+          </span>
         </Link>
       </div>
 
       {/* Main Navigation */}
-      <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
+      <nav className="flex-1 overflow-y-auto py-4">
         <div className="px-3 mb-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b] px-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b4fa0] px-3">
             Main
           </span>
         </div>
@@ -117,12 +60,11 @@ export function AppSidebar() {
             <li key={item.title}>
               <Link
                 href={item.url}
-                data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
                   isActive(item.url)
-                    ? "bg-[#0091AE]/20 text-[#0091AE] font-medium"
-                    : "text-[#94a3b8] hover:bg-[#3d4254] hover:text-white"
+                    ? "bg-[#e91e8c]/20 text-[#e91e8c] font-medium"
+                    : "text-[#9b8cc0] hover:bg-[#2d2050] hover:text-white"
                 )}
               >
                 <item.icon className="h-[18px] w-[18px]" />
@@ -133,7 +75,7 @@ export function AppSidebar() {
         </ul>
 
         <div className="px-3 mt-6 mb-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748b] px-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b4fa0] px-3">
             Tools
           </span>
         </div>
@@ -142,12 +84,11 @@ export function AppSidebar() {
             <li key={item.title}>
               <Link
                 href={item.url}
-                data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors duration-150",
                   isActive(item.url)
-                    ? "bg-[#0091AE]/20 text-[#0091AE] font-medium"
-                    : "text-[#94a3b8] hover:bg-[#3d4254] hover:text-white"
+                    ? "bg-[#e91e8c]/20 text-[#e91e8c] font-medium"
+                    : "text-[#9b8cc0] hover:bg-[#2d2050] hover:text-white"
                 )}
               >
                 <item.icon className="h-[18px] w-[18px]" />
@@ -158,9 +99,8 @@ export function AppSidebar() {
         </ul>
       </nav>
 
-      {/* Bottom section */}
-      <div className="border-t border-[#3d4254] p-3">
-        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-md text-sm text-[#94a3b8] hover:bg-[#3d4254] hover:text-white transition-colors">
+      <div className="border-t border-[#2d2050] p-3">
+        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-md text-sm text-[#9b8cc0] hover:bg-[#2d2050] hover:text-white transition-colors">
           <HelpCircle className="h-[18px] w-[18px]" />
           <span>Help & Support</span>
         </button>

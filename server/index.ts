@@ -70,7 +70,7 @@ const pgStore = connectPg(session);
 app.set("trust proxy", 1);
 app.use(
   session({
-    name: "wavesys.sid",
+    name: "pokepulse.sid",
     store: new pgStore({
       conString: process.env.DATABASE_URL,
       createTableIfMissing: true,
@@ -206,22 +206,12 @@ async function runPostStartupTasks() {
     console.error("WARNING: Database connection test error:", err);
   }
 
-  // 2. Seed pipeline stages and admin user (fast — a few simple queries)
+  // 2. Seed admin user if needed
   try {
-    await storage.seedData();
+    await (storage as any).seedData();
     log("Seed data initialized.");
   } catch (err) {
     console.error("WARNING: Seed data failed (non-fatal):", err);
-  }
-
-  // 3. Auto-link schools to trusts (idempotent, can be slow on large datasets)
-  try {
-    const result = await storage.setupTrustsFromAcademyNames();
-    if (result.trustsCreated > 0 || result.schoolsLinked > 0) {
-      log(`Trust setup: ${result.trustsCreated} trusts created, ${result.schoolsLinked} schools linked`);
-    }
-  } catch (err) {
-    console.error("WARNING: Trust auto-setup failed (non-fatal):", err);
   }
 
   log("Post-startup tasks completed.");

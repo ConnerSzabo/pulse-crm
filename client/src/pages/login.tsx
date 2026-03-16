@@ -57,14 +57,14 @@ export default function Login({ onLogin }: LoginProps) {
       <Card className="w-full max-w-md dark:bg-[#252936] dark:border-[#3d4254]">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#0091AE]">
-              <Building2 className="h-7 w-7 text-white" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#e91e8c] to-[#9b59b6]">
+              <span className="text-white font-bold text-lg">PP</span>
             </div>
           </div>
           <div>
-            <CardTitle className="text-2xl dark:text-white">School CRM</CardTitle>
+            <CardTitle className="text-2xl dark:text-white">PokéPulse Partnerships</CardTitle>
             <CardDescription className="mt-2 dark:text-[#94a3b8]">
-              Sign in to access your CRM dashboard
+              Sign in to access your CRM
             </CardDescription>
           </div>
         </CardHeader>
@@ -104,7 +104,7 @@ export default function Login({ onLogin }: LoginProps) {
             </div>
             <Button
               type="submit"
-              className="w-full bg-[#0091AE] hover:bg-[#007a94] text-white"
+              className="w-full bg-[#e91e8c] hover:bg-[#c0166e] text-white"
               disabled={isLoading}
               data-testid="button-login"
             >

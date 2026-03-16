@@ -25,7 +25,9 @@
       "Bash(git log:*)",
       "Bash(node:*)",
       "Bash(wc:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(grep:*)",
+      "Bash(lsof:*)"
     ]
   }
 }
