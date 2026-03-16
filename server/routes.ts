@@ -896,6 +896,243 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
+  // ─── Import: Shows with Notes (zip containing CSV + markdown files) ──────────
+
+  async function processShowsZip(buf: Buffer): Promise<{
+    csvRows: number; mdFiles: number; total: number;
+    imported: number; updated: number; linked: number; unlinked: number;
+    unlinkedShows: string[]; errors: string[];
+    dryRun: boolean;
+  }> {
+    const AdmZip = require("adm-zip");
+    const zip1 = new AdmZip(buf);
+
+    // Detect inner zip or use directly
+    let zip2: any = zip1;
+    const innerZipEntry = zip1.getEntries().find((e: any) => e.entryName.endsWith(".zip"));
+    if (innerZipEntry) {
+      zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName));
+    }
+
+    const entries: any[] = zip2.getEntries();
+    let csvAllBuf: Buffer | null = null;
+    let csvMainBuf: Buffer | null = null;
+    const mdFiles: Array<{ filename: string; content: string }> = [];
+
+    for (const entry of entries) {
+      const n = entry.entryName as string;
+      if (n.endsWith("_all.csv")) csvAllBuf = zip2.readFile(entry.entryName);
+      else if (n.endsWith(".csv")) csvMainBuf = zip2.readFile(entry.entryName);
+      else if (n.endsWith(".md")) {
+        mdFiles.push({
+          filename: n.split("/").pop()!,
+          content: zip2.readAsText(entry),
+        });
+      }
+    }
+
+    const primaryCsvBuf = csvAllBuf || csvMainBuf;
+    let csvRows: Record<string, string>[] = [];
+    if (primaryCsvBuf) {
+      csvRows = (csvParse(primaryCsvBuf, {
+        columns: true, skip_empty_lines: true, trim: true, bom: true,
+      }) as Record<string, string>[]).filter(r => (r["Show Name"] || "").trim());
+    }
+
+    // Parse markdown files: extract structured key:value fields
+    function parseMdFields(content: string): Record<string, string> {
+      const fields: Record<string, string> = {};
+      for (const line of content.split("\n")) {
+        const l = line.trim();
+        if (l.startsWith("# ")) { fields["Show Name"] = l.slice(2).trim(); continue; }
+        const m = l.match(/^([A-Za-z ]+):\s*(.+)$/);
+        if (m) fields[m[1].trim()] = m[2].trim();
+      }
+      return fields;
+    }
+
+    function getMdBaseName(filename: string): string {
+      return filename.replace(/\s+[a-f0-9]{32}\.md$/i, "").replace(/\.md$/i, "").trim();
+    }
+
+    function normalizeShow(name: string): string {
+      return name.trim().toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .replace(/\s+/g, " ").trim();
+    }
+
+    // Build show map from CSV (keyed by normalized name)
+    const showMap = new Map<string, Record<string, string>>();
+    for (const row of csvRows) {
+      const name = (row["Show Name"] || "").trim();
+      if (name) showMap.set(normalizeShow(name), { ...row });
+    }
+
+    // Merge markdown fields into CSV rows (fill gaps), add md-only shows
+    for (const md of mdFiles) {
+      const parsed = parseMdFields(md.content);
+      const mdName = (parsed["Show Name"] || getMdBaseName(md.filename)).trim();
+      const key = normalizeShow(mdName);
+
+      if (showMap.has(key)) {
+        const existing = showMap.get(key)!;
+        if (!existing["Venue"] && parsed["Venue"]) existing["Venue"] = parsed["Venue"];
+        if (!existing["Status"] && parsed["Status"]) existing["Status"] = parsed["Status"];
+        if (!existing["City"] && parsed["City"]) existing["City"] = parsed["City"];
+        if (!existing["Text"] && parsed["Text"]) existing["Text"] = parsed["Text"];
+      } else {
+        // Show exists only in markdown — add it
+        showMap.set(key, {
+          "Show Name": mdName,
+          "City": parsed["City"] || "",
+          "Date": parsed["Date"] || "",
+          "Status": parsed["Status"] || "",
+          "TSO": parsed["TSO"] || "",
+          "Venue": parsed["Venue"] || "",
+          "TSO ON MAIN CRM": parsed["TSO ON MAIN CRM"] || "",
+          "Text": parsed["Text"] || "",
+        });
+      }
+    }
+
+    // Get all TSOs for matching
+    const allTsos = await storage.getTsos();
+    function matchTso(csvTsoName: string): string | undefined {
+      if (!csvTsoName) return undefined;
+      const { name: tsoName } = parseTsoName(csvTsoName);
+      if (!tsoName) return undefined;
+      const cleanName = tsoName.toLowerCase().replace(/[_\s]+/g, " ").trim();
+      let match = allTsos.find(t =>
+        t.name.toLowerCase().replace(/[_\s]+/g, " ").trim() === cleanName
+      );
+      if (!match) {
+        match = allTsos.find(t => {
+          const tl = t.name.toLowerCase().replace(/[_\s]+/g, " ").trim();
+          return tl.includes(cleanName) || cleanName.includes(tl);
+        });
+      }
+      return match?.id;
+    }
+
+    let imported = 0, updated = 0, linked = 0, unlinked = 0;
+    const unlinkedShows: string[] = [];
+    const errors: string[] = [];
+
+    for (const [, row] of Array.from(showMap)) {
+      const showName = (row["Show Name"] || "").trim();
+      if (!showName) continue;
+      try {
+        const tsoId = matchTso(row["TSO"] || "");
+        if (tsoId) linked++; else {
+          unlinked++;
+          if (unlinkedShows.length < 30) unlinkedShows.push(showName);
+        }
+
+        const showDate = parseFlexibleDate(row["Date"] || "");
+        const nextFollowup = parseFlexibleDate(row["Next Follow-Up"] || row["Next Followup"] || "");
+        const notes = row["Text"] ? row["Text"].trim() || undefined : undefined;
+
+        const existing = await storage.findShowByName(showName);
+        if (existing) {
+          await storage.updateShow(existing.id, {
+            ...(row["City"] && !existing.city ? { city: row["City"] } : {}),
+            ...(row["Venue"] && !existing.venue ? { venue: row["Venue"] } : {}),
+            ...(row["Status"] && !existing.status ? { status: mapShowStatus(row["Status"]) } : {}),
+            ...(notes && !existing.notes ? { notes } : {}),
+            ...(tsoId && !existing.tsoId ? { tsoId } : {}),
+          });
+          updated++;
+        } else {
+          await storage.createShow({
+            showName,
+            tsoId: tsoId || undefined,
+            showDate: showDate ? showDate.toISOString().split("T")[0] : undefined,
+            city: row["City"] || undefined,
+            venue: row["Venue"] || undefined,
+            status: mapShowStatus(row["Status"] || ""),
+            nextFollowupDate: nextFollowup ? nextFollowup.toISOString().split("T")[0] : undefined,
+            attendingTso: row["Attending TSO"] || undefined,
+            notes: notes || undefined,
+          });
+          imported++;
+        }
+      } catch (e: any) {
+        errors.push(`${showName}: ${e.message}`);
+      }
+    }
+
+    return {
+      csvRows: csvRows.length, mdFiles: mdFiles.length, total: showMap.size,
+      imported, updated, linked, unlinked, unlinkedShows, errors,
+      dryRun: false,
+    };
+  }
+
+  app.post("/api/import/shows-with-notes", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const result = await processShowsZip(req.file.buffer);
+      await storage.createCsvImport({
+        fileName: req.file.originalname,
+        importedCount: result.imported,
+        updatedCount: result.updated,
+        skippedCount: result.errors.length,
+      });
+      res.json({ success: true, ...result, errors: result.errors.slice(0, 20) });
+    } catch (e: any) {
+      res.status(500).json({ message: `Import failed: ${e.message}` });
+    }
+  });
+
+  app.post("/api/import/shows-with-notes/preview", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const AdmZip = require("adm-zip");
+      const zip1 = new AdmZip(req.file.buffer);
+      let zip2: any = zip1;
+      const innerZipEntry = zip1.getEntries().find((e: any) => e.entryName.endsWith(".zip"));
+      if (innerZipEntry) zip2 = new AdmZip(zip1.readFile(innerZipEntry.entryName));
+      const entries: any[] = zip2.getEntries();
+      let csvCount = 0, mdCount = 0, csvRows = 0;
+      for (const entry of entries) {
+        const n = entry.entryName as string;
+        if (n.endsWith(".csv")) {
+          csvCount++;
+          try {
+            const rows = csvParse(zip2.readFile(entry.entryName), { columns: true, skip_empty_lines: true, trim: true, bom: true }) as any[];
+            csvRows = Math.max(csvRows, rows.filter((r: any) => (r["Show Name"] || "").trim()).length);
+          } catch {}
+        } else if (n.endsWith(".md")) mdCount++;
+      }
+      const allTsos = await storage.getTsos();
+      res.json({ csvFiles: csvCount, csvRows, mdFiles: mdCount, tsoCount: allTsos.length });
+    } catch (e: any) {
+      res.status(500).json({ message: `Preview failed: ${e.message}` });
+    }
+  });
+
+  app.post("/api/import/shows-with-notes/auto", isAuthenticated, async (req, res) => {
+    try {
+      const fs = require("fs");
+      const path = require("path");
+      const zipPath = path.join(process.cwd(), "TSO Shows new.zip");
+      if (!fs.existsSync(zipPath)) {
+        return res.status(404).json({ message: "TSO Shows new.zip not found in project root" });
+      }
+      const buf = fs.readFileSync(zipPath);
+      const result = await processShowsZip(buf);
+      await storage.createCsvImport({
+        fileName: "TSO Shows new.zip (auto)",
+        importedCount: result.imported,
+        updatedCount: result.updated,
+        skippedCount: result.errors.length,
+      });
+      res.json({ success: true, ...result, errors: result.errors.slice(0, 20) });
+    } catch (e: any) {
+      res.status(500).json({ message: `Auto-import failed: ${e.message}` });
+    }
+  });
+
   // ─── Auto-import from bundled zip ────────────────────────────────────────────
 
   app.post("/api/import/tsos/auto", isAuthenticated, async (req, res) => {

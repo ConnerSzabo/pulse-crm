@@ -141,6 +141,18 @@ export const storage = {
     return show || null;
   },
 
+  async findShowByName(name: string): Promise<Show | null> {
+    const norm = normalizeCompanyName(name);
+    const all = await db.select().from(shows);
+    const exact = all.find(s => normalizeCompanyName(s.showName) === norm);
+    if (exact) return exact;
+    const partial = all.find(s => {
+      const sn = normalizeCompanyName(s.showName);
+      return sn.includes(norm) || norm.includes(sn);
+    });
+    return partial || null;
+  },
+
   async deleteShow(id: string): Promise<boolean> {
     const result = await db.delete(shows).where(eq(shows.id, id));
     return (result.rowCount ?? 0) > 0;

@@ -322,6 +322,13 @@ function TsoImportSection() {
 
 // ─── Shows Import Section ─────────────────────────────────────────────────────
 
+type ShowZipPreview = {
+  csvFiles: number;
+  csvRows: number;
+  mdFiles: number;
+  tsoCount: number;
+};
+
 type ShowMatchPreview = {
   totalRows: number;
   preview: Array<{
@@ -340,11 +347,16 @@ type ShowImportResult = ImportResult & {
   linked?: number;
   unlinked?: number;
   unlinkedShows?: string[];
+  csvRows?: number;
+  mdFiles?: number;
+  total?: number;
+  imported?: number;
+  updated?: number;
 };
 
 function ShowsImportSection() {
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<ShowMatchPreview | null>(null);
+  const [zipPreview, setZipPreview] = useState<ShowZipPreview | null>(null);
   const [result, setResult] = useState<ShowImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -352,139 +364,147 @@ function ShowsImportSection() {
   const previewMutation = useMutation({
     mutationFn: async (f: File) => {
       const fd = new FormData(); fd.append("file", f);
-      const res = await fetch("/api/import/shows/preview", { method: "POST", body: fd, credentials: "include" });
+      const res = await fetch("/api/import/shows-with-notes/preview", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message);
-      return res.json() as Promise<ShowMatchPreview>;
+      return res.json() as Promise<ShowZipPreview>;
     },
-    onSuccess: (data) => { setPreview(data); setError(null); },
+    onSuccess: (data) => { setZipPreview(data); setError(null); },
     onError: (e: Error) => setError(e.message),
   });
 
   const importMutation = useMutation({
-    mutationFn: async ({ f, dryRun }: { f: File; dryRun: boolean }) => {
+    mutationFn: async (f: File) => {
       const fd = new FormData(); fd.append("file", f);
-      const res = await fetch(`/api/import/shows${dryRun ? "?dryRun=true" : ""}`, { method: "POST", body: fd, credentials: "include" });
+      const res = await fetch("/api/import/shows-with-notes", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message);
       return res.json() as Promise<ShowImportResult>;
     },
-    onSuccess: (data) => { setResult(data); setError(null); toast({ title: data.dryRun ? "Dry run complete" : "Shows imported!" }); },
+    onSuccess: (data) => { setResult(data); setError(null); toast({ title: "Shows imported!" }); },
     onError: (e: Error) => { setError(e.message); toast({ title: "Import failed", description: e.message, variant: "destructive" }); },
   });
 
+  const autoImportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/import/shows-with-notes/auto", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error((await res.json()).message);
+      return res.json() as Promise<ShowImportResult>;
+    },
+    onSuccess: (data) => { setResult(data); toast({ title: "Auto-import complete!" }); },
+    onError: (e: Error) => { setError(e.message); toast({ title: "Auto-import failed", description: e.message, variant: "destructive" }); },
+  });
+
   const handleFile = (f: File) => {
-    setFile(f); setPreview(null); setResult(null); setError(null);
+    setFile(f); setZipPreview(null); setResult(null); setError(null);
     previewMutation.mutate(f);
   };
 
-  const loading = previewMutation.isPending || importMutation.isPending;
-
-  const matchBadge = (type: "exact" | "partial" | "none") => {
-    if (type === "exact") return <Badge className="bg-green-100 text-green-700 text-[10px]">Exact</Badge>;
-    if (type === "partial") return <Badge className="bg-yellow-100 text-yellow-700 text-[10px]">Partial</Badge>;
-    return <Badge className="bg-red-100 text-red-700 text-[10px]">No match</Badge>;
-  };
+  const loading = previewMutation.isPending || importMutation.isPending || autoImportMutation.isPending;
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 p-3 text-xs text-blue-700">
-        <p className="font-medium mb-1">Expected CSV columns:</p>
-        <p className="font-mono">Show Name, TSO, Date, City, Venue, Status, Next Follow-Up, Attending TSO, Notes</p>
-        <p className="mt-1.5">TSO column is matched against existing TSOs in the database.</p>
+      <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
+        <p className="font-medium">Upload <span className="font-mono">TSO_Shows_new.zip</span> (contains CSV + 145 markdown files)</p>
+        <p>The importer will automatically detect and merge data from both sources.</p>
+        <ul className="list-disc ml-4 mt-1 space-y-0.5">
+          <li>CSV (<code>_all.csv</code>) → 162 shows with City, Date, Status, TSO, Venue</li>
+          <li>Markdown files → supplement missing Venue/Status fields</li>
+          <li>TSO names matched against existing TSOs in your database</li>
+        </ul>
       </div>
 
       <DropZone
-        accept=".csv"
+        accept=".zip"
         onFile={handleFile}
-        loading={loading}
+        loading={previewMutation.isPending}
         fileName={file?.name}
-        onClear={() => { setFile(null); setPreview(null); setResult(null); setError(null); }}
+        onClear={() => { setFile(null); setZipPreview(null); setResult(null); setError(null); }}
       />
 
-      {/* TSO matching preview table */}
-      {preview && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">
-              {preview.totalRows} shows found
-              {preview.preview.filter(r => r.matchType === "none").length > 0 && (
-                <span className="text-red-600 ml-2">
-                  · {preview.preview.filter(r => r.matchType === "none").length} unmatched TSOs (will import without link)
-                </span>
-              )}
-            </p>
+      {/* Zip detection summary */}
+      {zipPreview && (
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+          <p className="text-sm font-medium">Detected contents:</p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+              <span>CSV: <strong>{zipPreview.csvRows} shows</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+              <span>Markdown: <strong>{zipPreview.mdFiles} files</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Info className="h-3.5 w-3.5 text-blue-500" />
+              <span>TSOs in DB: <strong>{zipPreview.tsoCount}</strong></span>
+            </div>
           </div>
-
-          <div className="overflow-x-auto rounded-lg border text-xs">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Show Name</TableHead>
-                  <TableHead className="text-xs">TSO (CSV)</TableHead>
-                  <TableHead className="text-xs">Matched TSO</TableHead>
-                  <TableHead className="text-xs">Match</TableHead>
-                  <TableHead className="text-xs">Date</TableHead>
-                  <TableHead className="text-xs">City</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.preview.map((row, i) => (
-                  <TableRow key={i} className={row.matchType === "none" ? "bg-red-50/50 dark:bg-red-950/10" : ""}>
-                    <TableCell className="max-w-[140px] truncate font-medium" title={row.showName}>{row.showName}</TableCell>
-                    <TableCell className="max-w-[120px] truncate text-muted-foreground" title={row.csvTso}>{row.csvTso}</TableCell>
-                    <TableCell className="max-w-[120px] truncate" title={row.matchedTsoName}>{row.matchedTsoName}</TableCell>
-                    <TableCell>{matchBadge(row.matchType)}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.date || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.city || "—"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          {preview.totalRows > preview.preview.length && (
-            <p className="text-xs text-muted-foreground">Showing first {preview.preview.length} of {preview.totalRows} rows</p>
-          )}
-
           <div className="flex gap-2 pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => file && importMutation.mutate({ f: file, dryRun: true })}
-              disabled={loading}
-            >
-              <Eye className="h-3.5 w-3.5 mr-1.5" />
-              Dry Run
-            </Button>
             <Button
               size="sm"
               className="bg-[#e91e8c] hover:bg-[#c0166e]"
-              onClick={() => file && importMutation.mutate({ f: file, dryRun: false })}
+              onClick={() => file && importMutation.mutate(file)}
               disabled={loading}
             >
-              {loading ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
-              Import {preview.totalRows} Shows
+              {importMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+              Import {zipPreview.csvRows} Shows
             </Button>
           </div>
         </div>
       )}
 
-      {/* Result with unlinked list */}
+      {/* Auto-import button */}
+      {!file && !result && (
+        <div className="border-t pt-3">
+          <p className="text-xs text-muted-foreground mb-2">Or use the bundled file:</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => autoImportMutation.mutate()}
+            disabled={loading}
+            className="border-[#e91e8c] text-[#e91e8c] hover:bg-[#e91e8c] hover:text-white"
+          >
+            {autoImportMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+            Auto-Import TSO_Shows_new.zip
+          </Button>
+        </div>
+      )}
+
+      {/* Results */}
       {result && (
         <div className="space-y-2">
-          <ResultBanner result={result} />
-          {(result.linked !== undefined || result.unlinked !== undefined) && (
-            <div className="flex gap-4 text-xs">
-              {(result.linked ?? 0) > 0 && <span className="text-green-600">✓ {result.linked} linked to TSOs</span>}
-              {(result.unlinked ?? 0) > 0 && <span className="text-orange-500">⚠ {result.unlinked} imported without TSO link</span>}
-            </div>
-          )}
-          {result.unlinkedShows && result.unlinkedShows.length > 0 && (
-            <details className="text-xs">
-              <summary className="text-orange-600 cursor-pointer">Unlinked shows</summary>
-              <ul className="mt-1 space-y-0.5 text-muted-foreground ml-3">
-                {result.unlinkedShows.map((s, i) => <li key={i}>• {s}</li>)}
-              </ul>
-            </details>
-          )}
+          <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20">
+            <CheckCircle2 className="h-4 w-4 text-green-600" />
+            <AlertDescription>
+              <p className="font-semibold text-green-700">Import complete!</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm">
+                {(result.imported ?? 0) > 0 && <span className="text-green-600">✓ {result.imported} new shows</span>}
+                {(result.updated ?? 0) > 0 && <span className="text-blue-600">↺ {result.updated} updated</span>}
+                {(result.linked ?? 0) > 0 && <span className="text-purple-600">🔗 {result.linked} linked to TSOs</span>}
+                {(result.unlinked ?? 0) > 0 && <span className="text-orange-500">⚠ {result.unlinked} without TSO link</span>}
+              </div>
+              <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                {(result.csvRows ?? 0) > 0 && <span>CSV rows: {result.csvRows}</span>}
+                {(result.mdFiles ?? 0) > 0 && <span>Markdown files: {result.mdFiles}</span>}
+                {(result.total ?? 0) > 0 && <span>Total unique shows: {result.total}</span>}
+              </div>
+              {result.unlinkedShows && result.unlinkedShows.length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-orange-600 cursor-pointer text-xs">Shows without TSO link ({result.unlinkedShows.length})</summary>
+                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground ml-3 max-h-32 overflow-y-auto">
+                    {result.unlinkedShows.map((s, i) => <li key={i}>• {s}</li>)}
+                  </ul>
+                </details>
+              )}
+              {result.errors && result.errors.length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-red-600 cursor-pointer text-xs">{result.errors.length} error(s)</summary>
+                  <ul className="mt-1 space-y-0.5 text-xs text-red-500 ml-3 max-h-24 overflow-y-auto">
+                    {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </details>
+              )}
+            </AlertDescription>
+          </Alert>
         </div>
       )}
       {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert>}
