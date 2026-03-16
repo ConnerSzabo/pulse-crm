@@ -265,6 +265,17 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
+  // ─── TSO Shows (per TSO) ──────────────────────────────────────────────────
+
+  app.get("/api/tsos/:id/shows", isAuthenticated, async (req, res) => {
+    try {
+      const result = await storage.getShows((req.params.id as string));
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ message: "Failed to fetch shows" });
+    }
+  });
+
   // ─── Shows ────────────────────────────────────────────────────────────────
 
   app.get("/api/shows", isAuthenticated, async (req, res) => {
@@ -753,6 +764,138 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
+  // ─── Import: Shows CSV (with TSO matching + dry-run) ─────────────────────────
+
+  app.post("/api/import/shows/preview", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      let rows: Record<string, string>[];
+      try {
+        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+      } catch (e: any) {
+        return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
+      }
+      rows = rows.filter(r => (r["Show Name"] || r["show_name"] || r["Show"] || "").trim());
+      const allTsos = await storage.getTsos();
+      const preview = await Promise.all(rows.slice(0, 20).map(async row => {
+        const showName = (row["Show Name"] || row["show_name"] || row["Show"] || "").trim();
+        const csvTso = (row["TSO"] || row["tso"] || "").trim();
+        const { name: tsoName } = parseTsoName(csvTso);
+        // Try matching
+        let matchedTso: typeof allTsos[0] | undefined;
+        let matchType: "exact" | "partial" | "none" = "none";
+        if (tsoName) {
+          const cleanName = tsoName.toLowerCase();
+          matchedTso = allTsos.find(t => t.name.toLowerCase() === cleanName);
+          if (matchedTso) {
+            matchType = "exact";
+          } else {
+            matchedTso = allTsos.find(t => {
+              const tl = t.name.toLowerCase();
+              return tl.includes(cleanName) || cleanName.includes(tl);
+            });
+            if (matchedTso) matchType = "partial";
+          }
+        }
+        return {
+          showName,
+          csvTso: csvTso || "—",
+          matchedTsoName: matchedTso?.name || "—",
+          matchedTsoId: matchedTso?.id || null,
+          matchType,
+          date: row["Date"] || row["date"] || "",
+          city: row["City"] || row["city"] || "",
+          status: row["Status"] || row["status"] || "",
+        };
+      }));
+      res.json({ totalRows: rows.length, preview });
+    } catch (e: any) {
+      res.status(500).json({ message: `Preview failed: ${e.message}` });
+    }
+  });
+
+  app.post("/api/import/shows", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      let rows: Record<string, string>[];
+      try {
+        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+      } catch (e: any) {
+        return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
+      }
+      rows = rows.filter(r => (r["Show Name"] || r["show_name"] || r["Show"] || "").trim());
+      const dryRun = req.query.dryRun === "true";
+      const allTsos = await storage.getTsos();
+      let imported = 0, linked = 0, unlinked = 0;
+      const unlinkedShows: string[] = [];
+      const errors: string[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const showName = (row["Show Name"] || row["show_name"] || row["Show"] || "").trim();
+        if (!showName) continue;
+        try {
+          const csvTso = (row["TSO"] || row["tso"] || "").trim();
+          const { name: tsoName } = parseTsoName(csvTso);
+          let tsoId: string | undefined;
+          if (tsoName) {
+            const cleanName = tsoName.toLowerCase();
+            let match = allTsos.find(t => t.name.toLowerCase() === cleanName);
+            if (!match) {
+              match = allTsos.find(t => {
+                const tl = t.name.toLowerCase();
+                return tl.includes(cleanName) || cleanName.includes(tl);
+              });
+            }
+            tsoId = match?.id;
+          }
+          if (tsoId) linked++; else unlinked++;
+          if (tsoId === undefined && unlinkedShows.length < 20) unlinkedShows.push(showName);
+          const showDate = parseFlexibleDate(row["Date"] || row["date"]);
+          const nextFollowup = parseFlexibleDate(row["Next Follow-Up"] || row["next_followup"] || row["Next Followup"]);
+          if (!dryRun) {
+            await storage.createShow({
+              showName,
+              tsoId: tsoId || undefined,
+              showDate: showDate ? showDate.toISOString().split("T")[0] : undefined,
+              city: row["City"] || row["city"] || undefined,
+              venue: row["Venue"] || row["venue"] || undefined,
+              status: mapShowStatus(row["Status"] || row["status"]),
+              nextFollowupDate: nextFollowup ? nextFollowup.toISOString().split("T")[0] : undefined,
+              attendingTso: row["Attending TSO"] || row["attending_tso"] || undefined,
+              notes: row["Notes"] || row["notes"] || undefined,
+            });
+          }
+          imported++;
+        } catch (rowErr: any) {
+          errors.push(`Row ${i + 2}: ${rowErr.message}`);
+        }
+      }
+
+      if (!dryRun) {
+        await storage.createCsvImport({
+          fileName: req.file.originalname,
+          importedCount: imported,
+          updatedCount: 0,
+          skippedCount: errors.length,
+        });
+      }
+
+      res.json({
+        success: true,
+        dryRun,
+        imported,
+        linked,
+        unlinked,
+        unlinkedShows,
+        total: rows.length,
+        errors: errors.slice(0, 20),
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: `Import failed: ${e.message}` });
+    }
+  });
+
   // ─── Auto-import from bundled zip ────────────────────────────────────────────
 
   app.post("/api/import/tsos/auto", isAuthenticated, async (req, res) => {
@@ -825,6 +968,25 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   return httpServer;
+}
+
+// ─── Show status mapping ──────────────────────────────────────────────────────
+
+function mapShowStatus(raw: string | undefined): string {
+  if (!raw) return "Contacted";
+  const s = raw.trim();
+  const map: Record<string, string> = {
+    "Confirmed": "Confirmed",
+    "Sponsoring": "Sponsoring",
+    "In Conversation": "In Conversation",
+    "Contacted": "Contacted",
+    "Completed": "Completed",
+    "Negotiating": "In Conversation",
+    "Details Received": "In Conversation",
+    "Initial Response": "Contacted",
+    "Info Requested": "Contacted",
+  };
+  return map[s] || "Contacted";
 }
 
 // ─── Status mapping helper ────────────────────────────────────────────────────

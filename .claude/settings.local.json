@@ -27,7 +27,11 @@
       "Bash(wc:*)",
       "Bash(npm run:*)",
       "Bash(grep:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(find:*)",
+      "Bash(unzip:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

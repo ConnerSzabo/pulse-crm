@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useRoute, Link } from "wouter";
-import type { ShowWithTso } from "@shared/schema";
+import type { ShowWithTso, Task } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Edit2, Check, X, CalendarDays, MapPin } from "lucide-react";
+import { ArrowLeft, Edit2, Check, X, CalendarDays, MapPin, ListTodo, Plus } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -60,10 +60,40 @@ export default function ShowDetail() {
     enabled: !!id,
   });
 
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+
+  const { data: tasks } = useQuery<Task[]>({
+    queryKey: [`/api/tasks`, { showId: id }],
+    queryFn: () => fetch(`/api/tasks?showId=${id}`, { credentials: "include" }).then(r => r.json()),
+    enabled: !!id,
+  });
+
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, any>) => apiRequest("PATCH", `/api/shows/${id}`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/shows/${id}`] }),
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const addTaskMutation = useMutation({
+    mutationFn: (title: string) => apiRequest("POST", "/api/tasks", {
+      title,
+      showId: id,
+      tsoId: show?.tsoId || undefined,
+      status: "To Do",
+      priority: "medium",
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/tasks`, { showId: id }] });
+      setNewTaskTitle("");
+      toast({ title: "Task added" });
+    },
+    onError: () => toast({ title: "Failed to add task", variant: "destructive" }),
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: ({ taskId, ...data }: { taskId: string; [k: string]: any }) =>
+      apiRequest("PATCH", `/api/tasks/${taskId}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/tasks`, { showId: id }] }),
   });
 
   if (isLoading) return (
@@ -148,6 +178,62 @@ export default function ShowDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Tasks section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ListTodo className="h-4 w-4" /> Tasks ({tasks?.length || 0})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {(tasks || []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No tasks for this show</p>
+          )}
+          {(tasks || []).map(task => (
+            <div key={task.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
+              <button
+                className={`w-4 h-4 rounded-full border-2 shrink-0 transition-colors ${task.status === "Done" ? "bg-green-500 border-green-500" : "border-gray-300"}`}
+                onClick={() => updateTaskMutation.mutate({ taskId: task.id, status: task.status === "Done" ? "To Do" : "Done" })}
+              />
+              <span className={`text-sm flex-1 ${task.status === "Done" ? "line-through text-muted-foreground" : ""}`}>
+                {task.title}
+              </span>
+              {task.dueDate && (
+                <span className="text-xs text-muted-foreground">
+                  {format(new Date(task.dueDate), "d MMM")}
+                </span>
+              )}
+              <Badge className={`text-[10px] ${
+                task.status === "Done" ? "bg-gray-100 text-gray-500" :
+                task.status === "To Do" ? "bg-blue-100 text-blue-700" :
+                "bg-yellow-100 text-yellow-700"
+              }`}>{task.status}</Badge>
+            </div>
+          ))}
+          <div className="flex gap-2 pt-1">
+            <Input
+              placeholder="Add task..."
+              value={newTaskTitle}
+              onChange={e => setNewTaskTitle(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && newTaskTitle.trim()) {
+                  addTaskMutation.mutate(newTaskTitle.trim());
+                }
+              }}
+              className="h-8 text-sm"
+            />
+            <Button
+              size="sm"
+              className="h-8 bg-[#e91e8c] hover:bg-[#c0166e]"
+              onClick={() => newTaskTitle.trim() && addTaskMutation.mutate(newTaskTitle.trim())}
+              disabled={addTaskMutation.isPending || !newTaskTitle.trim()}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {show.showDate && (
         <div className="text-sm text-muted-foreground">
