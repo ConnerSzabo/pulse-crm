@@ -34,7 +34,11 @@
       "Bash(git commit:*)",
       "Bash(timeout:*)",
       "Bash(sed:*)",
-      "Bash(npm i:*)"
+      "Bash(npm i:*)",
+      "Bash(while read:*)",
+      "Bash(do grep:*)",
+      "Bash(done)",
+      "Bash(find /home/runner/workspace -type f \\\\\\(-iname .env* \\\\\\))"
     ]
   }
 }

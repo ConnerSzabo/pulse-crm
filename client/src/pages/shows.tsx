@@ -14,7 +14,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
-import { Plus, Search, CalendarDays, MapPin, List, Calendar } from "lucide-react";
+import { Plus, Search, CalendarDays, MapPin, List, Calendar, Link2, Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -27,11 +27,11 @@ import listPlugin from "@fullcalendar/list";
 const SHOW_STATUSES = ["Contacted", "In Conversation", "Sponsoring", "Confirmed", "Completed"];
 
 const statusColor: Record<string, string> = {
-  "Contacted": "bg-blue-100 text-blue-700",
-  "In Conversation": "bg-yellow-100 text-yellow-800",
-  "Sponsoring": "bg-green-100 text-green-700",
-  "Confirmed": "bg-purple-100 text-purple-700",
-  "Completed": "bg-gray-100 text-gray-600",
+  "Contacted":       "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+  "In Conversation": "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+  "Sponsoring":      "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+  "Confirmed":       "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  "Completed":       "bg-slate-500/20 text-slate-400 border border-slate-500/30",
 };
 
 const eventColors: Record<string, string> = {
@@ -66,6 +66,10 @@ export default function ShowsPage() {
   const [timeFilter, setTimeFilter] = useState("upcoming");
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [addOpen, setAddOpen] = useState(false);
+  const [calendarPopup, setCalendarPopup] = useState<{
+    showId: string; showName: string; tsoId?: string | null; tsoName?: string | null;
+    date?: string; city?: string; status?: string;
+  } | null>(null);
   const { toast } = useToast();
 
   const { data: showsData, isLoading } = useQuery<ShowWithTso[]>({ queryKey: ["/api/shows"] });
@@ -82,6 +86,16 @@ export default function ShowsPage() {
     onError: () => toast({ title: "Failed to create show", variant: "destructive" }),
   });
 
+  const relinkMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/shows/relink-tsos", { createMissing: true }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/shows"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tsos"] });
+      toast({ title: `Re-linked ${data.linked} shows, created ${data.created} new TSOs` });
+    },
+    onError: () => toast({ title: "Re-link failed", variant: "destructive" }),
+  });
+
   const form = useForm<AddForm>({
     resolver: zodResolver(addSchema),
     defaultValues: { showName: "", status: "Contacted" },
@@ -96,7 +110,13 @@ export default function ShowsPage() {
       start: show.showDate!,
       backgroundColor: getEventColor(show.status || ""),
       borderColor: getEventColor(show.status || ""),
-      extendedProps: { city: show.city, tso: show.tso?.name, status: show.status },
+      extendedProps: {
+        city: show.city,
+        tsoName: show.tso?.name,
+        tsoId: show.tsoId,
+        status: show.status,
+        date: show.showDate,
+      },
     }));
 
   // List view filters
@@ -154,6 +174,17 @@ export default function ShowsPage() {
               <List className="h-4 w-4" /> List
             </Button>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => relinkMutation.mutate()}
+            disabled={relinkMutation.isPending}
+            title="Match unlinked shows to TSOs by name, creating new TSO records where needed"
+          >
+            {relinkMutation.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Link2 className="h-4 w-4 mr-1.5" />}
+            Link TSOs
+          </Button>
 
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
@@ -215,7 +246,8 @@ export default function ShowsPage() {
         </div>
       ) : view === "calendar" ? (
         /* ── Calendar view ── */
-        <div className="rounded-xl border bg-white dark:bg-[#1e1e2e] p-4">
+        <>
+        <div className="rounded-2xl border border-[#2d3548] bg-[#1a1f2e] overflow-hidden">
           <FullCalendar
             plugins={[dayGridPlugin, listPlugin]}
             initialView="dayGridMonth"
@@ -223,7 +255,16 @@ export default function ShowsPage() {
             height="auto"
             eventClick={(info) => {
               info.jsEvent.preventDefault();
-              setLocation(`/show/${info.event.id}`);
+              const ep = info.event.extendedProps;
+              setCalendarPopup({
+                showId: info.event.id,
+                showName: info.event.title,
+                tsoId: ep.tsoId,
+                tsoName: ep.tsoName,
+                date: ep.date,
+                city: ep.city,
+                status: ep.status,
+              });
             }}
             headerToolbar={{
               left: "prev,next today",
@@ -241,15 +282,60 @@ export default function ShowsPage() {
             )}
           />
           {/* Status legend */}
-          <div className="mt-4 flex flex-wrap gap-4 text-xs border-t pt-3">
+          <div className="flex flex-wrap gap-4 px-4 py-3 border-t border-[#2d3548] bg-[#0f1419]/40">
             {SHOW_STATUSES.map(s => (
               <div key={s} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getEventColor(s) }} />
-                <span className="text-muted-foreground">{s}</span>
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getEventColor(s) }} />
+                <span className="text-[11px] text-[#64748b]">{s}</span>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Calendar click popup */}
+        <Dialog open={!!calendarPopup} onOpenChange={open => { if (!open) setCalendarPopup(null); }}>
+          <DialogContent className="max-w-sm">
+            {calendarPopup && (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-base leading-snug">{calendarPopup.showName}</DialogTitle>
+                </DialogHeader>
+                <div className="text-sm text-muted-foreground space-y-1 -mt-1">
+                  {calendarPopup.date && (
+                    <p>{format(new Date(calendarPopup.date), "EEEE, d MMMM yyyy")}</p>
+                  )}
+                  {calendarPopup.city && (
+                    <p className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{calendarPopup.city}</p>
+                  )}
+                  {calendarPopup.tsoName && (
+                    <p>TSO: <span className="font-medium text-foreground">{calendarPopup.tsoName}</span></p>
+                  )}
+                  {calendarPopup.status && (
+                    <Badge className={`text-xs ${statusColor[calendarPopup.status] || "bg-gray-100 text-gray-600"}`}>
+                      {calendarPopup.status}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 pt-1">
+                  <Button
+                    className="w-full bg-[#e91e8c] hover:bg-[#c0166e]"
+                    onClick={() => { setCalendarPopup(null); setLocation(`/show/${calendarPopup.showId}`); }}>
+                    <CalendarDays className="h-4 w-4 mr-2" /> View Show Details
+                  </Button>
+                  {calendarPopup.tsoId && (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => { setCalendarPopup(null); setLocation(`/tso/${calendarPopup.tsoId}`); }}>
+                      <Link2 className="h-4 w-4 mr-2" /> Go to {calendarPopup.tsoName || "TSO"} Page
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+        </>
       ) : (
         /* ── List view ── */
         <>
@@ -299,7 +385,7 @@ export default function ShowsPage() {
                 const isPast = showDate && isBefore(showDate, today);
                 return (
                   <Link key={show.id} href={`/show/${show.id}`}>
-                    <div className={`border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer bg-white dark:bg-[#1e1e2e] ${isPast ? "opacity-70" : ""}`}>
+                    <div className={`border border-[#2d3548] rounded-xl p-4 hover:border-[#6366f1]/40 hover:bg-[#6366f1]/5 transition-all cursor-pointer bg-[#1a1f2e] ${isPast ? "opacity-60" : ""}`}>
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-4 min-w-0">
                           <div className="shrink-0 text-center w-14">

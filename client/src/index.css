@@ -204,57 +204,58 @@
     @apply border-border;
   }
 
+  html {
+    color-scheme: dark;
+  }
+
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased;
+    background: #0f1419;
+    color: #f1f5f9;
     font-size: 14px;
     line-height: 1.5;
     letter-spacing: -0.01em;
   }
 
-  h1 {
+  h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
-    font-size: 24px;
-    color: hsl(210 35% 29%);
+    color: #f1f5f9;
   }
 
-  h2 {
-    @apply font-semibold tracking-tight;
-    font-size: 20px;
-    color: hsl(210 35% 29%);
-  }
+  h1 { font-size: 24px; }
+  h2 { font-size: 20px; }
+  h3 { font-size: 18px; }
+  h4, h5, h6 { font-size: 16px; }
 
-  h3 {
-    @apply font-semibold tracking-tight;
-    font-size: 18px;
-    color: hsl(210 35% 29%);
-  }
-
-  h4, h5, h6 {
-    @apply font-semibold tracking-tight;
-    font-size: 16px;
-    color: hsl(210 35% 29%);
-  }
-
-  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
-    color: hsl(210 20% 95%);
-  }
-
-  /* Smooth transitions for all interactive elements */
+  /* Smooth transitions for interactive elements */
   button, a, input, select, textarea {
     transition-property: color, background-color, border-color, box-shadow, opacity, transform;
-    transition-duration: 200ms;
+    transition-duration: 150ms;
     transition-timing-function: ease-out;
   }
 
-  /* Better focus styles */
   :focus-visible {
-    outline: none;
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
   }
 
-  /* Small text utility */
-  .text-small {
-    font-size: 12px;
+  /* Page fade-in animation */
+  main > * {
+    animation: pageFadeIn 0.18s ease-out;
   }
+
+  @keyframes pageFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Global scrollbar */
+  ::-webkit-scrollbar       { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2d3548; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3d4558; }
+
+  .text-small { font-size: 12px; }
 }
 
 @layer components {
@@ -613,4 +614,292 @@
     overflow-wrap: break-word;
     word-break: break-word;
   }
+}
+
+/* ─── FullCalendar Dark Theme ────────────────────────────── */
+
+/* Wrapper */
+.fc {
+  --fc-border-color: #2d3548;
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: transparent;
+  --fc-today-bg-color: rgba(99, 102, 241, 0.08);
+  --fc-highlight-color: rgba(99, 102, 241, 0.12);
+  --fc-event-border-color: transparent;
+  --fc-now-indicator-color: #6366f1;
+  --fc-list-event-hover-bg-color: rgba(99, 102, 241, 0.08);
+  font-family: inherit;
+}
+
+/* Header toolbar */
+.fc .fc-toolbar {
+  padding: 0.75rem 1rem 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: -0.01em;
+}
+
+/* Toolbar buttons */
+.fc .fc-button {
+  background: transparent !important;
+  border: 1px solid #2d3548 !important;
+  color: #94a3b8 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.3rem 0.75rem !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.fc .fc-button:hover {
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: #6366f1 !important;
+  color: #a5b4fc !important;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background: rgba(99, 102, 241, 0.25) !important;
+  border-color: #6366f1 !important;
+  color: #a5b4fc !important;
+}
+
+.fc .fc-button-group .fc-button {
+  border-radius: 0 !important;
+}
+.fc .fc-button-group .fc-button:first-child {
+  border-radius: 0.5rem 0 0 0.5rem !important;
+}
+.fc .fc-button-group .fc-button:last-child {
+  border-radius: 0 0.5rem 0.5rem 0 !important;
+}
+
+/* Column headers (Mon, Tue …) */
+.fc .fc-col-header-cell {
+  background: rgba(15, 20, 25, 0.6);
+  border-color: #2d3548 !important;
+  padding: 0.5rem 0;
+}
+
+.fc .fc-col-header-cell-cushion {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none !important;
+}
+
+/* Day cells */
+.fc .fc-daygrid-day {
+  border-color: #2d3548 !important;
+  transition: background 0.1s;
+}
+
+.fc .fc-daygrid-day:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.fc .fc-daygrid-day-number {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.35rem 0.5rem;
+  text-decoration: none !important;
+  border-radius: 0.4rem;
+  transition: all 0.15s;
+}
+
+.fc .fc-daygrid-day-number:hover {
+  color: #f1f5f9;
+  background: rgba(99, 102, 241, 0.15);
+}
+
+/* Today highlight */
+.fc .fc-day-today .fc-daygrid-day-number {
+  background: #6366f1;
+  color: white;
+  font-weight: 600;
+}
+
+.fc .fc-day-today {
+  background: var(--fc-today-bg-color) !important;
+}
+
+/* Other-month days */
+.fc .fc-day-other .fc-daygrid-day-number {
+  color: #374151;
+}
+
+.fc .fc-day-other {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* Events */
+.fc .fc-daygrid-event {
+  border-radius: 0.4rem !important;
+  border: none !important;
+  margin: 1px 3px !important;
+  padding: 0 !important;
+  font-size: 0.7rem !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.fc .fc-daygrid-event:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  filter: brightness(1.1);
+  cursor: pointer;
+}
+
+.fc .fc-daygrid-event-dot {
+  display: none;
+}
+
+.fc .fc-event-title {
+  font-weight: 500;
+  padding: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "more" link (+2 more) */
+.fc .fc-daygrid-more-link {
+  color: #818cf8;
+  font-size: 0.68rem;
+  font-weight: 500;
+  margin-left: 3px;
+}
+
+.fc .fc-daygrid-more-link:hover {
+  color: #a5b4fc;
+  text-decoration: underline;
+}
+
+/* Popover for overflow events */
+.fc .fc-popover {
+  background: #1a1f2e !important;
+  border: 1px solid #2d3548 !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+  overflow: hidden;
+}
+
+.fc .fc-popover-header {
+  background: rgba(99, 102, 241, 0.15) !important;
+  color: #f1f5f9 !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+}
+
+.fc .fc-popover-close {
+  color: #94a3b8 !important;
+  opacity: 1;
+}
+
+.fc .fc-popover-body {
+  padding: 0.5rem;
+}
+
+/* List view (Agenda) */
+.fc .fc-list {
+  border: none !important;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.fc .fc-list-day-cushion {
+  background: rgba(15, 20, 25, 0.8) !important;
+  padding: 0.4rem 1rem;
+}
+
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text {
+  color: #6366f1 !important;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none !important;
+}
+
+.fc .fc-list-event {
+  border-bottom: 1px solid #1e2433 !important;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.fc .fc-list-event:hover td {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+.fc .fc-list-event-dot {
+  border-radius: 50% !important;
+  border-width: 5px !important;
+}
+
+.fc .fc-list-event-title a {
+  color: #f1f5f9 !important;
+  font-size: 0.8rem;
+  text-decoration: none !important;
+}
+
+.fc .fc-list-event-time {
+  color: #64748b !important;
+  font-size: 0.75rem;
+}
+
+.fc .fc-list-empty {
+  background: transparent !important;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+/* Scrollgrid borders */
+.fc .fc-scrollgrid {
+  border-radius: 0.75rem;
+  border-color: #2d3548 !important;
+  overflow: hidden;
+}
+
+.fc .fc-scrollgrid-section > td,
+.fc .fc-scrollgrid-section > th {
+  border-color: #2d3548 !important;
+}
+
+/* ─── PokéPulse / TSO Design Tokens ─────────────────────── */
+:root {
+  --pp-bg:           #0f1419;
+  --pp-surface:      #1a1f2e;
+  --pp-surface-2:    #252b3d;
+  --pp-border:       #2d3548;
+  --pp-primary:      #6366f1;
+  --pp-primary-h:    #7c3aed;
+  --pp-success:      #10b981;
+  --pp-warning:      #f59e0b;
+  --pp-danger:       #ef4444;
+  --pp-text-1:       #f1f5f9;
+  --pp-text-2:       #94a3b8;
+  --pp-text-3:       #64748b;
+  --pp-card:         rgba(51,65,85,0.3);
+  --pp-card-h:       rgba(71,85,105,0.4);
+}
+
+/* Stat cards use inline Tailwind gradients; no extra CSS needed */
+
+/* Smooth focus ring for PP inputs */
+.pp-input:focus {
+  outline: none;
+  border-color: var(--pp-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }

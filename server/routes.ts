@@ -1,6 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, normalizeCompanyName } from "./storage";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
@@ -25,6 +25,138 @@ import { join } from "path";
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Extracts CSV buffer from either a raw CSV file or a (possibly nested) ZIP file.
+// For zips, finds the first .csv entry (prefers ones matching "outbound" or "tso").
+function extractCsvBuffer(fileBuffer: Buffer, originalName: string): Buffer {
+  const isZip = originalName.toLowerCase().endsWith(".zip");
+  if (!isZip) return fileBuffer;
+
+  let zip: InstanceType<typeof AdmZip> = new AdmZip(fileBuffer);
+  // Check for a nested zip (inner zip)
+  const innerZipEntry = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith(".zip"));
+  if (innerZipEntry) {
+    zip = new AdmZip(zip.readFile(innerZipEntry.entryName) as Buffer);
+  }
+  // Find best CSV: prefer one with "outbound" or "tso" in name
+  const csvEntries = zip.getEntries().filter(e => e.entryName.toLowerCase().endsWith(".csv"));
+  if (csvEntries.length === 0) throw new Error("No CSV file found inside zip");
+  const preferred = csvEntries.find(e => {
+    const n = e.entryName.toLowerCase();
+    return n.includes("outbound") || n.includes("tso");
+  }) || csvEntries[0];
+  const buf = zip.readFile(preferred.entryName);
+  if (!buf) throw new Error("Failed to read CSV from zip");
+  return buf;
+}
+
+// Extracts all .md file entries from a zip (handling one level of nesting).
+function extractMarkdownEntries(fileBuffer: Buffer, originalName: string): Array<{ entryName: string; content: string }> {
+  if (!originalName.toLowerCase().endsWith(".zip")) return [];
+  let zip = new AdmZip(fileBuffer);
+  const innerZipEntry = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith(".zip"));
+  if (innerZipEntry) {
+    zip = new AdmZip(zip.readFile(innerZipEntry.entryName) as Buffer);
+  }
+  return zip.getEntries()
+    .filter(e => e.entryName.toLowerCase().endsWith(".md") && !e.isDirectory)
+    .map(e => ({ entryName: e.entryName, content: e.getData().toString("utf8") }));
+}
+
+interface ParsedTsoMd {
+  name?: string;
+  contact_email?: string;
+  contact_name?: string;
+  est_annual_reach?: string;
+  follow_up_date?: string;
+  ig_handle?: string;
+  linkedin?: string | null;
+  notes?: string;
+  priority?: string;
+  profile_link?: string;
+  shows_per_year?: string;
+  status?: string;
+}
+
+function parseTSOMarkdown(content: string): ParsedTsoMd {
+  const lines = content.split("\n");
+  const data: ParsedTsoMd = {};
+
+  const headingMatch = content.match(/^#\s+(.+)$/m);
+  if (headingMatch) data.name = headingMatch[1].trim();
+
+  for (const line of lines) {
+    const match = line.match(/^(.+?):\s*(.+)$/);
+    if (!match) continue;
+    const key = match[1].trim();
+    const value = match[2].trim();
+    switch (key) {
+      case "Contact Email": data.contact_email = value; break;
+      case "Contact Name / Role": data.contact_name = value; break;
+      case "Est. Annual Reach": data.est_annual_reach = value; break;
+      case "Follow up date": {
+        const d = parseFlexibleDate(value);
+        if (d) data.follow_up_date = d.toISOString().split("T")[0];
+        break;
+      }
+      case "IG Handle": data.ig_handle = value; break;
+      case "Linkedin": data.linkedin = value !== "None" ? value : null; break;
+      case "Notes": data.notes = value; break;
+      case "Priority": data.priority = value; break;
+      case "Profile Link": data.profile_link = value; break;
+      case "Shows Per Year (2026)": data.shows_per_year = value; break;
+      case "Status": data.status = value; break;
+    }
+  }
+
+  return data;
+}
+
+async function processMdEntries(
+  entries: Array<{ entryName: string; content: string }>
+): Promise<{ processed: number; matched: number; unmatched: number; errors: string[] }> {
+  let processed = 0, matched = 0, unmatched = 0;
+  const errors: string[] = [];
+
+  for (const entry of entries) {
+    processed++;
+    const parsed = parseTSOMarkdown(entry.content);
+    if (!parsed.name) { unmatched++; continue; }
+
+    const existing = await storage.findTsoByName(parsed.name);
+    if (!existing) { unmatched++; continue; }
+
+    matched++;
+    const updates: Record<string, any> = {};
+
+    if (!existing.email && parsed.contact_email) updates.email = parsed.contact_email;
+    if (!existing.mainContactName && parsed.contact_name) updates.mainContactName = parsed.contact_name;
+    if (!existing.estAnnualReach && parsed.est_annual_reach) updates.estAnnualReach = parsed.est_annual_reach;
+    if (!existing.followUpDate && parsed.follow_up_date) updates.followUpDate = parsed.follow_up_date;
+    if (!existing.igHandle && parsed.ig_handle) updates.igHandle = parsed.ig_handle;
+    if (existing.linkedin == null && parsed.linkedin !== undefined) updates.linkedin = parsed.linkedin;
+    if (!existing.priority && parsed.priority) updates.priority = parsed.priority;
+    if (!existing.profileLink && parsed.profile_link) updates.profileLink = parsed.profile_link;
+    if (!existing.showsPerYear && parsed.shows_per_year) updates.showsPerYear = parsed.shows_per_year;
+    if (!existing.relationshipStatus && parsed.status) updates.relationshipStatus = mapCsvStatus(parsed.status);
+
+    if (parsed.notes && !existing.notes?.includes(parsed.notes.trim())) {
+      const existingNotes = existing.notes || "";
+      updates.notes = existingNotes ? `${existingNotes}\n\n---\n\n${parsed.notes}` : parsed.notes;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      try {
+        await storage.updateTso(existing.id, updates);
+      } catch (e: any) {
+        errors.push(`${parsed.name}: ${e.message}`);
+        matched--;
+      }
+    }
+  }
+
+  return { processed, matched, unmatched, errors };
+}
 
 function parseTsoName(raw: string): { name: string; contact: string } {
   const match = raw.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
@@ -88,6 +220,48 @@ const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   if (req.session.userId) return next();
   return res.status(401).json({ message: "Unauthorized" });
 };
+
+// Extracts the likely organiser name from a show name by stripping city/date/number suffixes.
+function extractTsoNameFromShow(showName: string): string {
+  return (showName
+    .replace(/\s*\*FREE\*\s*$/i, "")                   // *FREE*
+    .replace(/\s*[-–|]\s*[A-Z][A-Za-z ,&!0-9]*$/, "") // " - City/Location" or " | Date" suffix
+    .replace(/\s*\((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^)]*\)/gi, "") // (Month...)
+    .replace(/\s+#\d+\s*$/, "")                        // trailing "#N"
+    .replace(/\s+\d{1,2}(st|nd|rd|th)?\s*$/, "")      // trailing ordinal / number
+    .replace(/[⭐🔥!]+\s*$/, "")                       // trailing emoji/punctuation
+    .trim()) || showName;
+}
+
+// Tries to match a show name to an existing TSO using progressive fuzzy matching.
+function matchShowToTso(showName: string, allTsos: { id: string; name: string }[]): { id: string; name: string } | null {
+  const norm = normalizeCompanyName;
+
+  // Build candidate names to try (most-specific first)
+  const candidates = Array.from(new Set([
+    showName,
+    extractTsoNameFromShow(showName),
+    showName.replace(/\s*[-–]\s*.+$/, "").trim(),   // everything after " - "
+    showName.replace(/\s*\([^)]+\)\s*$/, "").trim(), // strip trailing "(…)"
+    showName.replace(/\s+#\d+\s*$/, "").trim(),
+    showName.replace(/\s+\d+\s*$/, "").trim(),
+  ].filter(Boolean)));
+
+  for (const candidate of candidates) {
+    const n = norm(candidate);
+    const match = allTsos.find(t => norm(t.name) === n);
+    if (match) return match;
+  }
+
+  // Partial prefix / contains match
+  const showNorm = norm(showName);
+  return allTsos.find(t => {
+    const tsoNorm = norm(t.name);
+    if (tsoNorm.length < 5) return false;
+    return showNorm.startsWith(tsoNorm) || tsoNorm.startsWith(showNorm) ||
+           showNorm.includes(tsoNorm) || tsoNorm.includes(showNorm);
+  }) || null;
+}
 
 export function registerRoutes(httpServer: Server, app: Express): Server {
 
@@ -154,8 +328,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   app.patch("/api/tsos/:id", isAuthenticated, async (req, res) => {
+    const parsed = insertTsoSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid fields", errors: parsed.error.flatten() });
     try {
-      const tso = await storage.updateTso((req.params.id as string), req.body);
+      const tso = await storage.updateTso((req.params.id as string), parsed.data);
       if (!tso) return res.status(404).json({ message: "TSO not found" });
       res.json(tso);
     } catch (e) {
@@ -196,8 +372,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   app.patch("/api/activities/:id", isAuthenticated, async (req, res) => {
+    const parsed = insertActivitySchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid fields", errors: parsed.error.flatten() });
     try {
-      const act = await storage.updateActivity((req.params.id as string), req.body);
+      const act = await storage.updateActivity((req.params.id as string), parsed.data);
       if (!act) return res.status(404).json({ message: "Activity not found" });
       res.json(act);
     } catch (e) {
@@ -249,8 +427,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   app.patch("/api/contacts/:id", isAuthenticated, async (req, res) => {
+    const parsed = insertContactSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid fields", errors: parsed.error.flatten() });
     try {
-      const contact = await storage.updateContact((req.params.id as string), req.body);
+      const contact = await storage.updateContact((req.params.id as string), parsed.data);
       if (!contact) return res.status(404).json({ message: "Contact not found" });
       res.json(contact);
     } catch (e) {
@@ -314,8 +494,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   app.patch("/api/shows/:id", isAuthenticated, async (req, res) => {
+    const parsed = insertShowSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid fields", errors: parsed.error.flatten() });
     try {
-      const show = await storage.updateShow((req.params.id as string), req.body);
+      const show = await storage.updateShow((req.params.id as string), parsed.data);
       if (!show) return res.status(404).json({ message: "Show not found" });
       res.json(show);
     } catch (e) {
@@ -330,6 +512,48 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
       res.json({ message: "Show deleted" });
     } catch (e) {
       res.status(500).json({ message: "Failed to delete show" });
+    }
+  });
+
+  // ─── Show → TSO re-linking ─────────────────────────────────────────────────
+
+  app.post("/api/shows/relink-tsos", isAuthenticated, async (req, res) => {
+    try {
+      const createMissing = req.body.createMissing !== false; // default true
+      const allShows = await storage.getShows();
+      const unlinked = allShows.filter(s => !s.tsoId);
+      const allTsos = await storage.getTsos();
+
+      let linked = 0, created = 0, unmatched = 0;
+      const unmatchedNames: string[] = [];
+
+      for (const show of unlinked) {
+        const match = matchShowToTso(show.showName, allTsos);
+        if (match) {
+          await storage.updateShow(show.id, { tsoId: match.id });
+          linked++;
+        } else if (createMissing) {
+          const tsoName = extractTsoNameFromShow(show.showName);
+          // Don't create if we already have a TSO with this extracted name
+          const existingByExtracted = matchShowToTso(tsoName, allTsos);
+          if (existingByExtracted) {
+            await storage.updateShow(show.id, { tsoId: existingByExtracted.id });
+            linked++;
+          } else {
+            const newTso = await storage.createTso({ name: tsoName, relationshipStatus: "Cold Outreach" });
+            await storage.updateShow(show.id, { tsoId: newTso.id });
+            allTsos.push(newTso); // keep local list up-to-date for subsequent iterations
+            created++;
+          }
+        } else {
+          unmatched++;
+          if (unmatchedNames.length < 20) unmatchedNames.push(show.showName);
+        }
+      }
+
+      res.json({ success: true, linked, created, unmatched, total: unlinked.length, unmatchedNames });
+    } catch (e: any) {
+      res.status(500).json({ message: `Relink failed: ${e.message}` });
     }
   });
 
@@ -358,8 +582,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   app.patch("/api/tasks/:id", isAuthenticated, async (req, res) => {
+    const parsed = insertTaskSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid fields", errors: parsed.error.flatten() });
     try {
-      const task = await storage.updateTask((req.params.id as string), req.body);
+      const task = await storage.updateTask((req.params.id as string), parsed.data);
       if (!task) return res.status(404).json({ message: "Task not found" });
       res.json(task);
     } catch (e) {
@@ -604,9 +830,16 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
+      let csvBuf: Buffer;
+      try {
+        csvBuf = extractCsvBuffer(req.file.buffer, req.file.originalname);
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
+
       let rows: Record<string, string>[];
       try {
-        rows = csvParse(req.file.buffer, {
+        rows = csvParse(csvBuf, {
           columns: true,
           skip_empty_lines: true,
           trim: true,
@@ -698,14 +931,20 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
         }
       }
 
+      // ── Markdown enrichment (only on real import, not dry-run) ─────────────
+      let mdResult: { processed: number; matched: number; unmatched: number; errors: string[] } | undefined;
+      if (!dryRun) {
+        const mdEntries = extractMarkdownEntries(req.file.buffer, req.file.originalname);
+        if (mdEntries.length > 0) {
+          mdResult = await processMdEntries(mdEntries);
+        }
+      }
+
       res.json({
         success: true,
         dryRun,
-        imported,
-        updated,
-        skipped,
-        total: rows.length,
-        errors: errors.slice(0, 30),
+        csv_import: { imported, updated, skipped, total: rows.length, errors: errors.slice(0, 30) },
+        markdown_import: mdResult ?? null,
         preview: dryRun ? results : undefined,
       });
     } catch (e: any) {
@@ -719,9 +958,16 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
+      let csvBuf: Buffer;
+      try {
+        csvBuf = extractCsvBuffer(req.file.buffer, req.file.originalname);
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
+
       let rows: Record<string, string>[];
       try {
-        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+        rows = csvParse(csvBuf, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
       } catch (e: any) {
         return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
       }
@@ -1201,7 +1447,21 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
         }
       }
 
-      res.json({ success: true, imported, updated, skipped, total: rows.length, errors: errors.slice(0, 20) });
+      // ── Markdown enrichment ──────────────────────────────────────────────────
+      const mdEntries = zip2.getEntries()
+        .filter(e => e.entryName.toLowerCase().endsWith(".md") && !e.isDirectory)
+        .map(e => ({ entryName: e.entryName, content: e.getData().toString("utf8") }));
+
+      let mdResult: { processed: number; matched: number; unmatched: number; errors: string[] } | undefined;
+      if (mdEntries.length > 0) {
+        mdResult = await processMdEntries(mdEntries);
+      }
+
+      res.json({
+        success: true,
+        csv_import: { imported, updated, skipped, total: rows.length, errors: errors.slice(0, 20) },
+        markdown_import: mdResult ?? null,
+      });
     } catch (e: any) {
       res.status(500).json({ message: `Auto-import failed: ${e.message}` });
     }

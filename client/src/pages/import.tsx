@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 type ImportResult = {
   success: boolean;
   dryRun?: boolean;
+  // Flat fields (legacy endpoints)
   imported?: number;
   updated?: number;
   created?: number;
@@ -31,6 +32,9 @@ type ImportResult = {
   total?: number;
   errors?: string[];
   preview?: any[];
+  // Structured fields (TSO import)
+  csv_import?: { imported: number; updated: number; skipped: number; total: number; errors: string[] };
+  markdown_import?: { processed: number; matched: number; unmatched: number; errors: string[] } | null;
 };
 
 type PreviewResult = {
@@ -165,8 +169,13 @@ function PreviewTable({ data, headers, maxCols = 6 }: { data: Record<string, any
 // ─── Import result banner ─────────────────────────────────────────────────────
 
 function ResultBanner({ result }: { result: ImportResult }) {
-  const totalImported = result.imported ?? result.tsoCreated ?? 0;
-  const totalUpdated = result.updated ?? result.tsoExisted ?? 0;
+  const csv = result.csv_import;
+  const md = result.markdown_import;
+  const totalImported = csv?.imported ?? result.imported ?? result.tsoCreated ?? 0;
+  const totalUpdated = csv?.updated ?? result.updated ?? result.tsoExisted ?? 0;
+  const totalSkipped = csv?.skipped ?? result.skipped ?? 0;
+  const totalRows = csv?.total ?? result.total;
+  const allErrors = [...(csv?.errors ?? result.errors ?? [])];
   return (
     <Alert className={`${result.dryRun ? "border-blue-200 bg-blue-50 dark:bg-blue-950/20" : "border-green-200 bg-green-50 dark:bg-green-950/20"}`}>
       <CheckCircle2 className={`h-4 w-4 ${result.dryRun ? "text-blue-600" : "text-green-600"}`} />
@@ -176,18 +185,25 @@ function ResultBanner({ result }: { result: ImportResult }) {
         </p>
         <div className="flex flex-wrap gap-3 mt-1.5 text-sm">
           {totalImported > 0 && <span className="text-green-600">✓ {totalImported} new</span>}
-          {totalUpdated > 0 && <span className="text-blue-600">↺ {totalUpdated} updated/existed</span>}
-          {(result.updated ?? 0) > 0 && result.updated !== totalUpdated && <span className="text-blue-600">↺ {result.updated} updated</span>}
+          {totalUpdated > 0 && <span className="text-blue-600">↺ {totalUpdated} updated</span>}
           {(result.showsCreated ?? 0) > 0 && <span className="text-green-600">✓ {result.showsCreated} shows</span>}
           {(result.tasksCreated ?? 0) > 0 && <span className="text-green-600">✓ {result.tasksCreated} tasks</span>}
-          {(result.skipped ?? 0) > 0 && <span className="text-orange-500">⚠ {result.skipped} skipped</span>}
-          {result.total && <span className="text-muted-foreground">of {result.total} rows</span>}
+          {totalSkipped > 0 && <span className="text-orange-500">⚠ {totalSkipped} skipped</span>}
+          {totalRows != null && <span className="text-muted-foreground">of {totalRows} rows</span>}
         </div>
-        {result.errors && result.errors.length > 0 && (
+        {md != null && (
+          <div className="flex flex-wrap gap-3 mt-1 text-sm border-t border-current/10 pt-1">
+            <span className="text-muted-foreground text-xs font-medium">Markdown enrichment:</span>
+            <span className="text-green-600 text-xs">✓ {md.matched} enriched</span>
+            {md.unmatched > 0 && <span className="text-orange-500 text-xs">⚠ {md.unmatched} unmatched</span>}
+            <span className="text-muted-foreground text-xs">({md.processed} files)</span>
+          </div>
+        )}
+        {allErrors.length > 0 && (
           <details className="mt-2">
-            <summary className="text-orange-600 cursor-pointer text-sm">{result.errors.length} error(s)</summary>
+            <summary className="text-orange-600 cursor-pointer text-sm">{allErrors.length} error(s)</summary>
             <ul className="mt-1 space-y-0.5 text-xs text-orange-500 max-h-32 overflow-y-auto">
-              {result.errors.map((e, i) => <li key={i}>{e}</li>)}
+              {allErrors.map((e, i) => <li key={i}>{e}</li>)}
             </ul>
           </details>
         )}
@@ -238,7 +254,7 @@ function TsoImportSection() {
   return (
     <div className="space-y-4">
       <DropZone
-        accept=".csv"
+        accept=".csv,.zip"
         onFile={handleFile}
         loading={loading}
         fileName={file?.name}

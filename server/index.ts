@@ -33,13 +33,18 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],   // unsafe-inline required by Vite/FullCalendar
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
         imgSrc: ["'self'", "data:", "blob:"],
         connectSrc: ["'self'", "ws:", "wss:"],
+        frameAncestors: ["'none'"],   // blocks clickjacking
+        baseUri: ["'self'"],           // prevents <base> tag injection
+        formAction: ["'self'"],        // forms can only submit to own origin
       },
     },
+    frameguard: { action: "deny" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   })
 );
 
@@ -70,7 +75,7 @@ const pgStore = connectPg(session);
 app.set("trust proxy", 1);
 app.use(
   session({
-    name: "pokepulse.sid",
+    name: "sid",
     store: new pgStore({
       conString: process.env.DATABASE_URL,
       createTableIfMissing: true,
@@ -82,7 +87,7 @@ app.use(
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: "strict",
       maxAge: 8 * 60 * 60 * 1000, // 8 hours (working day session)
     },
   })

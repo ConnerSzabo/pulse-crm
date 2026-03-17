@@ -282,8 +282,14 @@ async function seedData() {
   const bcrypt = await import("bcrypt");
   const existing = await db.select().from(users).where(eq(users.username, "admin"));
   if (existing.length === 0) {
-    const hash = await bcrypt.hash("admin123", 10);
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword) {
+      console.error("WARNING: ADMIN_PASSWORD env var is not set. Admin user NOT created. Set ADMIN_PASSWORD to enable first-time login.");
+      return;
+    }
+    const hash = await bcrypt.hash(adminPassword, 12);
     await db.insert(users).values({ username: "admin", password: hash });
+    console.log("Admin user created from ADMIN_PASSWORD env var.");
   }
 }
 

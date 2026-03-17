@@ -95,6 +95,7 @@ export const contacts = pgTable("contacts", {
   name: text("name"),
   phone: text("phone"),
   role: text("role"),
+  igHandle: text("ig_handle"),
   lastContactDate: timestamp("last_contact_date"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pokepulse-crm": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp",
+      "headers": {
+        "X-Api-Key": "${MCP_API_KEY}"
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { LogOut, Bell, ChevronDown } from "lucide-react";
+import { LogOut } from "lucide-react";
 import Login from "@/pages/login";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,6 +19,7 @@ const ShowsPage = lazy(() => import("@/pages/shows"));
 const ShowDetail = lazy(() => import("@/pages/show-detail"));
 const ContactsPage = lazy(() => import("@/pages/contacts"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
+const DealsPage = lazy(() => import("@/pages/deals"));
 const ImportPage = lazy(() => import("@/pages/import"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
@@ -45,6 +46,7 @@ function Router() {
         <Route path="/show/:id" component={ShowDetail} />
         <Route path="/contacts" component={ContactsPage} />
         <Route path="/tasks" component={TasksPage} />
+        <Route path="/deals" component={DealsPage} />
         <Route path="/import" component={ImportPage} />
         <Route component={NotFound} />
       </Switch>
@@ -54,24 +56,22 @@ function Router() {
 
 function TopNavBar({ onLogout, isLoggingOut }: { onLogout: () => void; isLoggingOut: boolean }) {
   return (
-    <header className="h-14 flex items-center justify-between px-6 flex-shrink-0 bg-white dark:bg-[#252936] border-b border-gray-200 dark:border-[#3d4254]">
-      <div className="flex-1" />
-      <div className="flex items-center gap-3">
+    <header
+      className="h-12 flex items-center justify-end px-5 flex-shrink-0 border-b"
+      style={{ background: "#0d1117", borderColor: "#1e2433" }}>
+      <div className="flex items-center gap-2">
         <ThemeToggle />
-        <button className="relative p-2 rounded-md transition-colors text-gray-500 dark:text-[#94a3b8] hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-[#2d3142]">
-          <Bell className="h-5 w-5" />
-        </button>
-        <div className="h-6 w-px bg-gray-200 dark:bg-[#3d4254]" />
+        <div className="h-5 w-px mx-1" style={{ background: "#1e2433" }} />
         <button
-          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-[#2d3142]"
+          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm transition-colors"
+          style={{ color: "#94a3b8" }}
           onClick={onLogout}
           disabled={isLoggingOut}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; (e.currentTarget as HTMLElement).style.color = "#f1f5f9"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "#94a3b8"; }}
         >
-          <div className="w-7 h-7 rounded-full bg-[#e91e8c] flex items-center justify-center">
-            <span className="text-xs font-semibold text-white">PP</span>
-          </div>
-          <span className="font-medium">{isLoggingOut ? "..." : "Conner"}</span>
-          <ChevronDown className="h-4 w-4 text-gray-400 dark:text-[#64748b]" />
+          <LogOut className="h-4 w-4" />
+          <span className="font-medium">{isLoggingOut ? "Signing out..." : "Sign out"}</span>
         </button>
       </div>
     </header>
@@ -95,11 +95,11 @@ function AuthenticatedApp() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#f5f8fa] dark:bg-[#1a1d29]">
+    <div className="flex h-screen w-full" style={{ background: "#0f1419" }}>
       <AppSidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopNavBar onLogout={handleLogout} isLoggingOut={isLoggingOut} />
-        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-[#1a1d29]">
+        <main className="flex-1 overflow-auto" style={{ background: "#0f1419" }}>
           <Router />
         </main>
       </div>

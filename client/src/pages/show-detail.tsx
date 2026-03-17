@@ -10,18 +10,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Edit2, Check, X, CalendarDays, MapPin, ListTodo, Plus } from "lucide-react";
+import { ArrowLeft, Edit2, Check, X, CalendarDays, MapPin, ListTodo, Plus, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
 const SHOW_STATUSES = ["Contacted", "In Conversation", "Sponsoring", "Confirmed", "Completed"];
 
 const statusColor: Record<string, string> = {
-  "Contacted": "bg-blue-100 text-blue-700",
-  "In Conversation": "bg-yellow-100 text-yellow-800",
-  "Sponsoring": "bg-green-100 text-green-700",
-  "Confirmed": "bg-purple-100 text-purple-700",
-  "Completed": "bg-gray-100 text-gray-600",
+  "Contacted":       "bg-blue-500/20 text-blue-300 border border-blue-500/30",
+  "In Conversation": "bg-amber-500/20 text-amber-300 border border-amber-500/30",
+  "Sponsoring":      "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30",
+  "Confirmed":       "bg-purple-500/20 text-purple-300 border border-purple-500/30",
+  "Completed":       "bg-slate-500/20 text-slate-400 border border-slate-500/30",
 };
 
 function EditableField({ label, value, onSave, type = "text" }: { label: string; value: string | null | undefined; onSave: (v: string) => void; type?: string }) {
@@ -125,10 +125,15 @@ export default function ShowDetail() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">{show.showName}</h1>
-              {show.tso && (
+              {show.tso ? (
                 <Link href={`/tso/${show.tso.id}`}>
-                  <p className="text-muted-foreground text-sm hover:text-[#e91e8c] cursor-pointer">{show.tso.name}</p>
+                  <span className="inline-flex items-center gap-1.5 mt-1 px-2.5 py-1 rounded-full text-xs font-medium bg-[#6366f1]/15 text-[#818cf8] border border-[#6366f1]/30 hover:bg-[#6366f1]/25 transition-colors cursor-pointer">
+                    <ExternalLink className="h-3 w-3" />
+                    {show.tso.name}
+                  </span>
                 </Link>
+              ) : (
+                <p className="text-muted-foreground text-sm mt-1">No TSO linked</p>
               )}
             </div>
           </div>
