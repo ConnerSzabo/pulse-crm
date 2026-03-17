@@ -4,3 +4,23 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment & secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Replit internals
+.replit.nix
+.config/
+.upm/
+.cache/
+replit.nix
+
+# Logs
+*.log
+npm-debug.log*
