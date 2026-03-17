@@ -38,7 +38,12 @@
       "Bash(while read:*)",
       "Bash(do grep:*)",
       "Bash(done)",
-      "Bash(find /home/runner/workspace -type f \\\\\\(-iname .env* \\\\\\))"
+      "Bash(find /home/runner/workspace -type f \\\\\\(-iname .env* \\\\\\))",
+      "Bash(ls /home/runner/workspace/.env*)",
+      "Bash(gh auth:*)",
+      "Bash(git --version)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ]
   }
 }
