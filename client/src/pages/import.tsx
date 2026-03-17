@@ -372,7 +372,7 @@ type ShowImportResult = ImportResult & {
 
 function ShowsImportSection() {
   const [file, setFile] = useState<File | null>(null);
-  const [zipPreview, setZipPreview] = useState<ShowZipPreview | null>(null);
+  const [preview, setPreview] = useState<{ totalRows: number; preview: any[] } | null>(null);
   const [result, setResult] = useState<ShowImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -380,18 +380,18 @@ function ShowsImportSection() {
   const previewMutation = useMutation({
     mutationFn: async (f: File) => {
       const fd = new FormData(); fd.append("file", f);
-      const res = await fetch("/api/import/shows-with-notes/preview", { method: "POST", body: fd, credentials: "include" });
+      const res = await fetch("/api/import/shows/preview", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message);
-      return res.json() as Promise<ShowZipPreview>;
+      return res.json();
     },
-    onSuccess: (data) => { setZipPreview(data); setError(null); },
+    onSuccess: (data) => { setPreview(data); setError(null); },
     onError: (e: Error) => setError(e.message),
   });
 
   const importMutation = useMutation({
     mutationFn: async (f: File) => {
       const fd = new FormData(); fd.append("file", f);
-      const res = await fetch("/api/import/shows-with-notes", { method: "POST", body: fd, credentials: "include" });
+      const res = await fetch("/api/import/shows", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) throw new Error((await res.json()).message);
       return res.json() as Promise<ShowImportResult>;
     },
@@ -399,129 +399,86 @@ function ShowsImportSection() {
     onError: (e: Error) => { setError(e.message); toast({ title: "Import failed", description: e.message, variant: "destructive" }); },
   });
 
-  const autoImportMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/import/shows-with-notes/auto", { method: "POST", credentials: "include" });
-      if (!res.ok) throw new Error((await res.json()).message);
-      return res.json() as Promise<ShowImportResult>;
-    },
-    onSuccess: (data) => { setResult(data); toast({ title: "Auto-import complete!" }); },
-    onError: (e: Error) => { setError(e.message); toast({ title: "Auto-import failed", description: e.message, variant: "destructive" }); },
-  });
-
   const handleFile = (f: File) => {
-    setFile(f); setZipPreview(null); setResult(null); setError(null);
+    setFile(f); setPreview(null); setResult(null); setError(null);
     previewMutation.mutate(f);
   };
 
-  const loading = previewMutation.isPending || importMutation.isPending || autoImportMutation.isPending;
+  const loading = previewMutation.isPending || importMutation.isPending;
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
-        <p className="font-medium">Upload <span className="font-mono">TSO_Shows_new.zip</span> (contains CSV + 145 markdown files)</p>
-        <p>The importer will automatically detect and merge data from both sources.</p>
-        <ul className="list-disc ml-4 mt-1 space-y-0.5">
-          <li>CSV (<code>_all.csv</code>) → 162 shows with City, Date, Status, TSO, Venue</li>
-          <li>Markdown files → supplement missing Venue/Status fields</li>
-          <li>TSO names matched against existing TSOs in your database</li>
-        </ul>
-      </div>
-
       <DropZone
-        accept=".zip"
+        accept=".csv,.zip"
         onFile={handleFile}
         loading={previewMutation.isPending}
         fileName={file?.name}
-        onClear={() => { setFile(null); setZipPreview(null); setResult(null); setError(null); }}
+        onClear={() => { setFile(null); setPreview(null); setResult(null); setError(null); }}
       />
 
-      {/* Zip detection summary */}
-      {zipPreview && (
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-          <p className="text-sm font-medium">Detected contents:</p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-              <span>CSV: <strong>{zipPreview.csvRows} shows</strong></span>
+      {preview && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium">{preview.totalRows} shows detected</p>
+          {preview.preview.length > 0 && (
+            <div className="rounded-lg border overflow-x-auto text-xs">
+              <table className="w-full">
+                <thead><tr className="border-b bg-muted/30">
+                  <th className="px-3 py-2 text-left">Show</th>
+                  <th className="px-3 py-2 text-left">TSO</th>
+                  <th className="px-3 py-2 text-left">Matched TSO</th>
+                  <th className="px-3 py-2 text-left">Date</th>
+                  <th className="px-3 py-2 text-left">City</th>
+                </tr></thead>
+                <tbody>
+                  {preview.preview.slice(0, 8).map((r: any, i: number) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="px-3 py-1.5 max-w-[160px] truncate">{r.showName}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground truncate">{r.csvTso}</td>
+                      <td className="px-3 py-1.5">
+                        {r.matchedTsoId
+                          ? <span className="text-green-600">{r.matchedTsoName}</span>
+                          : <span className="text-orange-500">No match</span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{r.date}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{r.city}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-              <span>Markdown: <strong>{zipPreview.mdFiles} files</strong></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Info className="h-3.5 w-3.5 text-blue-500" />
-              <span>TSOs in DB: <strong>{zipPreview.tsoCount}</strong></span>
-            </div>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <Button
-              size="sm"
-              className="bg-[#e91e8c] hover:bg-[#c0166e]"
-              onClick={() => file && importMutation.mutate(file)}
-              disabled={loading}
-            >
-              {importMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
-              Import {zipPreview.csvRows} Shows
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Auto-import button */}
-      {!file && !result && (
-        <div className="border-t pt-3">
-          <p className="text-xs text-muted-foreground mb-2">Or use the bundled file:</p>
+          )}
           <Button
-            variant="outline"
             size="sm"
-            onClick={() => autoImportMutation.mutate()}
+            className="bg-[#e91e8c] hover:bg-[#c0166e]"
+            onClick={() => file && importMutation.mutate(file)}
             disabled={loading}
-            className="border-[#e91e8c] text-[#e91e8c] hover:bg-[#e91e8c] hover:text-white"
           >
-            {autoImportMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
-            Auto-Import TSO_Shows_new.zip
+            {importMutation.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}
+            Import {preview.totalRows} Shows
           </Button>
         </div>
       )}
 
-      {/* Results */}
       {result && (
-        <div className="space-y-2">
-          <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20">
-            <CheckCircle2 className="h-4 w-4 text-green-600" />
-            <AlertDescription>
-              <p className="font-semibold text-green-700">Import complete!</p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm">
-                {(result.imported ?? 0) > 0 && <span className="text-green-600">✓ {result.imported} new shows</span>}
-                {(result.updated ?? 0) > 0 && <span className="text-blue-600">↺ {result.updated} updated</span>}
-                {(result.linked ?? 0) > 0 && <span className="text-purple-600">🔗 {result.linked} linked to TSOs</span>}
-                {(result.unlinked ?? 0) > 0 && <span className="text-orange-500">⚠ {result.unlinked} without TSO link</span>}
-              </div>
-              <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                {(result.csvRows ?? 0) > 0 && <span>CSV rows: {result.csvRows}</span>}
-                {(result.mdFiles ?? 0) > 0 && <span>Markdown files: {result.mdFiles}</span>}
-                {(result.total ?? 0) > 0 && <span>Total unique shows: {result.total}</span>}
-              </div>
-              {result.unlinkedShows && result.unlinkedShows.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-orange-600 cursor-pointer text-xs">Shows without TSO link ({result.unlinkedShows.length})</summary>
-                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground ml-3 max-h-32 overflow-y-auto">
-                    {result.unlinkedShows.map((s, i) => <li key={i}>• {s}</li>)}
-                  </ul>
-                </details>
-              )}
-              {result.errors && result.errors.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-red-600 cursor-pointer text-xs">{result.errors.length} error(s)</summary>
-                  <ul className="mt-1 space-y-0.5 text-xs text-red-500 ml-3 max-h-24 overflow-y-auto">
-                    {result.errors.map((e, i) => <li key={i}>{e}</li>)}
-                  </ul>
-                </details>
-              )}
-            </AlertDescription>
-          </Alert>
-        </div>
+        <Alert className="border-green-200 bg-green-50 dark:bg-green-950/20">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription>
+            <p className="font-semibold text-green-700">Import complete!</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-sm">
+              {(result.imported ?? 0) > 0 && <span className="text-green-600">✓ {result.imported} shows</span>}
+              {(result.linked ?? 0) > 0 && <span className="text-purple-600">{result.linked} linked to TSOs</span>}
+              {(result.unlinked ?? 0) > 0 && <span className="text-orange-500">⚠ {result.unlinked} without TSO</span>}
+            </div>
+            {result.unlinkedShows && result.unlinkedShows.length > 0 && (
+              <details className="mt-2">
+                <summary className="text-orange-600 cursor-pointer text-xs">Unlinked shows ({result.unlinkedShows.length})</summary>
+                <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground ml-3 max-h-32 overflow-y-auto">
+                  {result.unlinkedShows.map((s, i) => <li key={i}>• {s}</li>)}
+                </ul>
+              </details>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
       {error && <Alert variant="destructive"><AlertCircle className="h-4 w-4" /><AlertDescription>{error}</AlertDescription></Alert>}
     </div>
@@ -649,11 +606,11 @@ export default function ImportPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Building2 className="h-5 w-5 text-[#e91e8c]" />
-                Import TSOs — Outbound CRM
+                Import TSOs
               </CardTitle>
               <CardDescription>
-                Upload your <strong>TSOMASTEROUTBOUND CSV</strong>. Supports preview, dry run, and duplicate detection.
-                Existing TSOs will be updated; new ones will be created.
+                Upload any CSV or ZIP containing TSO data. Columns are auto-detected — just make sure there's a name column.
+                Existing TSOs are updated by name match; new ones are created.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -670,7 +627,7 @@ export default function ImportPage() {
                 Import Shows
               </CardTitle>
               <CardDescription>
-                Upload a Shows CSV. TSOs will be auto-linked by name from the "TSO" column.
+                Upload any CSV or ZIP containing show data. TSOs are auto-linked by name. Columns are auto-detected.
               </CardDescription>
             </CardHeader>
             <CardContent>

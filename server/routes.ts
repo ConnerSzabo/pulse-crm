@@ -29,6 +29,33 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 // Extracts CSV buffer from either a raw CSV file or a (possibly nested) ZIP file.
 // For zips, finds the first .csv entry (prefers ones matching "outbound" or "tso").
+// ─── Flexible column finder ───────────────────────────────────────────────────
+// Tries a list of candidate column names and falls back to the first non-empty value.
+function col(row: Record<string, string>, ...candidates: string[]): string {
+  for (const c of candidates) {
+    if (row[c]?.trim()) return row[c].trim();
+  }
+  return "";
+}
+
+// Find the TSO/vendor name from any CSV row regardless of column naming.
+function findTsoName(row: Record<string, string>): string {
+  const found = col(row,
+    "Vendor Name", "Name", "TSO Name", "TSO", "Company", "Company Name",
+    "Organization", "Organisation", "Business Name", "Title", "title",
+  );
+  if (found) return found;
+  // Last resort: first column value
+  const first = Object.values(row)[0];
+  return (first || "").trim();
+}
+
+// Find the show name from any CSV row.
+function findShowName(row: Record<string, string>): string {
+  return col(row, "Show Name", "show_name", "Show", "Event", "Event Name", "Name", "Title") ||
+    (Object.values(row)[0] || "").trim();
+}
+
 function extractCsvBuffer(fileBuffer: Buffer, originalName: string): Buffer {
   const isZip = originalName.toLowerCase().endsWith(".zip");
   if (!isZip) return fileBuffer;
@@ -854,7 +881,7 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
       }
 
       // Filter out blank rows
-      rows = rows.filter(r => (r["Vendor Name"] || "").trim());
+      rows = rows.filter(r => findTsoName(r));
 
       const dryRun = req.body.dryRun === "true" || req.query.dryRun === "true";
       const results: any[] = [];
@@ -863,47 +890,50 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const vendorName = (row["Vendor Name"] || "").trim();
+        const vendorName = findTsoName(row);
         if (!vendorName) continue;
 
         try {
-          // Parse dates
-          const followUpDate = parseFlexibleDate(row["Follow up date"]);
-          const nextShowDate = parseFlexibleDate(row["Agreed / Next Show Date"]);
+          // Parse dates — try multiple column name variants
+          const followUpDate = parseFlexibleDate(col(row, "Follow up date", "Follow Up Date", "Follow-up Date", "Followup Date", "follow_up_date"));
+          const nextShowDate = parseFlexibleDate(col(row, "Agreed / Next Show Date", "Next Show Date", "next_show_date", "Show Date", "Date"));
 
-          // Parse contact name/role — may be "Name — Role" or "Name" or "Name, Role"
-          const contactRaw = (row["Contact Name / Role"] || "").trim();
+          // Parse contact name/role
+          const contactRaw = col(row, "Contact Name / Role", "Contact Name", "Contact", "contact_name", "Main Contact");
 
           // Parse existing account boolean
-          const existingAccount = (row["Existing account or trial"] || "").trim().toUpperCase() === "Y";
+          const existingAccount = col(row, "Existing account or trial", "Existing Account", "existing_account").toUpperCase() === "Y";
 
-          // Parse shows per year — keep as text (has descriptive values like "4 (Feb, Apr XL, May, Nov)")
-          const showsPerYear = (row["Shows Per Year (2026)"] || "").trim() || undefined;
+          // Parse shows per year
+          const showsPerYear = col(row, "Shows Per Year (2026)", "Shows Per Year", "shows_per_year", "Shows/Year") || undefined;
 
-          // Priority — keep P1/P2/P3 as-is
-          const priority = (row["Priority"] || "").trim() || undefined;
+          // Priority
+          const priority = col(row, "Priority", "priority") || undefined;
 
-          // Status — map to our relationship_status values
-          const statusRaw = (row["Status"] || "").trim();
+          // Status
+          const statusRaw = col(row, "Status", "Relationship Status", "status");
           const relationshipStatus = mapCsvStatus(statusRaw);
 
           const tsoData = {
             name: vendorName,
             priority,
             relationshipStatus,
-            notes: (row["Notes"] || "").trim() || undefined,
-            email: (row["Contact Email"] || "").trim() || undefined,
-            contactNumber: (row["Contact Number"] || "").trim() || undefined,
-            igHandle: (row["IG Handle"] || "").trim() || undefined,
-            linkedin: (row["Linkedin"] || "").trim() || undefined,
+            notes: col(row, "Notes", "notes", "Note") || undefined,
+            email: col(row, "Contact Email", "Email", "email", "contact_email") || undefined,
+            phone: col(row, "Phone", "phone", "Phone Number", "Contact Number", "contact_number") || undefined,
+            contactNumber: col(row, "Contact Number", "contact_number", "Phone", "phone") || undefined,
+            igHandle: col(row, "IG Handle", "ig_handle", "Instagram", "Instagram Handle") || undefined,
+            linkedin: col(row, "Linkedin", "LinkedIn", "linkedin") || undefined,
             mainContactName: contactRaw || undefined,
-            sponsorInfo: (row["Sponsor Info"] || "").trim() || undefined,
-            estAnnualReach: (row["Est. Annual Reach"] || "").trim() || undefined,
-            profileLink: (row["Profile Link"] || "").trim() || undefined,
+            city: col(row, "City", "city", "Location", "location") || undefined,
+            website: col(row, "Website", "website", "URL", "url") || undefined,
+            sponsorInfo: col(row, "Sponsor Info", "sponsor_info", "Sponsorship Info") || undefined,
+            estAnnualReach: col(row, "Est. Annual Reach", "Annual Reach", "est_annual_reach") || undefined,
+            profileLink: col(row, "Profile Link", "profile_link", "Profile URL") || undefined,
             existingAccount,
             showsPerYear,
-            tsoEventCodes: (row["TSO Event Codes"] || "").trim() || undefined,
-            activitiesNotes: (row["Activities"] || "").trim() || undefined,
+            tsoEventCodes: col(row, "TSO Event Codes", "tso_event_codes", "Event Codes") || undefined,
+            activitiesNotes: col(row, "Activities", "activities_notes", "Activity Notes") || undefined,
             followUpDate: followUpDate ? followUpDate.toISOString().split("T")[0] : undefined,
             nextShowDate: nextShowDate ? nextShowDate.toISOString().split("T")[0] : undefined,
           };
@@ -976,13 +1006,13 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
         return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
       }
 
-      rows = rows.filter(r => (r["Vendor Name"] || "").trim());
+      rows = rows.filter(r => findTsoName(r));
       const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
       const preview = rows.slice(0, 8);
 
       // Check which TSOs already exist
       const previewWithStatus = await Promise.all(preview.map(async row => {
-        const name = (row["Vendor Name"] || "").trim();
+        const name = findTsoName(row);
         const existing = name ? await storage.findTsoByName(name) : null;
         return { ...row, _exists: !!existing, _existingId: existing?.id };
       }));
@@ -1022,17 +1052,23 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   app.post("/api/import/shows/preview", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      let csvBuf: Buffer;
+      try {
+        csvBuf = extractCsvBuffer(req.file.buffer, req.file.originalname);
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
       let rows: Record<string, string>[];
       try {
-        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+        rows = csvParse(csvBuf, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
       } catch (e: any) {
         return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
       }
-      rows = rows.filter(r => (r["Show Name"] || r["show_name"] || r["Show"] || "").trim());
+      rows = rows.filter(r => findShowName(r));
       const allTsos = await storage.getTsos();
       const preview = await Promise.all(rows.slice(0, 20).map(async row => {
-        const showName = (row["Show Name"] || row["show_name"] || row["Show"] || "").trim();
-        const csvTso = (row["TSO"] || row["tso"] || "").trim();
+        const showName = findShowName(row);
+        const csvTso = col(row, "TSO", "tso", "Organizer", "Organiser", "TSO Name", "Vendor");
         const { name: tsoName } = parseTsoName(csvTso);
         // Try matching
         let matchedTso: typeof allTsos[0] | undefined;
@@ -1070,13 +1106,19 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   app.post("/api/import/shows", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      let csvBuf: Buffer;
+      try {
+        csvBuf = extractCsvBuffer(req.file.buffer, req.file.originalname);
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
       let rows: Record<string, string>[];
       try {
-        rows = csvParse(req.file.buffer, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
+        rows = csvParse(csvBuf, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[];
       } catch (e: any) {
         return res.status(400).json({ message: `Invalid CSV: ${e.message}` });
       }
-      rows = rows.filter(r => (r["Show Name"] || r["show_name"] || r["Show"] || "").trim());
+      rows = rows.filter(r => findShowName(r));
       const dryRun = req.query.dryRun === "true";
       const allTsos = await storage.getTsos();
       let imported = 0, linked = 0, unlinked = 0;
@@ -1085,10 +1127,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
-        const showName = (row["Show Name"] || row["show_name"] || row["Show"] || "").trim();
+        const showName = findShowName(row);
         if (!showName) continue;
         try {
-          const csvTso = (row["TSO"] || row["tso"] || "").trim();
+          const csvTso = col(row, "TSO", "tso", "Organizer", "Organiser", "TSO Name", "Vendor");
           const { name: tsoName } = parseTsoName(csvTso);
           let tsoId: string | undefined;
           if (tsoName) {
@@ -1104,19 +1146,19 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
           }
           if (tsoId) linked++; else unlinked++;
           if (tsoId === undefined && unlinkedShows.length < 20) unlinkedShows.push(showName);
-          const showDate = parseFlexibleDate(row["Date"] || row["date"]);
-          const nextFollowup = parseFlexibleDate(row["Next Follow-Up"] || row["next_followup"] || row["Next Followup"]);
+          const showDate = parseFlexibleDate(col(row, "Date", "Show Date", "Event Date", "date"));
+          const nextFollowup = parseFlexibleDate(col(row, "Next Follow-Up", "next_followup", "Next Followup", "Follow Up Date"));
           if (!dryRun) {
             await storage.createShow({
               showName,
               tsoId: tsoId || undefined,
               showDate: showDate ? showDate.toISOString().split("T")[0] : undefined,
-              city: row["City"] || row["city"] || undefined,
-              venue: row["Venue"] || row["venue"] || undefined,
-              status: mapShowStatus(row["Status"] || row["status"]),
+              city: col(row, "City", "city", "Location", "location") || undefined,
+              venue: col(row, "Venue", "venue", "Venue Name") || undefined,
+              status: mapShowStatus(col(row, "Status", "status")),
               nextFollowupDate: nextFollowup ? nextFollowup.toISOString().split("T")[0] : undefined,
-              attendingTso: row["Attending TSO"] || row["attending_tso"] || undefined,
-              notes: row["Notes"] || row["notes"] || undefined,
+              attendingTso: col(row, "Attending TSO", "attending_tso") || undefined,
+              notes: col(row, "Notes", "notes", "Note") || undefined,
             });
           }
           imported++;
