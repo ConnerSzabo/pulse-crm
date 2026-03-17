@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName } from "./storage";
+import { mcpApiKeyGuard, mcpHandler } from "./mcp";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
@@ -292,6 +293,9 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     if (req.session.userId) res.json({ authenticated: true, username: req.session.username });
     else res.json({ authenticated: false });
   });
+
+  // ─── MCP ──────────────────────────────────────────────────────────────────
+  app.post("/mcp", mcpApiKeyGuard, mcpHandler);
 
   // ─── TSOs ─────────────────────────────────────────────────────────────────
 

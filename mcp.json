@@ -2,7 +2,7 @@
   "mcpServers": {
     "pokepulse-crm": {
       "type": "http",
-      "url": "http://localhost:3001/mcp",
+      "url": "https://<your-replit-url>/mcp",
       "headers": {
         "X-Api-Key": "${MCP_API_KEY}"
       }
