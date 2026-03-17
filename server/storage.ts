@@ -291,6 +291,19 @@ async function seedData() {
     await db.insert(users).values({ username: "admin", password: hash });
     console.log("Admin user created from ADMIN_PASSWORD env var.");
   }
+
+  // One-time password reset: set RESET_USERNAME and RESET_PASSWORD env vars to trigger
+  const resetUsername = process.env.RESET_USERNAME;
+  const resetPassword = process.env.RESET_PASSWORD;
+  if (resetUsername && resetPassword) {
+    const hash = await bcrypt.hash(resetPassword, 12);
+    const result = await db.update(users).set({ password: hash }).where(eq(users.username, resetUsername)).returning({ username: users.username });
+    if (result.length > 0) {
+      console.log(`Password reset for user '${resetUsername}' completed via RESET_USERNAME/RESET_PASSWORD env vars.`);
+    } else {
+      console.warn(`Password reset attempted for '${resetUsername}' but no such user found.`);
+    }
+  }
 }
 
 // Attach seedData to storage export
