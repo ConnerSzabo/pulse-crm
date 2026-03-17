@@ -211,7 +211,17 @@ async function runPostStartupTasks() {
     console.error("WARNING: Database connection test error:", err);
   }
 
-  // 2. Seed admin user if needed
+  // 2. Push schema (create/update tables) — runs on every startup so Railway never needs a separate build step
+  try {
+    log("Pushing database schema...");
+    const { execSync } = await import("child_process");
+    execSync("npx drizzle-kit push --force", { stdio: "inherit", cwd: process.cwd() });
+    log("Database schema up to date.");
+  } catch (err) {
+    console.error("WARNING: Schema push failed (non-fatal):", err);
+  }
+
+  // 3. Seed admin user if needed
   try {
     await (storage as any).seedData();
     log("Seed data initialized.");
