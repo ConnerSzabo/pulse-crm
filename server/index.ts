@@ -24,8 +24,12 @@ if (!process.env.SESSION_SECRET) {
 const app = express();
 const httpServer = createServer(app);
 
-// Enable gzip compression for all responses
-app.use(compression());
+// Enable gzip compression — skip /mcp so the MCP transport's SSE streams
+// are never gzip-encoded (compression buffers chunks and adds Content-Encoding:
+// gzip, which breaks SSE clients and MCP plugin systems).
+app.use(compression({
+  filter: (req, res) => req.path === "/mcp" ? false : compression.filter(req, res),
+}));
 
 // Security headers
 app.use(

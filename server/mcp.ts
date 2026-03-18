@@ -209,7 +209,13 @@ export async function mcpHandler(req: Request, res: Response) {
   // Fresh server + transport per request — stateless HTTP pattern.
   // Avoids "Server already connected" on the 2nd+ request.
   const server = createMcpServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    // Return plain application/json instead of an SSE stream for POST responses.
+    // This is spec-compliant and far more compatible with plugin systems that
+    // don't handle SSE parsing correctly (or can't cope with gzip-encoded SSE).
+    enableJsonResponse: true,
+  });
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
