@@ -31,9 +31,13 @@ app.use(compression({
   filter: (req, res) => req.path.startsWith("/mcp") ? false : compression.filter(req, res),
 }));
 
-// Security headers (applied to all non-MCP routes)
+// Security headers — helmet runs on every route.
+// /mcp/* overrides crossOriginResourcePolicy to "cross-origin" so that
+// the Cowork Electron app (and any other cross-origin MCP client) can
+// load the SSE stream and JSON-RPC responses. All other routes keep the
+// default "same-origin" policy.
 app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.path.startsWith("/mcp")) return next();
+  const isMcp = req.path.startsWith("/mcp");
   helmet({
     contentSecurityPolicy: {
       directives: {
@@ -48,18 +52,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
         formAction: ["'self'"],        // forms can only submit to own origin
       },
     },
+    crossOriginResourcePolicy: { policy: isMcp ? "cross-origin" : "same-origin" },
     frameguard: { action: "deny" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   })(req, res, next);
-});
-
-// MCP routes need permissive CORS headers only — no helmet restrictions
-// (Cross-Origin-Resource-Policy: same-origin from helmet blocks Anthropic's
-// cloud proxy from loading the SSE stream or JSON-RPC responses).
-app.use("/mcp", (req: Request, res: Response, next: NextFunction) => {
-  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  next();
 });
 
 // Login-specific rate limiter: 10 attempts per 15 minutes per IP
