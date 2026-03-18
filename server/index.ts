@@ -31,8 +31,9 @@ app.use(compression({
   filter: (req, res) => req.path.startsWith("/mcp") ? false : compression.filter(req, res),
 }));
 
-// Security headers
-app.use(
+// Security headers (applied to all non-MCP routes)
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith("/mcp")) return next();
   helmet({
     contentSecurityPolicy: {
       directives: {
@@ -49,8 +50,17 @@ app.use(
     },
     frameguard: { action: "deny" },
     referrerPolicy: { policy: "strict-origin-when-cross-origin" },
-  })
-);
+  })(req, res, next);
+});
+
+// MCP routes need permissive CORS headers only — no helmet restrictions
+// (Cross-Origin-Resource-Policy: same-origin from helmet blocks Anthropic's
+// cloud proxy from loading the SSE stream or JSON-RPC responses).
+app.use("/mcp", (req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  next();
+});
 
 // Login-specific rate limiter: 10 attempts per 15 minutes per IP
 export const loginLimiter = rateLimit({
