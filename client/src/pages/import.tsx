@@ -596,9 +596,6 @@ export default function ImportPage() {
           <TabsTrigger value="tasks" className="gap-2">
             <ListTodo className="h-4 w-4" /> Tasks
           </TabsTrigger>
-          <TabsTrigger value="auto" className="gap-2">
-            <Upload className="h-4 w-4" /> Auto
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="tsos">
@@ -649,24 +646,6 @@ export default function ImportPage() {
             </CardHeader>
             <CardContent>
               <TasksImportSection />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="auto">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Upload className="h-5 w-5 text-blue-500" />
-                Auto-Import from Bundled File
-              </CardTitle>
-              <CardDescription>
-                Imports the TSOMASTEROUTBOUND data directly from the zip file already on the server.
-                No file upload needed.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AutoImportSection />
             </CardContent>
           </Card>
         </TabsContent>

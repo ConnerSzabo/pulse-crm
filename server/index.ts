@@ -156,20 +156,23 @@ app.get("/health", (_req, res) => {
 
 (async () => {
   try {
-    // Create sessions table before anything uses it
+    // ── Database setup (all awaited before server opens) ──────────────────────
+    // 1. Sessions table — must exist before any request can log in
     await ensureSessionsTable();
 
+    // 2. App schema — must exist before login queries hit the users table
+    await pushSchema();
+
+    // 3. Seed admin user — must exist before first login
+    await seedAdminUser();
+
+    // ── Routes & middleware ───────────────────────────────────────────────────
     registerRoutes(httpServer, app);
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       const status = err.status || err.statusCode || 500;
-
       console.error("Internal Server Error:", err);
-
-      if (res.headersSent) {
-        return next(err);
-      }
-
+      if (res.headersSent) return next(err);
       const message = status >= 500 ? "Internal Server Error" : (err.message || "Internal Server Error");
       return res.status(status).json({ message });
     });
@@ -181,20 +184,11 @@ app.get("/health", (_req, res) => {
       await setupVite(httpServer, app);
     }
 
+    // ── Listen ────────────────────────────────────────────────────────────────
     const port = parseInt(process.env.PORT || "5000", 10);
-    httpServer.listen(
-      {
-        port,
-        host: "0.0.0.0",
-        reusePort: true,
-      },
-      () => {
-        log(`serving on port ${port}`);
-
-        // All DB operations run AFTER server is listening — never block port binding
-        runPostStartupTasks();
-      },
-    );
+    httpServer.listen({ port, host: "0.0.0.0" }, () => {
+      log(`serving on port ${port}`);
+    });
   } catch (error) {
     console.error("FATAL: Server startup failed:", error);
     process.exit(1);
@@ -221,35 +215,23 @@ async function ensureSessionsTable() {
   }
 }
 
-async function runPostStartupTasks() {
-  // 1. Test database connection
+async function pushSchema() {
+  log("Pushing database schema...");
   try {
-    log("Testing database connection...");
-    const dbConnected = await testConnection();
-    if (!dbConnected) {
-      console.error("WARNING: Database connection test failed.");
-    }
-  } catch (err) {
-    console.error("WARNING: Database connection test error:", err);
-  }
-
-  // 2. Push schema (create/update tables) — runs on every startup so Railway never needs a separate build step
-  try {
-    log("Pushing database schema...");
     const { execSync } = await import("child_process");
     execSync("npx drizzle-kit push --force", { stdio: "inherit", cwd: process.cwd() });
     log("Database schema up to date.");
   } catch (err) {
-    console.error("WARNING: Schema push failed (non-fatal):", err);
+    // Non-fatal: tables may already be correct; log and continue
+    console.error("WARNING: Schema push failed:", err);
   }
+}
 
-  // 3. Seed admin user if needed
+async function seedAdminUser() {
   try {
     await (storage as any).seedData();
-    log("Seed data initialized.");
+    log("Seed data ready.");
   } catch (err) {
-    console.error("WARNING: Seed data failed (non-fatal):", err);
+    console.error("WARNING: Seed data failed:", err);
   }
-
-  log("Post-startup tasks completed.");
 }

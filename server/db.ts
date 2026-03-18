@@ -5,8 +5,8 @@ import * as schema from "@shared/schema";
 const { Pool } = pg;
 
 if (!process.env.DATABASE_URL) {
-  console.error("ERROR: DATABASE_URL environment variable is not set");
-  console.error("Please set DATABASE_URL in your environment or Replit secrets");
+  console.error("FATAL: DATABASE_URL environment variable is not set");
+  console.error("Set DATABASE_URL in Railway → Variables to your PostgreSQL connection string.");
   process.exit(1);
 }
 

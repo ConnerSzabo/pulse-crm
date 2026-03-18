@@ -7,7 +7,7 @@
  * Configure in Claude Code:
  *   claude mcp add pokepulse-crm \
  *     --transport http \
- *     --url "https://<your-replit-url>/mcp" \
+ *     --url "https://<your-railway-url>/mcp" \
  *     --header "X-Api-Key: <MCP_API_KEY>"
  */
 
