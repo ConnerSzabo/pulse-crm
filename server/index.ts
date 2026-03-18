@@ -77,24 +77,32 @@ declare module "express-session" {
 // Session setup
 const pgStore = connectPg(session);
 app.set("trust proxy", 1);
-app.use(
-  session({
-    name: "sid",
-    store: new pgStore({
-      pool,
-      tableName: "sessions",
-    }),
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours (working day session)
-    },
-  })
-);
+
+// Build session middleware once so we can skip it for /mcp/* routes.
+// MCP clients authenticate via API key (X-Api-Key header or ?key= query param)
+// and have no session cookie — running the session store against every SSE
+// keepalive or message POST is wasteful and can produce unexpected 401s.
+const sessionMiddleware = session({
+  name: "sid",
+  store: new pgStore({
+    pool,
+    tableName: "sessions",
+  }),
+  secret: process.env.SESSION_SECRET!,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 8 * 60 * 60 * 1000, // 8 hours (working day session)
+  },
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith("/mcp")) return next();
+  return sessionMiddleware(req, res, next);
+});
 
 app.use(
   express.json({
