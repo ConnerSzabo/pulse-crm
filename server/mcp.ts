@@ -293,7 +293,10 @@ export async function mcpSseHandler(req: Request, res: Response) {
   res.flushHeaders();
 
   // Tell the client where to POST messages for this session.
-  const messagesUrl = `/mcp/messages?sessionId=${sessionId}`;
+  // Must be an absolute URL so clients outside the origin can resolve it.
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
+  const proto = req.headers["x-forwarded-proto"] ?? (req.secure ? "https" : "http");
+  const messagesUrl = `${proto}://${host}/mcp/messages?sessionId=${sessionId}`;
   res.write(`event: endpoint\ndata: ${messagesUrl}\n\n`);
 
   sseSessions.set(sessionId, res);
