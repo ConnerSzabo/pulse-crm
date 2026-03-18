@@ -335,7 +335,9 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   app.options("/mcp/sse", mcpCors);
   app.get("/mcp/sse", mcpCors, mcpApiKeyGuard, mcpSseHandler);
   app.options("/mcp/messages", mcpCors);
-  app.post("/mcp/messages", mcpCors, mcpApiKeyGuard, mcpMessagesHandler);
+  // No auth guard on /mcp/messages — the sessionId (nanoid) is the bearer token.
+  // Only clients who successfully authenticated to GET /mcp/sse can know it.
+  app.post("/mcp/messages", mcpCors, mcpMessagesHandler);
 
   // ─── TSOs ─────────────────────────────────────────────────────────────────
 
