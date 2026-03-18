@@ -209,12 +209,15 @@ async function ensureSessionsTable() {
         "sess" json NOT NULL,
         "expire" timestamp(6) NOT NULL,
         CONSTRAINT "sessions_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
-      );
-      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire");
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire")
     `);
     log("Sessions table ready.");
   } catch (err) {
-    console.error("WARNING: Could not create sessions table:", err);
+    console.error("FATAL: Could not create sessions table:", err);
+    // Sessions won't work — log clearly so Railway shows it in deployment logs
   }
 }
 

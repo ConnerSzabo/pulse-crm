@@ -5,6 +5,11 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
+# Large binary files — use cloud storage or Railway volumes instead
+*.zip
+*.xlsx
+*.csv
+
 # Environment & secrets
 .env
 .env.*
