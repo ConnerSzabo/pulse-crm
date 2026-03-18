@@ -1516,43 +1516,49 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
-  // ─── Full migration: reads the 3 uploaded files from project root ────────────
+  // ─── Full migration: accepts 3 file uploads ───────────────────────────────────
   //
-  // POST /api/import/full-migration
-  // Reads:
-  //   - "tso outbound final.zip"  → TSOs CSV + MD notes
-  //   - "tsoshows.zip"            → Shows CSV + MD notes
-  //   - "Condensed info.xlsx"     → Tasks (Actions Now), TSO enrichment (Full Pipeline, Budget)
+  // POST /api/import/full-migration  (multipart/form-data)
+  //   tsoZip   — tso outbound final.zip  → TSOs CSV + MD notes
+  //   showsZip — tsoshows.zip            → Shows CSV + MD notes
+  //   xlsx     — Condensed info.xlsx     → Tasks, TSO enrichment
   //
   // Merge strategy (never overwrites existing data):
   //   - TSOs: create if new; if exists, only fill fields that are currently null/empty
-  //   - Shows: uses existing processShowsZip (already merge-only)
-  //   - Tasks: dedup by title — skip if a task with same title already exists for that TSO
-  //   - TSO enrichment from Excel: only fills empty fields
+  //   - Shows: merge-only (city/venue/status/notes only filled if empty)
+  //   - Tasks: dedup by title — skip if same title already exists for that TSO
+  //   - TSO enrichment: only fills empty fields
   //
-  app.post("/api/import/full-migration", isAuthenticated, async (req, res) => {
-    const cwd = process.cwd();
-    const tsoZipPath   = join(cwd, "tso outbound final.zip");
-    const showZipPath  = join(cwd, "tsoshows.zip");
-    const xlsxPath     = join(cwd, "Condensed info.xlsx");
+  const migrationUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  app.post(
+    "/api/import/full-migration",
+    isAuthenticated,
+    migrationUpload.fields([
+      { name: "tsoZip",   maxCount: 1 },
+      { name: "showsZip", maxCount: 1 },
+      { name: "xlsx",     maxCount: 1 },
+    ]),
+    async (req, res) => {
+    const files = req.files as Record<string, Express.Multer.File[]> | undefined;
+    const tsoZipBuf   = files?.tsoZip?.[0]?.buffer;
+    const showsZipBuf = files?.showsZip?.[0]?.buffer;
+    const xlsxBuf     = files?.xlsx?.[0]?.buffer;
 
     const missing: string[] = [];
-    if (!existsSync(tsoZipPath))  missing.push("tso outbound final.zip");
-    if (!existsSync(showZipPath)) missing.push("tsoshows.zip");
-    if (!existsSync(xlsxPath))    missing.push("Condensed info.xlsx");
+    if (!tsoZipBuf)   missing.push("tsoZip (TSO outbound zip)");
+    if (!showsZipBuf) missing.push("showsZip (Shows zip)");
+    if (!xlsxBuf)     missing.push("xlsx (Condensed info Excel)");
     if (missing.length > 0) {
-      return res.status(404).json({
-        message: "Required files not found in project root. Upload them first.",
-        missing,
-      });
+      return res.status(400).json({ message: "Missing required files", missing });
     }
 
     const report: Record<string, any> = {};
     const allErrors: string[] = [];
 
-    // ── 1. TSOs from tso outbound final.zip ────────────────────────────────
+    // ── 1. TSOs from tso outbound zip ──────────────────────────────────────
     try {
-      const outerZip = new AdmZip(readFileSync(tsoZipPath));
+      const outerZip = new AdmZip(tsoZipBuf);
       const innerEntry = outerZip.getEntries().find(e => e.entryName.toLowerCase().endsWith(".zip"));
       const innerZip = innerEntry
         ? new AdmZip(outerZip.readFile(innerEntry.entryName) as Buffer)
@@ -1677,8 +1683,7 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
     // ── 2. Shows from tsoshows.zip ──────────────────────────────────────────
     try {
-      const showBuf = readFileSync(showZipPath);
-      const showResult = await processShowsZip(showBuf);
+      const showResult = await processShowsZip(showsZipBuf!);
       report.shows = showResult;
       allErrors.push(...showResult.errors);
     } catch (e: any) {
@@ -1688,7 +1693,7 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
 
     // ── 3. Excel enrichment from Condensed info.xlsx ────────────────────────
     try {
-      const wb = XLSX.readFile(xlsxPath);
+      const wb = XLSX.read(xlsxBuf, { type: "buffer" });
       const xlsxErrors: string[] = [];
       let tasksCreated = 0, tasksSkipped = 0;
       let tsoEnriched = 0;
@@ -1847,7 +1852,7 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
       report,
       errors: allErrors.slice(0, 50),
     });
-  });
+  }); // end full-migration
 
   return httpServer;
 }

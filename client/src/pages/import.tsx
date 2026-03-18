@@ -582,10 +582,18 @@ function AutoImportSection() {
 function FullMigrationSection() {
   const { toast } = useToast();
   const [result, setResult] = useState<any>(null);
+  const [tsoZip, setTsoZip]     = useState<File | null>(null);
+  const [showsZip, setShowsZip] = useState<File | null>(null);
+  const [xlsxFile, setXlsxFile] = useState<File | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/import/full-migration", { method: "POST" });
+      if (!tsoZip || !showsZip || !xlsxFile) throw new Error("All 3 files required");
+      const fd = new FormData();
+      fd.append("tsoZip",   tsoZip);
+      fd.append("showsZip", showsZip);
+      fd.append("xlsx",     xlsxFile);
+      const res = await fetch("/api/import/full-migration", { method: "POST", body: fd });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ message: res.statusText }));
         throw new Error(err.message || "Migration failed");
@@ -601,24 +609,37 @@ function FullMigrationSection() {
     },
   });
 
+  const ready = tsoZip && showsZip && xlsxFile;
+
   return (
     <div className="space-y-4">
-      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
-        <Info className="h-4 w-4 text-amber-600" />
-        <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
-          This reads <strong>tso outbound final.zip</strong>, <strong>tsoshows.zip</strong>, and <strong>Condensed info.xlsx</strong> directly from the project root on Railway. Existing records are never overwritten — only empty fields are filled in.
-        </AlertDescription>
-      </Alert>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">1. TSO Outbound ZIP</p>
+          <DropZone accept=".zip" onFile={setTsoZip} fileName={tsoZip?.name} onClear={() => setTsoZip(null)} loading={mutation.isPending} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">2. Shows ZIP</p>
+          <DropZone accept=".zip" onFile={setShowsZip} fileName={showsZip?.name} onClear={() => setShowsZip(null)} loading={mutation.isPending} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted-foreground">3. Condensed info.xlsx</p>
+          <DropZone accept=".xlsx" onFile={setXlsxFile} fileName={xlsxFile?.name} onClear={() => setXlsxFile(null)} loading={mutation.isPending} />
+        </div>
+      </div>
 
       <Button
         onClick={() => mutation.mutate()}
-        disabled={mutation.isPending}
+        disabled={mutation.isPending || !ready}
         className="bg-[#e91e8c] hover:bg-[#c4176f] text-white gap-2"
         size="lg"
       >
         {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
         {mutation.isPending ? "Running migration..." : "Run Full Migration"}
       </Button>
+      {!ready && !mutation.isPending && (
+        <p className="text-xs text-muted-foreground">Drop all 3 files above to enable migration.</p>
+      )}
 
       {result && (
         <div className="space-y-3">
@@ -699,7 +720,7 @@ export default function ImportPage() {
             Full Migration (Railway)
           </CardTitle>
           <CardDescription>
-            One-click import of all 3 uploaded files: TSO outbound ZIP, Shows ZIP, and Condensed info Excel. Reads files directly from the Railway server — no upload needed.
+            Drop all 3 files, then click Run. Merges everything into the CRM without overwriting existing data — only fills gaps.
           </CardDescription>
         </CardHeader>
         <CardContent>
