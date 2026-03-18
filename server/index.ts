@@ -162,11 +162,12 @@ app.get("/health", (_req, res) => {
     // 1. Verify DB is reachable before going further
     await testConnection();
 
-    // 2. Sessions table — must exist before any request can log in
-    await ensureSessionsTable();
-
-    // 3. App schema — must exist before login queries hit the users table
+    // 2. App schema — drizzle-kit push --force will drop unrecognised tables,
+    //    so the sessions table MUST be created after this runs.
     await pushSchema();
+
+    // 3. Sessions table — created after drizzle-kit so it isn't dropped by --force
+    await ensureSessionsTable();
 
     // 4. Seed admin user — must exist before first login
     await seedAdminUser();
