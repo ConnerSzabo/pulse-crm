@@ -36,10 +36,16 @@ const VALID_STATUSES = [
   "Ghosted / Disqualified",
 ] as const;
 
-/* ─── Build MCP server once at module load ───────────────── */
-const mcpServer = new McpServer({ name: "pokepulse-crm", version: "1.0.0" });
+/* ─── Factory: create a fresh McpServer per request ─────────
+ * McpServer.connect() binds a server to a single transport for
+ * its lifetime.  Calling connect() a second time on the same
+ * instance throws "Server already connected", so every stateless
+ * HTTP request must get its own McpServer + Transport pair.
+ * ────────────────────────────────────────────────────────── */
+function createMcpServer(): McpServer {
+  const server = new McpServer({ name: "pokepulse-crm", version: "1.0.0" });
 
-mcpServer.tool(
+  server.tool(
   "get_all_tsos",
   "Return every TSO record in the CRM including name, city, relationship status, priority, contact details, notes, next show date, and follow-up date.",
   {},
@@ -49,7 +55,7 @@ mcpServer.tool(
   },
 );
 
-mcpServer.tool(
+  server.tool(
   "get_tso_by_name",
   "Look up a TSO by name (case-insensitive partial match). Single match returns full record with activities, shows, tasks, and contacts.",
   { name: z.string().describe("Full or partial TSO name") },
@@ -85,7 +91,7 @@ mcpServer.tool(
   },
 );
 
-mcpServer.tool(
+  server.tool(
   "update_tso_status",
   `Update a TSO's relationship status. Valid values: ${VALID_STATUSES.join(", ")}`,
   {
@@ -119,7 +125,7 @@ mcpServer.tool(
   },
 );
 
-mcpServer.tool(
+  server.tool(
   "add_tso_note",
   "Add a note or activity log entry to a TSO. Appears in the TSO's activity timeline in the CRM.",
   {
@@ -153,7 +159,7 @@ mcpServer.tool(
   },
 );
 
-mcpServer.tool(
+  server.tool(
   "list_overdue_followups",
   "Return all TSOs whose follow-up date is today or overdue, sorted most overdue first.",
   {},
@@ -181,6 +187,9 @@ mcpServer.tool(
   },
 );
 
+  return server;
+}
+
 /* ─── Middleware + route handler (used by routes.ts) ─────── */
 export function mcpApiKeyGuard(req: Request, res: Response, next: NextFunction) {
   const key = process.env.MCP_API_KEY;
@@ -197,9 +206,12 @@ export function mcpApiKeyGuard(req: Request, res: Response, next: NextFunction) 
 }
 
 export async function mcpHandler(req: Request, res: Response) {
+  // Fresh server + transport per request — stateless HTTP pattern.
+  // Avoids "Server already connected" on the 2nd+ request.
+  const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   try {
-    await mcpServer.connect(transport);
+    await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (err) {
     console.error("MCP request error:", err);

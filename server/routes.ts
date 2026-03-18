@@ -325,7 +325,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   // ─── MCP ──────────────────────────────────────────────────────────────────
+  // Both POST (client→server messages) and GET (SSE / capability discovery)
+  // must be handled here so they never fall through to the SPA catch-all.
   app.post("/mcp", mcpApiKeyGuard, mcpHandler);
+  app.get("/mcp", mcpApiKeyGuard, mcpHandler);
 
   // ─── TSOs ─────────────────────────────────────────────────────────────────
 
