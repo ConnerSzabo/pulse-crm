@@ -190,11 +190,38 @@ function createMcpServer(): McpServer {
   return server;
 }
 
-/* ─── Middleware + route handler (used by routes.ts) ─────── */
+/* ─── CORS middleware ─────────────────────────────────────────
+ * Must run before the API-key guard so that:
+ *   1. CORS headers are present on every /mcp response (including 401s),
+ *      allowing desktop / Electron clients to read the error body.
+ *   2. OPTIONS preflight requests are answered with 204 immediately —
+ *      no API key required (browsers and Cowork send OPTIONS before the
+ *      real request and cannot include custom headers in the preflight).
+ * ────────────────────────────────────────────────────────── */
+export function mcpCors(req: Request, res: Response, next: NextFunction) {
+  // Allow any origin — /mcp is protected by API key, not by origin.
+  // Desktop apps (Electron / Cowork) send Origin: null or no Origin at all,
+  // so a wildcard is the only option that works universally.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Accept, X-Api-Key, Authorization, Mcp-Session-Id, Last-Event-ID",
+  );
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id, Content-Type");
+
+  // Preflight — respond immediately, no auth required.
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+}
+
+/* ─── API-key guard ───────────────────────────────────────── */
 export function mcpApiKeyGuard(req: Request, res: Response, next: NextFunction) {
   const key = process.env.MCP_API_KEY;
   if (!key) {
-    // MCP_API_KEY not configured — disable endpoint
     res.status(503).json({ error: "MCP endpoint is not configured on this server" });
     return;
   }
@@ -205,16 +232,16 @@ export function mcpApiKeyGuard(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
+/* ─── Request handler ─────────────────────────────────────── */
 export async function mcpHandler(req: Request, res: Response) {
   // Fresh server + transport per request — stateless HTTP pattern.
   // Avoids "Server already connected" on the 2nd+ request.
   const server = createMcpServer();
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
-    // Return plain application/json instead of an SSE stream for POST responses.
-    // This is spec-compliant and far more compatible with plugin systems that
-    // don't handle SSE parsing correctly (or can't cope with gzip-encoded SSE).
-    enableJsonResponse: true,
+    // enableJsonResponse is intentionally omitted (defaults to false) so the
+    // transport can return text/event-stream SSE when the client requests it.
+    // Compression is already excluded for /mcp, so SSE streaming is safe.
   });
   try {
     await server.connect(transport);
