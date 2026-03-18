@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, normalizeCompanyName } from "./storage";
-import { mcpCors, mcpApiKeyGuard, mcpHandler } from "./mcp";
+import { mcpCors, mcpApiKeyGuard, mcpHandler, mcpSseHandler, mcpMessagesHandler } from "./mcp";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { users } from "@shared/schema";
@@ -325,13 +325,17 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
   });
 
   // ─── MCP ──────────────────────────────────────────────────────────────────
-  // Middleware order matters:
-  //   mcpCors   → sets CORS headers + answers OPTIONS preflight (no auth)
-  //   mcpApiKeyGuard → enforces X-Api-Key on real requests
-  //   mcpHandler → delegates to StreamableHTTPServerTransport
-  app.options("/mcp", mcpCors);                          // preflight — no auth
-  app.post("/mcp", mcpCors, mcpApiKeyGuard, mcpHandler); // JSON-RPC messages
-  app.get("/mcp", mcpCors, mcpApiKeyGuard, mcpHandler);  // SSE stream
+  // ── MCP streamable-HTTP transport (POST + GET /mcp) ────────────────────────
+  app.options("/mcp", mcpCors);
+  app.post("/mcp", mcpCors, mcpApiKeyGuard, mcpHandler);
+  app.get("/mcp", mcpCors, mcpApiKeyGuard, mcpHandler);
+
+  // ── MCP SSE transport (GET /mcp/sse + POST /mcp/messages) ──────────────────
+  // API key accepted as X-Api-Key header OR ?key=... query param.
+  app.options("/mcp/sse", mcpCors);
+  app.get("/mcp/sse", mcpCors, mcpApiKeyGuard, mcpSseHandler);
+  app.options("/mcp/messages", mcpCors);
+  app.post("/mcp/messages", mcpCors, mcpApiKeyGuard, mcpMessagesHandler);
 
   // ─── TSOs ─────────────────────────────────────────────────────────────────
 

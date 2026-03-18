@@ -19,6 +19,12 @@ import { db } from "./db";
 import { tsos, activities } from "@shared/schema";
 import * as schema from "@shared/schema";
 import { eq, ilike, lte, isNotNull, and } from "drizzle-orm";
+import { nanoid } from "nanoid";
+
+// ─── SSE session store ────────────────────────────────────────────────────────
+// Maps sessionId → active SSE response object for the SSE transport.
+
+const sseSessions = new Map<string, Response>();
 
 // ─── Tool definitions (sent in tools/list) ────────────────────────────────────
 
@@ -189,8 +195,10 @@ export function mcpApiKeyGuard(req: Request, res: Response, next: NextFunction) 
     res.status(503).json({ error: "MCP endpoint is not configured on this server" });
     return;
   }
-  if (req.headers["x-api-key"] !== key) {
-    res.status(401).json({ error: "Unauthorized: invalid or missing X-Api-Key header" });
+  // Accept key via X-Api-Key header OR ?key= query param (useful for SSE URLs).
+  const provided = (req.headers["x-api-key"] as string | undefined) ?? (req.query.key as string | undefined);
+  if (provided !== key) {
+    res.status(401).json({ error: "Unauthorized: invalid or missing API key" });
     return;
   }
   next();
@@ -264,5 +272,94 @@ export async function mcpHandler(req: Request, res: Response) {
 
     default:
       return err(-32601, `Method not found: ${method}`);
+  }
+}
+
+// ─── SSE transport ─────────────────────────────────────────────────────────────
+//
+// Implements the MCP SSE transport spec:
+//   GET  /mcp/sse  → opens SSE stream, emits "endpoint" event with POST URL
+//   POST /mcp/messages?sessionId=<id> → client sends JSON-RPC here;
+//                                        server sends response via the SSE stream
+//
+// The API key may be passed as X-Api-Key header OR ?key=... query parameter.
+
+export async function mcpSseHandler(req: Request, res: Response) {
+  const sessionId = nanoid();
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  // Tell the client where to POST messages for this session.
+  const messagesUrl = `/mcp/messages?sessionId=${sessionId}`;
+  res.write(`event: endpoint\ndata: ${messagesUrl}\n\n`);
+
+  sseSessions.set(sessionId, res);
+
+  const keepAlive = setInterval(() => res.write(": ping\n\n"), 25_000);
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    sseSessions.delete(sessionId);
+  });
+}
+
+export async function mcpMessagesHandler(req: Request, res: Response) {
+  const sessionId = req.query.sessionId as string;
+  const sseRes = sseSessions.get(sessionId);
+
+  if (!sseRes) {
+    res.status(400).json({ error: "Unknown or expired session" });
+    return;
+  }
+
+  const body = req.body as { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
+  const id = body?.id ?? null;
+  const method = body?.method ?? "";
+
+  const send = (result: unknown) => {
+    sseRes.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id, result })}\n\n`);
+    res.status(202).end();
+  };
+  const sendErr = (code: number, message: string) => {
+    sseRes.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } })}\n\n`);
+    res.status(202).end();
+  };
+
+  if (method.startsWith("notifications/")) {
+    res.status(202).end();
+    return;
+  }
+
+  switch (method) {
+    case "initialize":
+      return send({
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "pokepulse-crm", version: "1.0.0" },
+      });
+
+    case "ping":
+      return send({});
+
+    case "tools/list":
+      return send({ tools: TOOLS });
+
+    case "tools/call": {
+      const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined;
+      const toolName = params?.name ?? "";
+      const toolArgs = params?.arguments ?? {};
+      try {
+        const result = await runTool(toolName, toolArgs);
+        return send({ content: [{ type: "text", text: JSON.stringify(result, null, 2) }] });
+      } catch (e: any) {
+        console.error("MCP SSE tool error:", e);
+        return sendErr(-32000, e?.message ?? "Tool execution failed");
+      }
+    }
+
+    default:
+      return sendErr(-32601, `Method not found: ${method}`);
   }
 }

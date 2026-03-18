@@ -28,7 +28,7 @@ const httpServer = createServer(app);
 // are never gzip-encoded (compression buffers chunks and adds Content-Encoding:
 // gzip, which breaks SSE clients and MCP plugin systems).
 app.use(compression({
-  filter: (req, res) => req.path === "/mcp" ? false : compression.filter(req, res),
+  filter: (req, res) => req.path.startsWith("/mcp") ? false : compression.filter(req, res),
 }));
 
 // Security headers
