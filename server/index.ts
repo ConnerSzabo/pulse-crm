@@ -7,7 +7,7 @@ import connectPg from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { testConnection } from "./db";
+import { testConnection, pool } from "./db";
 import { storage } from "./storage";
 
 // Validate required environment variables
@@ -77,7 +77,7 @@ app.use(
   session({
     name: "sid",
     store: new pgStore({
-      conString: process.env.DATABASE_URL,
+      pool,
       createTableIfMissing: true,
       tableName: "sessions",
     }),

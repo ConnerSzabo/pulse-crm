@@ -305,7 +305,10 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
       if (!valid) return res.status(401).json({ message: "Invalid username or password" });
       req.session.userId = user.id;
       req.session.username = user.username;
-      res.json({ message: "Login successful", username: user.username });
+      req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Session save failed" });
+        res.json({ message: "Login successful", username: user.username });
+      });
     } catch (e) {
       res.status(500).json({ message: "Login failed" });
     }

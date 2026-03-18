@@ -22,6 +22,7 @@ pool.on('error', (err) => {
   console.error('Unexpected database pool error:', err);
 });
 
+export { pool };
 export const db = drizzle(pool, { schema });
 
 // Test database connection
