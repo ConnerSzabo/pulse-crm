@@ -306,7 +306,7 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
       req.session.userId = user.id;
       req.session.username = user.username;
       req.session.save((err) => {
-        if (err) return res.status(500).json({ message: "Session save failed" });
+        if (err) console.error("Session save error:", err);
         res.json({ message: "Login successful", username: user.username });
       });
     } catch (e) {

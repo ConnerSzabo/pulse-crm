@@ -78,7 +78,6 @@ app.use(
     name: "sid",
     store: new pgStore({
       pool,
-      createTableIfMissing: true,
       tableName: "sessions",
     }),
     secret: process.env.SESSION_SECRET!,
@@ -157,6 +156,9 @@ app.get("/health", (_req, res) => {
 
 (async () => {
   try {
+    // Create sessions table before anything uses it
+    await ensureSessionsTable();
+
     registerRoutes(httpServer, app);
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
@@ -198,6 +200,23 @@ app.get("/health", (_req, res) => {
     process.exit(1);
   }
 })();
+
+async function ensureSessionsTable() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "sessions" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "sessions_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire");
+    `);
+    log("Sessions table ready.");
+  } catch (err) {
+    console.error("WARNING: Could not create sessions table:", err);
+  }
+}
 
 async function runPostStartupTasks() {
   // 1. Test database connection
