@@ -156,14 +156,19 @@ app.get("/health", (_req, res) => {
 
 (async () => {
   try {
+    log(`Starting up (NODE_ENV=${process.env.NODE_ENV}, PORT=${process.env.PORT ?? "5000"})`);
+
     // ── Database setup (all awaited before server opens) ──────────────────────
-    // 1. Sessions table — must exist before any request can log in
+    // 1. Verify DB is reachable before going further
+    await testConnection();
+
+    // 2. Sessions table — must exist before any request can log in
     await ensureSessionsTable();
 
-    // 2. App schema — must exist before login queries hit the users table
+    // 3. App schema — must exist before login queries hit the users table
     await pushSchema();
 
-    // 3. Seed admin user — must exist before first login
+    // 4. Seed admin user — must exist before first login
     await seedAdminUser();
 
     // ── Routes & middleware ───────────────────────────────────────────────────
@@ -219,11 +224,16 @@ async function pushSchema() {
   log("Pushing database schema...");
   try {
     const { execSync } = await import("child_process");
-    execSync("npx drizzle-kit push --force", { stdio: "inherit", cwd: process.cwd() });
+    // 60 s timeout prevents a hung DB connection from freezing startup forever
+    execSync("npx drizzle-kit push --force", {
+      stdio: "inherit",
+      cwd: process.cwd(),
+      timeout: 60_000,
+    });
     log("Database schema up to date.");
-  } catch (err) {
-    // Non-fatal: tables may already be correct; log and continue
-    console.error("WARNING: Schema push failed:", err);
+  } catch (err: any) {
+    // Non-fatal: if tables already exist drizzle-kit may exit non-zero; log and continue
+    console.error("WARNING: Schema push failed (app will still start):", err?.message ?? err);
   }
 }
 
