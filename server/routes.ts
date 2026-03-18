@@ -1516,6 +1516,339 @@ export function registerRoutes(httpServer: Server, app: Express): Server {
     }
   });
 
+  // ─── Full migration: reads the 3 uploaded files from project root ────────────
+  //
+  // POST /api/import/full-migration
+  // Reads:
+  //   - "tso outbound final.zip"  → TSOs CSV + MD notes
+  //   - "tsoshows.zip"            → Shows CSV + MD notes
+  //   - "Condensed info.xlsx"     → Tasks (Actions Now), TSO enrichment (Full Pipeline, Budget)
+  //
+  // Merge strategy (never overwrites existing data):
+  //   - TSOs: create if new; if exists, only fill fields that are currently null/empty
+  //   - Shows: uses existing processShowsZip (already merge-only)
+  //   - Tasks: dedup by title — skip if a task with same title already exists for that TSO
+  //   - TSO enrichment from Excel: only fills empty fields
+  //
+  app.post("/api/import/full-migration", isAuthenticated, async (req, res) => {
+    const cwd = process.cwd();
+    const tsoZipPath   = join(cwd, "tso outbound final.zip");
+    const showZipPath  = join(cwd, "tsoshows.zip");
+    const xlsxPath     = join(cwd, "Condensed info.xlsx");
+
+    const missing: string[] = [];
+    if (!existsSync(tsoZipPath))  missing.push("tso outbound final.zip");
+    if (!existsSync(showZipPath)) missing.push("tsoshows.zip");
+    if (!existsSync(xlsxPath))    missing.push("Condensed info.xlsx");
+    if (missing.length > 0) {
+      return res.status(404).json({
+        message: "Required files not found in project root. Upload them first.",
+        missing,
+      });
+    }
+
+    const report: Record<string, any> = {};
+    const allErrors: string[] = [];
+
+    // ── 1. TSOs from tso outbound final.zip ────────────────────────────────
+    try {
+      const outerZip = new AdmZip(readFileSync(tsoZipPath));
+      const innerEntry = outerZip.getEntries().find(e => e.entryName.toLowerCase().endsWith(".zip"));
+      const innerZip = innerEntry
+        ? new AdmZip(outerZip.readFile(innerEntry.entryName) as Buffer)
+        : outerZip;
+
+      // Find CSV (prefer non-_all.csv)
+      const csvEntries = innerZip.getEntries().filter(e => e.entryName.toLowerCase().endsWith(".csv"));
+      const csvEntry = csvEntries.find(e => !e.entryName.endsWith("_all.csv")) || csvEntries[0];
+      if (!csvEntry) throw new Error("No CSV found inside tso outbound final.zip");
+
+      const csvBuf = innerZip.readFile(csvEntry.entryName)!;
+      let tsoRows: Record<string, string>[] = (csvParse(csvBuf, {
+        columns: true, skip_empty_lines: true, trim: true, bom: true,
+      }) as Record<string, string>[]).filter(r => (r["Vendor Name"] || "").trim());
+
+      let tsoImported = 0, tsoUpdated = 0, tsoSkipped = 0;
+      const tsoErrors: string[] = [];
+
+      for (let i = 0; i < tsoRows.length; i++) {
+        const row = tsoRows[i];
+        const name = (row["Vendor Name"] || "").trim();
+        if (!name) continue;
+        try {
+          const followUpDate = parseFlexibleDate(row["Follow up date"]);
+          const nextShowDate = parseFlexibleDate(row["Agreed / Next Show Date"]);
+          const incoming = {
+            name,
+            priority:            (row["Priority"] || "").trim() || null,
+            relationshipStatus:  (row["Status"] || "").trim() || null,
+            notes:               (row["Notes"] || "").trim() || null,
+            email:               (row["Contact Email"] || "").trim() || null,
+            phone:               (row["Contact Number"] || "").trim() || null,
+            igHandle:            (row["IG Handle"] || "").trim() || null,
+            linkedin:            (row["Linkedin"] || "").trim() || null,
+            mainContactName:     (row["Contact Name / Role"] || "").trim() || null,
+            sponsorInfo:         (row["Sponsor Info"] || "").trim() || null,
+            estAnnualReach:      (row["Est. Annual Reach"] || "").trim() || null,
+            profileLink:         (row["Profile Link"] || "").trim() || null,
+            existingAccount:     (row["Existing account or trial"] || "").trim().toUpperCase() === "Y",
+            showsPerYear:        (row["Shows Per Year (2026)"] || "").trim() || null,
+            tsoEventCodes:       (row["TSO Event Codes"] || "").trim() || null,
+            activitiesNotes:     (row["Activities"] || "").trim() || null,
+            followUpDate:        followUpDate ? followUpDate.toISOString().split("T")[0] : null,
+            nextShowDate:        nextShowDate ? nextShowDate.toISOString().split("T")[0] : null,
+          };
+
+          const existing = await storage.findTsoByName(name);
+          if (existing) {
+            // Merge-only: only set fields that are currently null/empty
+            const updates: Record<string, any> = {};
+            if (!existing.priority          && incoming.priority)          updates.priority          = incoming.priority;
+            if (!existing.relationshipStatus && incoming.relationshipStatus) updates.relationshipStatus = incoming.relationshipStatus;
+            if (!existing.email             && incoming.email)             updates.email             = incoming.email;
+            if (!existing.phone             && incoming.phone)             updates.phone             = incoming.phone;
+            if (!existing.igHandle          && incoming.igHandle)          updates.igHandle          = incoming.igHandle;
+            if (!existing.linkedin          && incoming.linkedin)          updates.linkedin          = incoming.linkedin;
+            if (!existing.mainContactName   && incoming.mainContactName)   updates.mainContactName   = incoming.mainContactName;
+            if (!existing.sponsorInfo       && incoming.sponsorInfo)       updates.sponsorInfo       = incoming.sponsorInfo;
+            if (!existing.estAnnualReach    && incoming.estAnnualReach)    updates.estAnnualReach    = incoming.estAnnualReach;
+            if (!existing.profileLink       && incoming.profileLink)       updates.profileLink       = incoming.profileLink;
+            if (!existing.existingAccount   && incoming.existingAccount)   updates.existingAccount   = incoming.existingAccount;
+            if (!existing.showsPerYear      && incoming.showsPerYear)      updates.showsPerYear      = incoming.showsPerYear;
+            if (!existing.tsoEventCodes     && incoming.tsoEventCodes)     updates.tsoEventCodes     = incoming.tsoEventCodes;
+            if (!existing.activitiesNotes   && incoming.activitiesNotes)   updates.activitiesNotes   = incoming.activitiesNotes;
+            if (!existing.followUpDate      && incoming.followUpDate)      updates.followUpDate      = incoming.followUpDate;
+            if (!existing.nextShowDate      && incoming.nextShowDate)      updates.nextShowDate      = incoming.nextShowDate;
+            // Notes: append new content if not already present
+            if (incoming.notes) {
+              if (!existing.notes) {
+                updates.notes = incoming.notes;
+              } else if (!existing.notes.includes(incoming.notes.substring(0, 40))) {
+                updates.notes = existing.notes + "\n\n---\n\n" + incoming.notes;
+              }
+            }
+            if (Object.keys(updates).length > 0) {
+              await storage.updateTso(existing.id, updates as any);
+              tsoUpdated++;
+            } else {
+              tsoSkipped++;
+            }
+          } else {
+            await storage.createTso({
+              name: incoming.name,
+              priority:          incoming.priority ?? undefined,
+              relationshipStatus: incoming.relationshipStatus ?? undefined,
+              notes:             incoming.notes ?? undefined,
+              email:             incoming.email ?? undefined,
+              phone:             incoming.phone ?? undefined,
+              igHandle:          incoming.igHandle ?? undefined,
+              linkedin:          incoming.linkedin ?? undefined,
+              mainContactName:   incoming.mainContactName ?? undefined,
+              sponsorInfo:       incoming.sponsorInfo ?? undefined,
+              estAnnualReach:    incoming.estAnnualReach ?? undefined,
+              profileLink:       incoming.profileLink ?? undefined,
+              existingAccount:   incoming.existingAccount,
+              showsPerYear:      incoming.showsPerYear ?? undefined,
+              tsoEventCodes:     incoming.tsoEventCodes ?? undefined,
+              activitiesNotes:   incoming.activitiesNotes ?? undefined,
+              followUpDate:      incoming.followUpDate ?? undefined,
+              nextShowDate:      incoming.nextShowDate ?? undefined,
+            } as any);
+            tsoImported++;
+          }
+        } catch (e: any) {
+          tsoErrors.push(`TSO row ${i + 2} (${name}): ${e.message}`);
+        }
+      }
+
+      // MD enrichment — uses existing merge-only processMdEntries
+      const mdEntries = innerZip.getEntries()
+        .filter(e => e.entryName.toLowerCase().endsWith(".md") && !e.isDirectory && e.getData().length > 10)
+        .map(e => ({ entryName: e.entryName, content: e.getData().toString("utf8") }));
+      const mdResult = mdEntries.length > 0 ? await processMdEntries(mdEntries) : null;
+
+      report.tso_csv = { total: tsoRows.length, imported: tsoImported, updated: tsoUpdated, skipped: tsoSkipped, errors: tsoErrors };
+      report.tso_md  = mdResult ?? { processed: 0, matched: 0, unmatched: 0, errors: [] };
+      allErrors.push(...tsoErrors);
+    } catch (e: any) {
+      report.tso_csv = { error: e.message };
+      allErrors.push(`TSO zip: ${e.message}`);
+    }
+
+    // ── 2. Shows from tsoshows.zip ──────────────────────────────────────────
+    try {
+      const showBuf = readFileSync(showZipPath);
+      const showResult = await processShowsZip(showBuf);
+      report.shows = showResult;
+      allErrors.push(...showResult.errors);
+    } catch (e: any) {
+      report.shows = { error: e.message };
+      allErrors.push(`Shows zip: ${e.message}`);
+    }
+
+    // ── 3. Excel enrichment from Condensed info.xlsx ────────────────────────
+    try {
+      const wb = XLSX.readFile(xlsxPath);
+      const xlsxErrors: string[] = [];
+      let tasksCreated = 0, tasksSkipped = 0;
+      let tsoEnriched = 0;
+
+      // ── 3a. Actions Now → Tasks ──────────────────────────────────────────
+      const actionsSheet = wb.Sheets["🚨 Actions Now"];
+      if (actionsSheet) {
+        const actionsRows = XLSX.utils.sheet_to_json(actionsSheet, { defval: "" }) as Record<string, string>[];
+        const existingTasks = await storage.getTasks();
+        const existingTitles = new Set(existingTasks.map(t => t.title.toLowerCase().trim()));
+
+        for (const row of actionsRows) {
+          const title = (row["Action"] || "").toString().trim();
+          if (!title) continue;
+          if (existingTitles.has(title.toLowerCase())) { tasksSkipped++; continue; }
+
+          try {
+            const rawTso = (row["TSO"] || "").toString().trim();
+            const { name: tsoName } = parseTsoName(rawTso);
+            const tso = tsoName ? await storage.findTsoByName(tsoName) : null;
+            const dueDate = parseFlexibleDate((row["Deadline"] || "").toString());
+            const rawPriority = (row["#"] || "").toString();
+            const priority = mapPriority(rawPriority);
+            const notes = [
+              row["Notes"] ? `Notes: ${row["Notes"]}` : "",
+              row["Owner"] ? `Owner: ${row["Owner"]}` : "",
+              row["Status"] ? `Status: ${row["Status"]}` : "",
+            ].filter(Boolean).join("\n");
+
+            await storage.createTask({
+              title,
+              tsoId:    tso?.id ?? undefined,
+              priority,
+              status:   "To Do",
+              owner:    (row["Owner"] || "").toString().trim() || undefined,
+              notes:    notes || undefined,
+              dueDate:  dueDate ?? undefined,
+              taskType: "Action",
+            } as any);
+            existingTitles.add(title.toLowerCase());
+            tasksCreated++;
+          } catch (e: any) {
+            xlsxErrors.push(`Task "${title}": ${e.message}`);
+          }
+        }
+      }
+
+      // ── 3b. Full Pipeline → enrich TSOs ─────────────────────────────────
+      const pipelineSheet = wb.Sheets["📊 Full Pipeline"];
+      if (pipelineSheet) {
+        const pipelineRows = XLSX.utils.sheet_to_json(pipelineSheet, { defval: "" }) as Record<string, any>[];
+        for (const row of pipelineRows) {
+          const rawTso = (row["TSO"] || "").toString().trim();
+          if (!rawTso || rawTso === "TSO") continue;
+          const { name: tsoName } = parseTsoName(rawTso);
+          if (!tsoName) continue;
+          const existing = await storage.findTsoByName(tsoName);
+          if (!existing) continue;
+
+          const updates: Record<string, any> = {};
+          const region   = (row["Region"] || "").toString().trim();
+          const keyNote  = (row["Key Note"] || "").toString().trim();
+          const score    = (row["Score"] || "").toString().trim();
+          const contact  = (row["Contact"] || "").toString().trim();
+          const cost     = (row["Cost"] || "").toString().trim();
+          const vendorAccess = (row["Vendor Access"] || "").toString().trim();
+
+          // Append Excel pipeline insight as a note suffix if not already present
+          const pipelineNote = [
+            region     ? `Region: ${region}` : "",
+            score      ? `Score: ${score}` : "",
+            keyNote    ? `Key Note: ${keyNote}` : "",
+            cost       ? `Cost: ${cost}` : "",
+            vendorAccess ? `Vendor Access: ${vendorAccess}` : "",
+          ].filter(Boolean).join(" | ");
+
+          if (pipelineNote) {
+            if (!existing.notes) {
+              updates.notes = pipelineNote;
+            } else if (!existing.notes.includes(keyNote.substring(0, 30))) {
+              updates.notes = existing.notes + "\n\n[Pipeline]\n" + pipelineNote;
+            }
+          }
+          if (!existing.mainContactName && contact) updates.mainContactName = contact;
+          if (!existing.sponsorInfo && cost) updates.sponsorInfo = cost;
+
+          if (Object.keys(updates).length > 0) {
+            await storage.updateTso(existing.id, updates as any);
+            tsoEnriched++;
+          }
+        }
+      }
+
+      // ── 3c. Budget → enrich TSO sponsor info ────────────────────────────
+      const budgetSheet = wb.Sheets["💰 Budget"];
+      if (budgetSheet) {
+        const budgetRows = XLSX.utils.sheet_to_json(budgetSheet, { defval: "" }) as Record<string, any>[];
+        for (const row of budgetRows) {
+          const rawTso = (row["TSO"] || "").toString().trim();
+          // Skip header-like rows and summary rows
+          if (!rawTso || rawTso === "TSO" || rawTso.includes("TOTAL") || rawTso.includes("PENDING") || rawTso.includes("BUDGET") || rawTso.includes("Scenario") || rawTso.includes("Conservative") || rawTso.includes("Moderate") || rawTso.includes("Recommended") || rawTso.includes("Full commitment")) continue;
+          const { name: tsoName } = parseTsoName(rawTso);
+          if (!tsoName) continue;
+          const existing = await storage.findTsoByName(tsoName);
+          if (!existing) continue;
+
+          const deal      = (row["Deal"] || "").toString().trim();
+          const budgetNotes = (row["Notes / Sponsorship packages / Vendor & Attendee info"] || "").toString().trim();
+          const updates: Record<string, any> = {};
+
+          if (!existing.sponsorInfo && deal) updates.sponsorInfo = deal;
+          if (budgetNotes) {
+            const combined = deal ? `Deal: ${deal}\n\n${budgetNotes}` : budgetNotes;
+            if (!existing.notes) {
+              updates.notes = combined;
+            } else if (!existing.notes.includes(deal.substring(0, 20))) {
+              updates.notes = existing.notes + "\n\n[Budget]\n" + combined;
+            }
+          }
+          if (Object.keys(updates).length > 0) {
+            await storage.updateTso(existing.id, updates as any);
+            tsoEnriched++;
+          }
+        }
+      }
+
+      report.excel = {
+        sheets_processed: ["🚨 Actions Now", "📊 Full Pipeline", "💰 Budget"],
+        tasks_created: tasksCreated,
+        tasks_skipped: tasksSkipped,
+        tso_records_enriched: tsoEnriched,
+        errors: xlsxErrors,
+      };
+      allErrors.push(...xlsxErrors);
+    } catch (e: any) {
+      report.excel = { error: e.message };
+      allErrors.push(`Excel: ${e.message}`);
+    }
+
+    // ── Validation summary ─────────────────────────────────────────────────
+    const allTsos  = await storage.getTsos();
+    const allShows = await storage.getShows();
+    const allTasks = await storage.getTasks();
+    report.validation = {
+      total_tsos_in_db:   allTsos.length,
+      total_shows_in_db:  allShows.length,
+      total_tasks_in_db:  allTasks.length,
+      total_errors:       allErrors.length,
+    };
+
+    res.json({
+      success: allErrors.length === 0,
+      message: allErrors.length === 0
+        ? "Full migration complete — all data imported and merged."
+        : `Migration complete with ${allErrors.length} non-fatal error(s).`,
+      report,
+      errors: allErrors.slice(0, 50),
+    });
+  });
+
   return httpServer;
 }
 

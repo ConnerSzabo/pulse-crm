@@ -577,6 +577,112 @@ function AutoImportSection() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── Full Migration Section ───────────────────────────────────────────────────
+
+function FullMigrationSection() {
+  const { toast } = useToast();
+  const [result, setResult] = useState<any>(null);
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/import/full-migration", { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: res.statusText }));
+        throw new Error(err.message || "Migration failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setResult(data);
+      toast({ title: data.success ? "Migration complete" : "Migration complete with errors", description: data.message });
+    },
+    onError: (e: any) => {
+      toast({ title: "Migration failed", description: e.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+        <Info className="h-4 w-4 text-amber-600" />
+        <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+          This reads <strong>tso outbound final.zip</strong>, <strong>tsoshows.zip</strong>, and <strong>Condensed info.xlsx</strong> directly from the project root on Railway. Existing records are never overwritten — only empty fields are filled in.
+        </AlertDescription>
+      </Alert>
+
+      <Button
+        onClick={() => mutation.mutate()}
+        disabled={mutation.isPending}
+        className="bg-[#e91e8c] hover:bg-[#c4176f] text-white gap-2"
+        size="lg"
+      >
+        {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+        {mutation.isPending ? "Running migration..." : "Run Full Migration"}
+      </Button>
+
+      {result && (
+        <div className="space-y-3">
+          <Alert className={result.success ? "border-green-300 bg-green-50" : "border-yellow-300 bg-yellow-50"}>
+            <AlertDescription className="font-medium text-sm">{result.message}</AlertDescription>
+          </Alert>
+
+          {/* TSO CSV */}
+          {result.report?.tso_csv && !result.report.tso_csv.error && (
+            <div className="rounded-lg border p-3 text-sm space-y-1">
+              <p className="font-semibold text-[#e91e8c]">TSOs (CSV)</p>
+              <p>Total rows: {result.report.tso_csv.total} &nbsp;|&nbsp; Created: {result.report.tso_csv.imported} &nbsp;|&nbsp; Updated: {result.report.tso_csv.updated} &nbsp;|&nbsp; Skipped (no changes): {result.report.tso_csv.skipped}</p>
+            </div>
+          )}
+
+          {/* TSO MD */}
+          {result.report?.tso_md && result.report.tso_md.processed > 0 && (
+            <div className="rounded-lg border p-3 text-sm space-y-1">
+              <p className="font-semibold text-purple-600">TSO Notes (Markdown)</p>
+              <p>MD files: {result.report.tso_md.processed} &nbsp;|&nbsp; Matched to TSO: {result.report.tso_md.matched} &nbsp;|&nbsp; Unmatched: {result.report.tso_md.unmatched}</p>
+            </div>
+          )}
+
+          {/* Shows */}
+          {result.report?.shows && !result.report.shows.error && (
+            <div className="rounded-lg border p-3 text-sm space-y-1">
+              <p className="font-semibold text-blue-600">Shows</p>
+              <p>CSV rows: {result.report.shows.csvRows} &nbsp;|&nbsp; MD files: {result.report.shows.mdFiles} &nbsp;|&nbsp; Created: {result.report.shows.imported} &nbsp;|&nbsp; Updated: {result.report.shows.updated}</p>
+              <p>Linked to TSO: {result.report.shows.linked} &nbsp;|&nbsp; Unlinked: {result.report.shows.unlinked}</p>
+            </div>
+          )}
+
+          {/* Excel */}
+          {result.report?.excel && !result.report.excel.error && (
+            <div className="rounded-lg border p-3 text-sm space-y-1">
+              <p className="font-semibold text-orange-600">Excel (Condensed info.xlsx)</p>
+              <p>Tasks created: {result.report.excel.tasks_created} &nbsp;|&nbsp; Skipped (duplicate): {result.report.excel.tasks_skipped}</p>
+              <p>TSO records enriched: {result.report.excel.tso_records_enriched}</p>
+            </div>
+          )}
+
+          {/* DB totals */}
+          {result.report?.validation && (
+            <div className="rounded-lg border p-3 text-sm space-y-1 bg-gray-50 dark:bg-gray-900">
+              <p className="font-semibold">Database totals after migration</p>
+              <p>TSOs: {result.report.validation.total_tsos_in_db} &nbsp;|&nbsp; Shows: {result.report.validation.total_shows_in_db} &nbsp;|&nbsp; Tasks: {result.report.validation.total_tasks_in_db}</p>
+            </div>
+          )}
+
+          {/* Errors */}
+          {result.errors?.length > 0 && (
+            <div className="rounded-lg border border-red-200 p-3 text-sm space-y-1">
+              <p className="font-semibold text-red-600">Errors ({result.errors.length})</p>
+              {result.errors.map((e: string, i: number) => (
+                <p key={i} className="text-red-700 text-xs font-mono">{e}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ImportPage() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -584,6 +690,22 @@ export default function ImportPage() {
         <h1 className="text-2xl font-bold">Import Data</h1>
         <p className="text-muted-foreground text-sm">Import TSOs, shows, and tasks from your Notion exports</p>
       </div>
+
+      {/* Full Migration — reads files already on Railway */}
+      <Card className="border-[#e91e8c]/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ArrowRight className="h-5 w-5 text-[#e91e8c]" />
+            Full Migration (Railway)
+          </CardTitle>
+          <CardDescription>
+            One-click import of all 3 uploaded files: TSO outbound ZIP, Shows ZIP, and Condensed info Excel. Reads files directly from the Railway server — no upload needed.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FullMigrationSection />
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="tsos">
         <TabsList className="mb-4">
